@@ -36,6 +36,10 @@ export const metadata: Metadata = {
     types: {
       "application/rss+xml": "/feed.xml",
     },
+    languages: {
+      "ko": "/",
+      "en": "/en",
+    },
   },
 };
 

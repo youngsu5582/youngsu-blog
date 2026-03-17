@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { navigation, taxonomyNavigation } from "@/config/navigation";
 import { siteConfig } from "@/config/site";
 import { ThemeToggle } from "@/components/common/theme-toggle";
+import { LanguageSwitcher } from "@/components/common/language-switcher";
 import { Separator } from "@/components/ui/separator";
 import { Github, Mail, Rss } from "lucide-react";
 import { SearchButton } from "@/components/search/search-button";
@@ -106,7 +107,10 @@ export function Sidebar() {
                 <Rss className="h-4 w-4" />
               </a>
             </div>
-            <ThemeToggle />
+            <div className="flex items-center gap-1">
+              <LanguageSwitcher />
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </div>
