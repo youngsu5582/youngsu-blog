@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getAllArticles, getArticleBySlug, getUrlSlug } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
+import { MDXContent } from "@/components/mdx/mdx-content";
 import type { Metadata } from "next";
 
 interface ArticlePageProps {
@@ -105,10 +106,9 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
         />
 
         {/* MDX Content */}
-        <div
-          className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
-          dangerouslySetInnerHTML={{ __html: article.body }}
-        />
+        <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+          <MDXContent code={article.body} />
+        </div>
       </article>
 
       {/* Table of Contents */}

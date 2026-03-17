@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getAllPosts, getPostBySlug, getUrlSlug } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
+import { MDXContent } from "@/components/mdx/mdx-content";
 import type { Metadata } from "next";
 
 interface PostPageProps {
@@ -85,10 +86,9 @@ export default async function PostPage({ params }: PostPageProps) {
         />
 
         {/* MDX Content */}
-        <div
-          className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
-          dangerouslySetInnerHTML={{ __html: post.body }}
-        />
+        <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+          <MDXContent code={post.body} />
+        </div>
       </article>
 
       {/* Table of Contents */}

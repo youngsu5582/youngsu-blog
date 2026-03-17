@@ -47,26 +47,18 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
     return fuseResults.slice(0, searchConfig.maxResults).map((result) => result.item);
   }, [query, fuse]);
 
-  // 키보드 네비게이션
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % results.length);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev - 1 + results.length) % results.length);
-      } else if (e.key === "Enter" && results[selectedIndex]) {
-        e.preventDefault();
-        handleSelect(results[selectedIndex].slug);
-      }
-    };
-
-    if (open) {
-      window.addEventListener("keydown", handleKeyDown);
-      return () => window.removeEventListener("keydown", handleKeyDown);
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (results.length > 0 ? (prev + 1) % results.length : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (results.length > 0 ? (prev - 1 + results.length) % results.length : 0));
+    } else if (e.key === "Enter" && results[selectedIndex]) {
+      e.preventDefault();
+      handleSelect(results[selectedIndex].slug);
     }
-  }, [open, results, selectedIndex]);
+  };
 
   // 검색 결과 초기화
   useEffect(() => {
@@ -116,6 +108,7 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
               placeholder="검색어를 입력하세요..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="w-full pl-10 pr-4 py-3 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring text-sm"
               autoFocus
             />

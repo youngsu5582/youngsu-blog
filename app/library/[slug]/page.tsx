@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAllLibraryItems, getLibraryItemBySlug, getUrlSlug } from "@/lib/content";
+import { MDXContent } from "@/components/mdx/mdx-content";
 import { Calendar, Star } from "lucide-react";
 import Image from "next/image";
 import type { Metadata } from "next";
@@ -146,10 +147,9 @@ export default async function LibraryItemPage({ params }: LibraryItemPageProps) 
       </header>
 
       {/* MDX Content */}
-      <div
-        className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
-        dangerouslySetInnerHTML={{ __html: item.body }}
-      />
+      <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+        <MDXContent code={item.body} />
+      </div>
     </article>
   );
 }
