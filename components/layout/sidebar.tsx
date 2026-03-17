@@ -8,6 +8,7 @@ import { siteConfig } from "@/config/site";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { Separator } from "@/components/ui/separator";
 import { Github, Mail, Rss } from "lucide-react";
+import { SearchButton } from "@/components/search/search-button";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -27,6 +28,11 @@ export function Sidebar() {
         </div>
 
         <Separator className="mb-4" />
+
+        {/* Search */}
+        <div className="mb-4">
+          <SearchButton />
+        </div>
 
         {/* Main Navigation */}
         <nav className="flex-1 space-y-1">

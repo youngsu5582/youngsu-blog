@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { navigation, taxonomyNavigation } from "@/config/navigation";
 import { siteConfig } from "@/config/site";
 import { Separator } from "@/components/ui/separator";
+import { SearchButton } from "@/components/search/search-button";
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
@@ -36,6 +37,11 @@ export function MobileNav() {
           </div>
 
           <Separator className="mb-4" />
+
+          {/* Search */}
+          <div className="mb-4">
+            <SearchButton />
+          </div>
 
           <nav className="flex-1 space-y-1">
             {navigation.map((item) => {
