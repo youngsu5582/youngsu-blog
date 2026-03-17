@@ -1,10 +1,10 @@
-import { posts, type Post } from "#site/content";
+import { posts, articles, library, type Post, type Article, type LibraryItem } from "#site/content";
 
-export type { Post };
+export type { Post, Article, LibraryItem };
 
 /** Velite의 slug에서 컬렉션 접두사를 제거 (posts/hello-world → hello-world) */
 export function getUrlSlug(slug: string) {
-  return slug.replace(/^posts\//, "");
+  return slug.replace(/^(posts|articles|library)\//, "");
 }
 
 export function getAllPosts() {
@@ -49,4 +49,33 @@ export function getAllTags() {
   return Array.from(tags.entries())
     .sort((a, b) => b[1] - a[1])
     .map(([name, count]) => ({ name, count }));
+}
+
+// Articles
+export function getAllArticles() {
+  return articles
+    .filter((a: Article) => a.status !== "draft")
+    .sort((a: Article, b: Article) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function getArticleBySlug(slug: string) {
+  return articles.find((a: Article) => a.slug === slug || a.slug === `articles/${slug}`);
+}
+
+export function getArticlesByMoc(moc: string) {
+  return getAllArticles().filter((article: Article) => article.moc === moc);
+}
+
+// Library
+export function getAllLibraryItems() {
+  return library
+    .sort((a: LibraryItem, b: LibraryItem) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function getLibraryItemBySlug(slug: string) {
+  return library.find((item: LibraryItem) => item.slug === slug || item.slug === `library/${slug}`);
+}
+
+export function getLibraryItemsByMediaType(mediaType: "book" | "movie") {
+  return getAllLibraryItems().filter((item: LibraryItem) => item.mediaType === mediaType);
 }
