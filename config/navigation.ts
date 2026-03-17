@@ -1,4 +1,4 @@
-import { Home, FileText, BookOpen, Library, MapPin, User, Tags, Archive } from "lucide-react";
+import { Home, FileText, BookOpen, Library, MapPin, User, Tags, Archive, Clock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface NavItem {
@@ -18,6 +18,7 @@ export const navigation: NavItem[] = [
 ];
 
 export const taxonomyNavigation: NavItem[] = [
+  { name: "아카이브", href: "/archives", icon: Clock, description: "연도별 타임라인" },
   { name: "카테고리", href: "/categories", icon: Archive },
   { name: "태그", href: "/tags", icon: Tags },
 ];
