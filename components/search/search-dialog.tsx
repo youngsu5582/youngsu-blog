@@ -56,7 +56,7 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
       setSelectedIndex((prev) => (results.length > 0 ? (prev - 1 + results.length) % results.length : 0));
     } else if (e.key === "Enter" && results[selectedIndex]) {
       e.preventDefault();
-      handleSelect(results[selectedIndex].slug);
+      handleSelect(results[selectedIndex]);
     }
   };
 
@@ -75,8 +75,9 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
     }
   }, [results.length, selectedIndex]);
 
-  const handleSelect = (slug: string) => {
-    router.push(`/posts/${slug}`);
+  const handleSelect = (item: SearchItem) => {
+    const basePath = item.type === "article" ? "/articles" : item.type === "library" ? "/library" : "/posts";
+    router.push(`${basePath}/${item.slug}`);
     onOpenChange(false);
   };
 
@@ -132,7 +133,7 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
               {results.map((item, index) => (
                 <button
                   key={item.slug}
-                  onClick={() => handleSelect(item.slug)}
+                  onClick={() => handleSelect(item)}
                   className={`w-full text-left p-3 rounded-md transition-colors ${
                     index === selectedIndex
                       ? "bg-muted"
