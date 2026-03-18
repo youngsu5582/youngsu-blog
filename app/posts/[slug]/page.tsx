@@ -5,6 +5,10 @@ import { TableOfContents } from "@/components/post/toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
 import type { Metadata } from "next";
 import { GiscusComments } from "@/components/common/giscus-comments";
+import { ReadingProgress } from "@/components/post/reading-progress";
+import { ShareButtons } from "@/components/post/share-buttons";
+import { PostNavigation } from "@/components/post/post-navigation";
+import { RelatedPosts } from "@/components/post/related-posts";
 import fs from "fs";
 import path from "path";
 
@@ -87,25 +91,47 @@ export default async function PostPage({ params }: PostPageProps) {
   const rawContent = getRawContent(slug);
   const headings = post.toc ? extractHeadings(rawContent) : [];
 
+  // Prev/Next navigation
+  const allPosts = getAllPosts(post.lang as "ko" | "en");
+  const currentIdx = allPosts.findIndex((p) => getUrlSlug(p.slug) === slug);
+  const prevPost = currentIdx < allPosts.length - 1 ? allPosts[currentIdx + 1] : undefined;
+  const nextPost = currentIdx > 0 ? allPosts[currentIdx - 1] : undefined;
+
+  // Related posts (same category, excluding current)
+  const related = allPosts
+    .filter((p) => p.slug !== post.slug && p.categories.some((c) => post.categories.includes(c)))
+    .slice(0, 4);
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-10">
-      <article className="min-w-0">
-        <PostHeader
-          title={post.title}
-          date={post.date}
-          author={post.author}
-          categories={post.categories}
-          tags={post.tags}
-          readingTime={post.metadata.readingTime}
-        />
+    <>
+      <ReadingProgress />
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-10">
+        <article className="min-w-0">
+          <PostHeader
+            title={post.title}
+            date={post.date}
+            author={post.author}
+            categories={post.categories}
+            tags={post.tags}
+            readingTime={post.metadata.readingTime}
+          />
 
-        {/* MDX Content */}
-        <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-p:leading-relaxed prose-pre:max-w-full prose-pre:overflow-x-auto">
-          <MDXContent code={post.body} />
-        </div>
+          {/* MDX Content */}
+          <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-p:leading-relaxed prose-pre:max-w-full prose-pre:overflow-x-auto">
+            <MDXContent code={post.body} />
+          </div>
 
-        {post.comments && <GiscusComments />}
-      </article>
+          <ShareButtons title={post.title} slug={slug} />
+
+          <PostNavigation
+            prev={prevPost ? { title: prevPost.title, slug: getUrlSlug(prevPost.slug) } : undefined}
+            next={nextPost ? { title: nextPost.title, slug: getUrlSlug(nextPost.slug) } : undefined}
+          />
+
+          <RelatedPosts posts={related} />
+
+          {post.comments && <GiscusComments />}
+        </article>
 
       {/* Table of Contents */}
       {post.toc && headings.length > 0 && (
@@ -114,5 +140,6 @@ export default async function PostPage({ params }: PostPageProps) {
         </aside>
       )}
     </div>
+    </>
   );
 }
