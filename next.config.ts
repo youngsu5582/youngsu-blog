@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
       { hostname: "user-images.githubusercontent.com" },
       { hostname: "www.notion.so" },
       { hostname: "www.aladin.co.kr" },
+      { hostname: "image.yes24.com" },
     ],
   },
 };
