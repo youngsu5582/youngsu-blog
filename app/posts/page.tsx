@@ -1,6 +1,6 @@
 import { getAllPosts, getUrlSlug } from "@/lib/content";
 import { PostList } from "@/components/post/post-list";
-import Link from "next/link";
+import { LangToggle } from "@/components/common/lang-toggle";
 
 const POSTS_PER_PAGE = 10;
 
@@ -36,29 +36,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           </p>
         </div>
 
-        {/* Language toggle */}
-        <div className="flex gap-1 border border-border rounded-lg p-0.5">
-          <Link
-            href="/posts"
-            className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
-              lang === "ko"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            KO
-          </Link>
-          <Link
-            href="/posts?lang=en"
-            className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
-              lang === "en"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            EN
-          </Link>
-        </div>
+        <LangToggle currentLang={lang} />
       </div>
 
       <PostList

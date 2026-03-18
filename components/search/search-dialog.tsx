@@ -19,14 +19,29 @@ interface SearchDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+function getCurrentLang(): "ko" | "en" {
+  if (typeof window === "undefined") return "ko";
+  // Check URL first
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("lang") === "en") return "en";
+  // Fallback to localStorage
+  return (localStorage.getItem("locale") as "ko" | "en") || "ko";
+}
+
 export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  // Filter by current language
+  const filteredIndex = useMemo(() => {
+    const lang = getCurrentLang();
+    return searchIndex.filter((item) => !item.lang || item.lang === lang);
+  }, [searchIndex, open]);
+
   // Fuse.js 인스턴스 생성
   const fuse = useMemo(() => {
-    return new Fuse(searchIndex, {
+    return new Fuse(filteredIndex, {
       keys: [
         { name: "title", weight: searchConfig.weights.title },
         { name: "description", weight: searchConfig.weights.description },

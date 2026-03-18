@@ -10,7 +10,7 @@ export function SearchButton() {
   const [open, setOpen] = useState(false);
   const [searchIndex, setSearchIndex] = useState<SearchItem[]>([]);
 
-  // 검색 인덱스 빌드 (클라이언트에서 한 번만)
+  // 검색 인덱스 빌드 (전체, 한 번만)
   useEffect(() => {
     setSearchIndex(buildSearchIndex());
   }, []);

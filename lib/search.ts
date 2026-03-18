@@ -7,6 +7,7 @@ export interface SearchItem {
   tags: string[];
   categories: string[];
   type: "post" | "article" | "library";
+  lang?: string;
 }
 
 export function buildSearchIndex(): SearchItem[] {
@@ -21,6 +22,7 @@ export function buildSearchIndex(): SearchItem[] {
     tags: post.tags || [],
     categories: post.categories || [],
     type: "post" as const,
+    lang: post.lang || "ko",
   }));
 
   const articleItems: SearchItem[] = articles.map((article) => ({
