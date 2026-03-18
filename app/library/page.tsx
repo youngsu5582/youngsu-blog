@@ -16,7 +16,7 @@ export const metadata = {
 export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   const params = await searchParams;
   const currentPage = Number(params.page) || 1;
-  const typeFilter = params.type as "book" | "movie" | undefined;
+  const typeFilter = params.type as "book" | "movie" | "life" | undefined;
   const viewMode = (params.view as "grid" | "list") || "grid";
 
   let allItems = getAllLibraryItems();
@@ -39,7 +39,7 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
         <h1 className="text-3xl font-bold tracking-tight theme-heading">라이브러리</h1>
         <p className="text-muted-foreground mt-3 text-sm">
           총 {allItems.length}개의 항목
-          {typeFilter && ` (${typeFilter === "book" ? "책" : "영화"})`}
+          {typeFilter && ` (${typeFilter === "book" ? "책" : typeFilter === "movie" ? "영화" : "라이프"})`}
         </p>
       </div>
 
@@ -75,6 +75,16 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
             }`}
           >
             🎬 영화
+          </a>
+          <a
+            href={`/library?type=life${viewMode === "list" ? "&view=list" : ""}`}
+            className={`text-sm px-3 py-1.5 rounded-md transition-colors ${
+              typeFilter === "life"
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted hover:bg-accent"
+            }`}
+          >
+            🏃 라이프
           </a>
         </div>
 

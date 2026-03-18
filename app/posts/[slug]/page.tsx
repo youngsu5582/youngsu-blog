@@ -9,6 +9,7 @@ import { ReadingProgress } from "@/components/post/reading-progress";
 import { ShareButtons } from "@/components/post/share-buttons";
 import { PostNavigation } from "@/components/post/post-navigation";
 import { RelatedPosts } from "@/components/post/related-posts";
+import { ScrollToTop } from "@/components/common/scroll-to-top";
 import fs from "fs";
 import path from "path";
 
@@ -135,11 +136,12 @@ export default async function PostPage({ params }: PostPageProps) {
 
       {/* Table of Contents */}
       {post.toc && headings.length > 0 && (
-        <aside className="hidden xl:block">
+        <aside className="hidden xl:block self-start sticky top-20">
           <TableOfContents headings={headings} />
         </aside>
       )}
     </div>
+    <ScrollToTop />
     </>
   );
 }
