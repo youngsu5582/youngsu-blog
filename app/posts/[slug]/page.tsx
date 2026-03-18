@@ -4,6 +4,8 @@ import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
 import type { Metadata } from "next";
+import fs from "fs";
+import path from "path";
 
 interface PostPageProps {
   params: Promise<{ slug: string }>;
@@ -42,13 +44,13 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
   };
 }
 
-// Extract headings from MDX content for TOC
-function extractHeadings(content: string): Array<{ id: string; text: string; level: number }> {
-  const headingRegex = /^(#{2,3})\s+(.+)$/gm;
+// Extract headings from raw MDX source for TOC
+function extractHeadings(rawContent: string): Array<{ id: string; text: string; level: number }> {
+  const headingRegex = /^(#{2,4})\s+(.+)$/gm;
   const headings: Array<{ id: string; text: string; level: number }> = [];
   let match;
 
-  while ((match = headingRegex.exec(content)) !== null) {
+  while ((match = headingRegex.exec(rawContent)) !== null) {
     const level = match[1].length;
     const text = match[2].trim();
     const id = text
@@ -62,6 +64,16 @@ function extractHeadings(content: string): Array<{ id: string; text: string; lev
   return headings;
 }
 
+// Read raw .mdx file content for heading extraction
+function getRawContent(slug: string): string {
+  const filePath = path.join(process.cwd(), "content", "posts", `${slug}.mdx`);
+  try {
+    return fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
 export default async function PostPage({ params }: PostPageProps) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
@@ -70,11 +82,12 @@ export default async function PostPage({ params }: PostPageProps) {
     notFound();
   }
 
-  // Extract headings for TOC
-  const headings = post.toc ? extractHeadings(post.body) : [];
+  // Extract headings from raw file (not compiled MDX)
+  const rawContent = getRawContent(slug);
+  const headings = post.toc ? extractHeadings(rawContent) : [];
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[1fr_250px] gap-8">
+    <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-10">
       <article className="min-w-0">
         <PostHeader
           title={post.title}
@@ -86,7 +99,7 @@ export default async function PostPage({ params }: PostPageProps) {
         />
 
         {/* MDX Content */}
-        <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+        <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-p:leading-relaxed prose-pre:max-w-full prose-pre:overflow-x-auto">
           <MDXContent code={post.body} />
         </div>
       </article>

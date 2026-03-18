@@ -56,7 +56,7 @@ export default function RootLayout({
             <Sidebar />
             <div className="lg:pl-64">
               <Topbar />
-              <main className="max-w-3xl mx-auto px-6 py-10 lg:px-8">
+              <main className="max-w-6xl mx-auto px-6 py-10 lg:px-10">
                 {children}
               </main>
               <Footer />
