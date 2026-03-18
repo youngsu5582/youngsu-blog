@@ -253,6 +253,47 @@
   background: linear-gradient(90deg, transparent, var(--border), transparent);
 }
 
+/* Code blocks — preserve Shiki syntax highlighting */
+[data-rehype-pretty-code-figure] pre {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  border: 1px solid var(--border);
+}
+[data-rehype-pretty-code-figure] code {
+  background: transparent !important;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+[data-rehype-pretty-code-figure] code span {
+  color: var(--shiki-light) !important;
+}
+.dark [data-rehype-pretty-code-figure] code span {
+  color: var(--shiki-dark) !important;
+}
+/* Inline code */
+:not(pre) > code {
+  background: var(--muted);
+  padding: 0.15em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  border: 1px solid var(--border);
+}
+/* Code block language label */
+[data-rehype-pretty-code-figure] [data-language]::before {
+  content: attr(data-language);
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
 /* Footer */
 .theme-footer {
   border-top: 1px solid var(--border);
