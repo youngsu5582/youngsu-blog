@@ -1,0 +1,362 @@
+---
+title: 외부(깃허브) 호출을 비동기로 30% 가량 빠르게(2) - 스레드 튜닝, 측정
+date: 2024-11-09
+description: 스레드 튜닝과 성능 측정 방법
+categories: []
+tags:
+  - 비동기
+  - 외부api
+  - 우테코
+  - 코레아
+  - 스프링
+image: "https://velog.velcdn.com/images/dragonsu/post/ab1835c7-151a-4d97-abcf-e406d69893be/image.png"
+author: 이영수
+---
+
+해당 내용은 [프로젝트](https://github.com/woowacourse-teams/2024-corea) 에서 사용자 경험을 위해 API 호출 시간을 줄이기 위해 구현하며 작성한 글입니다. 
+혹시, 잘못된 내용이나 다른 방법등이 있다면 댓글로 또는 `joyson5582@gmail.com`로 남겨주세요!
+
+
+---
+
+이 내용은 [# 외부(깃허브) 호출을 비동기로 30% 가량 빠르게(1) - 기본 로직](https://velog.io/@dragonsu/%EC%99%B8%EB%B6%80%EA%B9%83%ED%97%88%EB%B8%8C-%ED%98%B8%EC%B6%9C%EC%9D%84-%EB%B9%84%EB%8F%99%EA%B8%B0%EB%A1%9C-30-%EA%B0%80%EB%9F%89-%EB%B9%A0%EB%A5%B4%EA%B2%8C1-%EA%B8%B0%EB%B3%B8-%EB%A1%9C%EC%A7%81) 에서 이어집니다.
+
+```
+[2024-11-09 18:45:18:12776] [ForkJoinPool.commonPool-worker-7] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$0:13] - Running in thread: ForkJoinPool.commonPool-worker-7 
+[2024-11-09 18:45:18:12776] [ForkJoinPool.commonPool-worker-1] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$0:13] - Running in thread: ForkJoinPool.commonPool-worker-1 
+[2024-11-09 18:45:18:12776] [ForkJoinPool.commonPool-worker-2] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$0:13] - Running in thread: ForkJoinPool.commonPool-worker-2 
+[2024-11-09 18:45:18:12776] [ForkJoinPool.commonPool-worker-3] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$0:13] - Running in thread: ForkJoinPool.commonPool-worker-3 
+[2024-11-09 18:45:18:12777] [ForkJoinPool.commonPool-worker-6] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$0:13] - Running in thread: ForkJoinPool.commonPool-worker-6 
+[2024-11-09 18:45:18:12776] [ForkJoinPool.commonPool-worker-4] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$0:13] - Running in thread: ForkJoinPool.commonPool-worker-4 
+[2024-11-09 18:45:18:12777] [ForkJoinPool.commonPool-worker-5] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$0:13] - Running in thread: ForkJoinPool.commonPool-worker-5 
+[2024-11-09 18:45:18:12778] [ForkJoinPool.commonPool-worker-7] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$0:13] - Running in thread: ForkJoinPool.commonPool-worker-7 
+```
+
+`ForkJoinPool.commonPool` 이라는 곳에서 제공되는 기본 스레드 7개를 통해서 비동기 작업이 수행된 걸 확인했습니다.
+`ForkJoinPool` 에 대해서 먼저 알아보겠습니다.
+## ForkJoinPool
+
+자바 7 에서 도입된 프레임워크입니다.
+모든 프로세서 코어를 최대한 활용해 병렬 처리를 도와줍니다.
+
+```
+  모델명:	MacBook Air
+  모델 식별자:	Mac14,2
+  모델 번호:	Z15Y0002AKH/A
+  칩:	Apple M2
+  총 코어 개수:	8(4 성능 및 4 효율)
+```
+
+제가 사용하는 맥북의 코어는 총 8개이므로 7개의 스레드를 사용하는 거였네요!
+
+> 왜 코어 -1 개의 스레드를 가지는가?
+> 코어 1개를 남겨두면 시스템 작업과 애플리케이션 스레드 간의 경쟁을 줄이고, 병렬 처리 성능을 높일 수 있습니다.
+> 코어 - 1로 제한하면 시스템이 더 안정적으로 작동하며, 작업 대기 시간이 줄어듭니다.
+
+```java
+Runtime.getRuntime().availableProcessors();  
+ForkJoinPool.commonPool().getParallelism();
+```
+
+두개를 출력하면 8개, 7개가 나옵니다.
+
+정말 개수가 더 많으면 성능이 떨어지는지 확인해보겠습니다.
+>추가로 더 다양한 테스트를 위해 댓글 수가 100~200개 사이의 각각 다른 목록들로 테스트 합니다.
+
+```java
+private <T> void execute(String text, int count) {  
+    long startTime = System.nanoTime();  
+    List<CompletableFuture<T>> futures = ary.stream()  
+            .map(integer -> (CompletableFuture<T>) FutureUtil.supplyAsync(() -> githubReviewProvider.provideReviewInfo("https://github.com/woowacourse-precourse/java-racingcar-6/pull/" + integer)))  
+            .toList();  
+    CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));  
+    allOf.join(); // 모든 요청이 완료될 때까지 대기  
+    long endTime = System.nanoTime();  
+    printElapsedTime(text, endTime - startTime);  
+}
+```
+
+
+```
+ForkedJoinPool 개수 : 7
+기존 코드 : Elapsed Time: 36 seconds, 614 milliseconds, 556 microseconds, 958 nanoseconds
+첫 번째 문제만 해결 : Elapsed Time: 26 seconds, 993 milliseconds, 992 microseconds, 208 nanoseconds
+둘다 해결 : Elapsed Time: 25 seconds, 805 milliseconds, 255 microseconds, 291 nanoseconds
+```
+
+
+```
+ForkedJoinPool 개수 : 20
+기존 코드 : Elapsed Time: 35 seconds, 821 milliseconds, 2 microseconds, 625 nanoseconds
+첫 번째 문제만 해결 : Elapsed Time: 26 seconds, 53 milliseconds, 833 microseconds, 625 nanoseconds
+둘다 해결 : Elapsed Time: 25 seconds, 250 milliseconds, 377 microseconds, 334 nanoseconds
+```
+
+( 시간 차이는 크게 없는걸로 보이네요. )
+
+하지만, 위 실험은 크게 중요하지 않습니다.
+`ForkedJoinPool` 의 핵심은 작업을 작은 단위로 나눠서(`Fork`) 병렬 실행하고 결과를 합치는(`Join`) 것입니다.
+즉, 여러개의 네트워크 작업을 한번에 실행하기 위해서 사용되는게 아니라는 뜻입니다. - **Avoid any blocking in** **_ForkJoinTasks_.** [in Baeldung](https://www.baeldung.com/java-fork-join)
+( `parallelStream()` 에서 사용되는게 이 `ForkedJoinPool` 입니다. )
+
+그러면, 이런 작업을 할 때 효율적으로 비동기를 처리하려면 뭘 사용해야 할까요?
+
+## ThreadPoolExecutor
+해당 클래스를 살펴보기 전 `ThreadPool` 부터 알아보겠습니다.
+
+### ThreadPool
+
+병렬 작업을 할 때마다 스레드를 생성&해제 하는것은 매우 비효율적입니다.
+-> 기본적으로, 시스템 수준 리소스에 매핑되기 때문입니다.
+( 물론, 자바 19부터는 `Thread.ofVirtual()` 와 같이 가상 스레드를 생성 가능은 합니다. )
+
+스레드 풀을 통해 미리 만들어 놓은 스레드를 사용하고 삭제하지 않고 유지해서 작업이 가능합니다.
+스레드 풀에 `병렬 작업 형태`로 코드를 작성하고 제출하면 작업을 실행하고 관리해줍니다.
+
+### 생성 방법
+
+그냥 생성자를 통해 생성 가능합니다.
+
+```java
+ThreadPoolExecutor executor = new ThreadPoolExecutor(
+    2, // corePoolSize
+    4, // maximumPoolSize
+    60, // keepAliveTime
+    TimeUnit.SECONDS, // keepAliveTime 단위
+    new ArrayBlockingQueue<>(10) // 작업 대기 큐,
+    new ThreadPoolExecutor.CallerRunsPolicy()); // 거절 실행 핸들러
+);
+```
+
+해당 내용은 [Tomcat 구현하기 미션](https://github.com/woowacourse/java-http/pull/760) 에서도 학습한 내용입니다.
+- corePoolSize : 풀 내 최소로 가지고 있는 스레드 개수 - 미리 준비한 스레드를 통해 생성에 드는 시간 방지
+- maximumPoolSize : 최대로 가질수 있는 스레드 개수 - 너무 많은 스레드가 생성되어 리소스를 많이 차지 하는걸 방지
+- keepAliveTime : 작업 후 스레드가 남아있는 시간 - 스레드가 삭제 & 생성되는데 드는 시간 방지
+- timeUnit : keepAliveTime 의 단위
+- blockingQueue : Queue 를 구현한 자료구조 - 큐가 비어 있거나 가득 찬 경우, 스레드를 대기 상태로 만들어서 조건이 충족될 때까지 기다리는 기능 제공 해주기에 사용
+- rejectedExecutionHandler : 거절된 실행을 어떻게 처리할지 지정하는 핸들러
+    - CallerRunsPolicy : Queue,Thread 가 전부 작업 상태일 시, Main 스레드도 작업을 수행한다. ( 10 개 전부 수행 )
+    - AbortPolicy : 전부 작업 상태 시, RejectedExecutionException 발생시킴 ( 4 + 2 개만 수행 )
+    - DiscardPolicy : 전부 작업 상태 시, 조용히 작업 거부 ( 4 + 2 개만 수행 )
+    - DiscardOldPolicy : 전부 작업 상태 시, 예전에 대기하고 있는 작업을 제거 후 교체한다 - current Queue 내 작업이 계속 달라짐 ( 4 +2 개만 수행 )
+
+### ExecutorService?
+
+위 내용들과 같이 나오는 `ExecutorService` 가 있습니다.
+인터페이스 이며, `ThreadPoolExecutor` , `ForkJoinPool` 같은 구현체들도 해당 인터페이스를 구현한 `AbstractExecutorService`  의 자식 클래스입니다.
+`Executors` 라는 팩토리 메소드를 사용해 구현체를 생성합니다. ( 구체적인 설정을 할 필요 없이 간편하게 생성할때 사용 )
+
+```java
+public static ExecutorService newFixedThreadPool(int nThreads) {
+	return new ThreadPoolExecutor(nThreads, nThreads,
+								  0L, TimeUnit.MILLISECONDS,
+								  new LinkedBlockingQueue<Runnable>());
+}
+```
+
+```java
+public static ExecutorService newCachedThreadPool() {  
+    return new ThreadPoolExecutor(0, Integer.MAX_VALUE,  
+                                  60L, TimeUnit.SECONDS,  
+                                  new SynchronousQueue<Runnable>());  
+}
+```
+
+와 같이 편하게 생성 가능합니다.
+저희는 좀 더 복잡한 튜닝을 위해 `ThreadPoolExecutor` 를 사용하겠습니다.
+### In Spring Bean
+
+```java
+@Bean
+public Executor taskExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(5);
+    executor.setMaxPoolSize(10);
+    executor.setQueueCapacity(25);
+    executor.initialize();
+    return executor;
+}
+
+===
+
+public TaskService(@Qualifier("customExecutor") Executor customExecutor) {
+	this.customExecutor = customExecutor;
+}
+
+@Async("customExecutor") // 특정 Executor 지정
+public void executeAsyncTask(int i) {
+	...
+}
+```
+
+와 같이 빈 등록 및 주입을 할 수 있습니다.
+
+## 성능 측정
+
+### 사전 설정
+
+먼저 기본적인 Thread Pool 을 통해 다시 시간을 측정해보겠습니다.
+
+```java
+@Bean(name = "apiExecutor")  
+public Executor apiExecutor() {  
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();  
+    executor.setCorePoolSize(10);  
+    executor.setMaxPoolSize(100);  
+    executor.setQueueCapacity(25);  
+    executor.initialize();  
+    return executor;  
+}  
+  
+@Bean(name = "clientExecutor")  
+public Executor clientExecutor() {  
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();  
+    executor.setCorePoolSize(10);  
+    executor.setMaxPoolSize(100);  
+    executor.setQueueCapacity(25);  
+    executor.initialize();  
+    return executor;  
+}
+```
+
+```java
+public GithubReviewProvider(final GithubPullRequestReviewClient reviewClient,  
+                            final GithubPullRequestCommentClient commentClient,  
+                            final @Qualifier("apiExecutor") Executor executor) {  
+    this.reviewClient = reviewClient;  
+    this.commentClient = commentClient;  
+    this.executor = executor;  
+}
+
+public GithubPullRequestCommentClient(RestClient restClient,  
+                                      GithubPullRequestUrlExchanger githubPullRequestUrlExchanger,  
+                                      GithubPersonalAccessTokenProvider githubPersonalAccessTokenProvider,  
+                                      @Qualifier("clientExecutor")Executor executor) {  
+    super(restClient, githubPullRequestUrlExchanger, githubPersonalAccessTokenProvider,executor);  
+}
+```
+
+와 같이 `Executor` 를 설정 및 주입했습니다.
+
+```
+[2024-11-09 23:34:34:14131] [clientExecutor-10] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$1:20] - Running in thread: clientExecutor-10 
+[2024-11-09 23:34:34:14131] [apiExecutor-14] INFO  [corea.global.util.FutureUtil.lambda$supplyAsync$1:20] - Running in thread: apiExecutor-14 
+```
+
+로그를 찍어 확인하면 성공적으로 스레드를 제공해줍니다.
+
+### 다중 테스트
+
+테스트는 두가지로 진행했습니다.
+- 각각 요청을 동기로 실행해서 총 시간 측정
+```java
+startTime = System.nanoTime();  
+ary.forEach(integer -> githubReviewProvider.getGithubPullRequestReviewInfoSync("https://github.com/woowacourse-precourse/java-racingcar-6/pull/"+integer)); 
+endTime = System.nanoTime();  
+printElapsedTime("기존 코드 : ", endTime - startTime);
+```
+
+- 요청들을 비동기로 한번에 실행해서 총 시간 측정
+```java
+private <T> void executeAsync(String text) {  
+    long startTime = System.nanoTime();  
+    List<CompletableFuture<T>> futures = ary.stream()  
+            .map(integer -> (CompletableFuture<T>) FutureUtil.supplyAsync(() -> githubReviewProvider.getGithubPullRequestReviewInfoAsync("https://github.com/woowacourse-precourse/java-racingcar-6/pull/" + integer)))  
+            .toList();  
+    CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));  
+    allOf.join();
+    long endTime = System.nanoTime();  
+    printElapsedTime(text, endTime - startTime);  
+}
+```
+
+```
+기존 코드 : Elapsed Time: 37 seconds, 226 milliseconds, 116 microseconds, 417 nanoseconds
+첫 번째 문제만 해결 : Elapsed Time: 29 seconds, 496 milliseconds, 377 microseconds, 584 nanoseconds
+둘다 해결 : Elapsed Time: 27 seconds, 292 milliseconds, 174 microseconds, 42 nanoseconds
+
+기존 코드 : Elapsed Time: 6 seconds, 385 milliseconds, 892 microseconds, 541 nanoseconds
+첫 번째 문제만 해결 : Elapsed Time: 3 seconds, 164 milliseconds, 544 microseconds, 83 nanoseconds
+둘다 해결 : Elapsed Time: 3 seconds, 568 milliseconds, 894 microseconds, 125 nanoseconds
+```
+
+```
+기존 코드 : Elapsed Time: 40 seconds, 564 milliseconds, 653 microseconds, 83 nanoseconds
+첫 번째 문제만 해결 : Elapsed Time: 27 seconds, 4 milliseconds, 581 microseconds, 709 nanoseconds
+둘다 해결 : Elapsed Time: 28 seconds, 122 milliseconds, 420 microseconds, 667 nanoseconds
+
+기존 코드 : Elapsed Time: 5 seconds, 969 milliseconds, 698 microseconds, 83 nanoseconds
+첫 번째 문제만 해결 : Elapsed Time: 3 seconds, 35 milliseconds, 963 microseconds, 917 nanoseconds
+둘다 해결 : Elapsed Time: 3 seconds, 319 milliseconds, 663 microseconds, 208 nanoseconds
+```
+
+이와 같은 결과가 나옵니다. 
+
+- 첫 번째 케이스에서는 26.68~33.41%까지 단축
+- 두 번째 케이스에서는  44.13~49.16%까지 단축
+
+의 결과가 나왔습니다. ~~( 왜 첫 번째 문제만 해결한게 더 짧은지는 명확하게 모르겠네요.. 🥲 )~~
+( 시간의 차이는 앞서 보낸 Preflight 요청 때문인걸 깨달았습니다. 대부분은 추가 페이지네이션을 발생시키지 않는데, 오히려 시간을 증가시킴 )
+
+```java
+@Bean(name = "apiExecutor")  
+public Executor apiExecutor() {  
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();  
+    executor.setCorePoolSize(20);  
+    executor.setMaxPoolSize(50);  
+    executor.setMaxPoolSize(100);  
+    executor.setQueueCapacity(25);  
+    executor.initialize();  
+    return executor;  
+}  
+  
+@Bean(name = "clientExecutor")  
+public Executor clientExecutor() {  
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();  
+    executor.setCorePoolSize(10);  
+    executor.setMaxPoolSize(30);  
+    executor.setQueueCapacity(50);  
+    executor.initialize();  
+    return executor;  
+}
+```
+
+이와같이 변경을 하면?
+
+```
+기존 코드 : Elapsed Time: 39 seconds, 303 milliseconds, 886 microseconds, 125 nanoseconds
+첫 번째 문제만 해결 : Elapsed Time: 29 seconds, 721 milliseconds, 726 microseconds, 334 nanoseconds
+둘다 해결 : Elapsed Time: 28 seconds, 156 milliseconds, 877 microseconds, 208 nanoseconds
+
+기존 코드 : Elapsed Time: 5 seconds, 757 milliseconds, 605 microseconds, 500 nanoseconds
+첫 번째 문제만 해결 : Elapsed Time: 2 seconds, 885 milliseconds, 556 microseconds, 875 nanoseconds
+둘다 해결 : Elapsed Time: 3 seconds, 560 milliseconds, 182 microseconds, 916 nanoseconds
+```
+
+큰 차이가 없는걸 볼 수 있습니다.
+
+## 결론
+
+
+그라파나를 통해 도입 전 / 후 지표를 확인해보겠습니다.
+
+![](https://i.imgur.com/hhgczmf.png)
+
+응답시간은 비동기 도입 후 600ms -> 400ms 가량으로 **33%** 빨라졌습니다.
+
+![](https://i.imgur.com/TNd2Xew.png)
+
+힙 메모리도 큰 피크는 튀지 않는걸 볼 수 있습니다.
+( 물론, CPU 오버헤드 문제가 있을 수 있지만 이는 당장 확인 못했습니다. )
+
+이렇게
+- 어디까지 비동기를 도입할 지
+- 비동기를 통해 수행시 얼마나 시간 효율이 되는지
+- 비동기를 통해 수행하면 힙 메모리 또는 CPU 문제가 없는지
+
+등을
+각자 팀이 확인을 해보고 상황에 맞게 도입을 해보면 좋을거 같습니다! 🙂
+
+> 사용자 경험이 무조건 1순위라고 생각은 하나, 적절하게 타협은 해야할거 같습니다.
+> ( 과도한 사용자 경험을 위해 
+Thread Pool 에 매우 많은 스레드나 무한 대기열 때문에 서버가 터진다면 더 최악일테니까요  )

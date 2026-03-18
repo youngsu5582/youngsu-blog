@@ -192,8 +192,34 @@ interface MigrationResult {
   reason?: string;
 }
 
+/**
+ * YAML frontmatter에서 중복 키를 제거
+ */
+function removeDuplicateKeys(raw: string): string {
+  const match = raw.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return raw;
+
+  const frontmatter = match[1];
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (const line of frontmatter.split("\n")) {
+    // Top-level key (not indented, has colon)
+    const keyMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_-]*):/);
+    if (keyMatch) {
+      const key = keyMatch[1];
+      if (seen.has(key)) continue; // skip duplicate
+      seen.add(key);
+    }
+    lines.push(line);
+  }
+
+  return raw.replace(/^---\n[\s\S]*?\n---/, `---\n${lines.join("\n")}\n---`);
+}
+
 function migratePost(filePath: string, destDir: string, collectionType: string): MigrationResult {
-  const raw = fs.readFileSync(filePath, "utf-8");
+  const rawOriginal = fs.readFileSync(filePath, "utf-8");
+  const raw = removeDuplicateKeys(rawOriginal);
   const { data, content } = matter(raw);
 
   // Determine language
