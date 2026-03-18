@@ -62,9 +62,16 @@ function extractSlugFromFilename(filename: string): string {
   return slug;
 }
 
-function formatDate(date: string | Date): string {
-  const d = new Date(date);
-  return d.toISOString().split("T")[0]; // YYYY-MM-DD
+function formatDate(date: string | Date | undefined, filename: string): string {
+  if (date) {
+    const d = new Date(date);
+    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+  }
+  // Fallback: extract from filename (YYYY-MM-DD-...)
+  const match = filename.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  // Last fallback: today
+  return new Date().toISOString().split("T")[0];
 }
 
 function convertImagePath(imagePath: string | undefined): string | undefined {
@@ -253,7 +260,7 @@ function migratePost(filePath: string, destDir: string, collectionType: string):
   // Convert frontmatter
   const converted: Record<string, unknown> = {
     title: data.title,
-    date: formatDate(data.date),
+    date: formatDate(data.date, path.basename(filePath)),
     description: data.description || "",
     categories: Array.isArray(data.categories) ? data.categories : data.categories ? [data.categories] : [],
     tags: Array.isArray(data.tags) ? data.tags : data.tags ? [data.tags] : [],

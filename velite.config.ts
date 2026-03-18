@@ -56,7 +56,7 @@ const library = defineCollection({
     tags: s.array(s.string()).default([]),
     image: s.string().optional(),
     author: s.string().default("이영수"),
-    mediaType: s.enum(["book", "movie"]).default("book"),
+    mediaType: s.enum(["book", "movie", "life"]).default("book"),
     rating: s.number().optional(),
     slug: s.path(),
     body: s.mdx(),
