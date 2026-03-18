@@ -1,4 +1,4 @@
-import { getAllPosts, getAllArticles, getUrlSlug } from "@/lib/content";
+import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, type Note } from "@/lib/content";
 import Link from "next/link";
 
 export const metadata = {
@@ -10,12 +10,13 @@ interface TimelineItem {
   title: string;
   slug: string;
   date: string;
-  type: "post" | "article";
+  type: "post" | "article" | "note";
 }
 
 export default function ArchivesPage() {
-  const posts = getAllPosts();
+  const posts = getAllPosts("ko");
   const articles = getAllArticles();
+  const notes = getAllNotes();
 
   const allItems: TimelineItem[] = [
     ...posts.map((p) => ({
@@ -29,6 +30,12 @@ export default function ArchivesPage() {
       slug: getUrlSlug(a.slug),
       date: a.date,
       type: "article" as const,
+    })),
+    ...notes.map((n: Note) => ({
+      title: n.title || getUrlSlug(n.slug),
+      slug: getUrlSlug(n.slug),
+      date: n.date,
+      type: "note" as const,
     })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -73,6 +80,8 @@ export default function ArchivesPage() {
                   const href =
                     item.type === "article"
                       ? `/articles/${item.slug}`
+                      : item.type === "note"
+                      ? `/notes`
                       : `/posts/${item.slug}`;
 
                   return (
@@ -93,10 +102,12 @@ export default function ArchivesPage() {
                         className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
                           item.type === "article"
                             ? "bg-emerald-500/8 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15"
+                            : item.type === "note"
+                            ? "bg-violet-500/8 text-violet-600 dark:text-violet-400 border border-violet-500/15"
                             : "theme-tag"
                         }`}
                       >
-                        {item.type === "article" ? "Article" : "Post"}
+                        {item.type === "article" ? "Article" : item.type === "note" ? "Note" : "Post"}
                       </span>
 
                       {/* Title */}

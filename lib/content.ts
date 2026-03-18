@@ -32,8 +32,15 @@ export function getPostsByTag(tag: string) {
 
 export function getAllCategories() {
   const categories = new Map<string, number>();
+  // Posts
   getAllPosts().forEach((post: Post) => {
     post.categories.forEach((cat: string) => {
+      categories.set(cat, (categories.get(cat) || 0) + 1);
+    });
+  });
+  // Articles
+  getAllArticles().forEach((article: Article) => {
+    article.categories.forEach((cat: string) => {
       categories.set(cat, (categories.get(cat) || 0) + 1);
     });
   });
@@ -44,8 +51,21 @@ export function getAllCategories() {
 
 export function getAllTags() {
   const tags = new Map<string, number>();
+  // Posts
   getAllPosts().forEach((post: Post) => {
     post.tags.forEach((tag: string) => {
+      tags.set(tag, (tags.get(tag) || 0) + 1);
+    });
+  });
+  // Articles
+  getAllArticles().forEach((article: Article) => {
+    article.tags.forEach((tag: string) => {
+      tags.set(tag, (tags.get(tag) || 0) + 1);
+    });
+  });
+  // Notes
+  getAllNotes().forEach((note: Note) => {
+    note.tags.forEach((tag: string) => {
       tags.set(tag, (tags.get(tag) || 0) + 1);
     });
   });
