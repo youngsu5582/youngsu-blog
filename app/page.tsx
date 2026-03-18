@@ -15,7 +15,7 @@ export default function Home() {
           Welcome
         </p>
         <h1 className="text-4xl font-bold tracking-tight leading-tight">
-          <span className="sora-gradient-text">{siteConfig.author.name}</span>
+          <span className="theme-gradient-text">{siteConfig.author.name}</span>
           <span className="text-foreground">의 블로그</span>
         </h1>
         <p className="text-muted-foreground mt-3 text-base leading-relaxed max-w-lg">
@@ -28,7 +28,7 @@ export default function Home() {
       {recentPosts.length > 0 ? (
         <section>
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold tracking-tight sora-heading">
+            <h2 className="text-lg font-semibold tracking-tight theme-heading">
               최근 포스트
             </h2>
             <Link
@@ -58,7 +58,7 @@ export default function Home() {
         </section>
       ) : (
         <section>
-          <h2 className="text-lg font-semibold tracking-tight sora-heading">
+          <h2 className="text-lg font-semibold tracking-tight theme-heading">
             최근 포스트
           </h2>
           <p className="text-muted-foreground mt-6 text-sm">

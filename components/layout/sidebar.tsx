@@ -14,13 +14,13 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 sora-sidebar">
+    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 theme-sidebar">
       <div className="flex flex-col h-full px-5 py-8">
         {/* Profile */}
         <div className="flex flex-col items-center text-center mb-8">
-          <div className="sora-avatar-ring mb-4">
+          <div className="theme-avatar-ring mb-4">
             <div className="w-20 h-20 rounded-full bg-background flex items-center justify-center">
-              <span className="text-xl font-bold sora-gradient-text">
+              <span className="text-xl font-bold theme-gradient-text">
                 영
               </span>
             </div>
@@ -51,7 +51,7 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 text-sm transition-all duration-200 rounded-md",
                   isActive
-                    ? "sora-nav-active font-medium"
+                    ? "theme-nav-active font-medium"
                     : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
                 )}
               >
@@ -66,7 +66,7 @@ export function Sidebar() {
             );
           })}
 
-          <div className="sora-divider my-4" />
+          <div className="theme-divider my-4" />
 
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground/50 px-3 mb-2">
             분류
@@ -81,7 +81,7 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 text-sm transition-all duration-200 rounded-md",
                   isActive
-                    ? "sora-nav-active font-medium"
+                    ? "theme-nav-active font-medium"
                     : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
                 )}
               >
@@ -94,7 +94,7 @@ export function Sidebar() {
 
         {/* Footer */}
         <div className="mt-auto pt-6">
-          <div className="sora-divider mb-4" />
+          <div className="theme-divider mb-4" />
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-3">
               <a

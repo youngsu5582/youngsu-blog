@@ -1,0 +1,95 @@
+/*
+ * Theme Template
+ * 이 파일을 복사하여 새 테마를 만드세요.
+ *
+ * 사용법:
+ * 1. 이 파일을 복사하여 styles/themes/my-theme.css 로 저장
+ * 2. app/globals.css 에서 import 경로를 변경:
+ *    @import "../styles/themes/sora.css";
+ *    → @import "../styles/themes/my-theme.css";
+ * 3. 아래 CSS 변수와 컴포넌트 스타일을 원하는 대로 수정
+ */
+
+/* ===== Light Mode ===== */
+:root {
+  /* 기본 색상 */
+  --background: ;        /* 페이지 배경 */
+  --foreground: ;        /* 기본 텍스트 */
+  --card: ;              /* 카드 배경 */
+  --card-foreground: ;   /* 카드 텍스트 */
+  --popover: ;           /* 팝오버 배경 */
+  --popover-foreground: ;/* 팝오버 텍스트 */
+
+  /* 브랜드 색상 */
+  --primary: ;           /* 주 강조색 (링크, 버튼, 액센트) */
+  --primary-foreground: ;/* 주 강조색 위의 텍스트 */
+  --secondary: ;         /* 보조 강조색 */
+  --secondary-foreground: ;
+  --muted: ;             /* 약한 배경 (태그, 코드블록 배경 등) */
+  --muted-foreground: ;  /* 약한 텍스트 (날짜, 메타 정보) */
+  --accent: ;            /* 호버/포커스 배경 */
+  --accent-foreground: ;
+
+  /* UI 요소 */
+  --destructive: ;       /* 에러/삭제 색상 */
+  --border: ;            /* 테두리 */
+  --input: ;             /* 입력 필드 테두리 */
+  --ring: ;              /* 포커스 링 */
+  --radius: 0.625rem;    /* 기본 둥글기 */
+
+  /* 차트 색상 (5개) */
+  --chart-1: ;
+  --chart-2: ;
+  --chart-3: ;
+  --chart-4: ;
+  --chart-5: ;
+
+  /* 사이드바 */
+  --sidebar: ;
+  --sidebar-foreground: ;
+  --sidebar-primary: ;
+  --sidebar-primary-foreground: ;
+  --sidebar-accent: ;
+  --sidebar-accent-foreground: ;
+  --sidebar-border: ;
+  --sidebar-ring: ;
+
+  /* 테마 전용 토큰 */
+  --theme-gradient-from: ; /* 사이드바 그라디언트 시작 */
+  --theme-gradient-to: ;   /* 사이드바 그라디언트 끝 */
+  --theme-accent: ;        /* 테마 강조색 (네비 액티브, 카테고리) */
+  --theme-accent-soft: ;   /* 연한 강조색 */
+  --theme-glow: ;          /* 호버 글로우 (반투명) */
+}
+
+/* ===== Dark Mode ===== */
+.dark {
+  /* 위와 같은 변수를 다크 모드용으로 재정의 */
+}
+
+/* ===== Selection & Scrollbar ===== */
+::selection { }
+.dark ::selection { }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { }
+.dark ::-webkit-scrollbar-thumb { }
+
+/* ===== Component Styles ===== */
+/* 아래 .theme-* 클래스를 모두 구현해야 합니다. */
+
+.theme-sidebar { }           /* 사이드바 배경 (그라디언트 등) */
+.theme-avatar-ring { }       /* 프로필 아바타 테두리 장식 */
+.theme-nav-active { }        /* 네비게이션 활성 항목 */
+.theme-card { }              /* 포스트 카드 기본 스타일 */
+.theme-card:hover { }        /* 포스트 카드 호버 */
+.theme-heading::after { }    /* 페이지 제목 아래 장식 라인 */
+.theme-tag { }               /* 태그 필 스타일 */
+.theme-tag:hover { }
+.dark .theme-tag { }
+.theme-category { }          /* 카테고리 뱃지 */
+.theme-gradient-text { }     /* 그라디언트 텍스트 (홈 히어로 등) */
+.dark .theme-gradient-text { }
+.theme-timeline-dot { }      /* 아카이브 타임라인 도트 */
+.theme-divider { }           /* 구분선 */
+.theme-footer { }            /* 푸터 배경 */

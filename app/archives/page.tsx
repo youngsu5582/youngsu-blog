@@ -44,7 +44,7 @@ export default function ArchivesPage() {
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight sora-heading">Archives</h1>
+        <h1 className="text-3xl font-bold tracking-tight theme-heading">Archives</h1>
         <p className="text-muted-foreground mt-3 text-sm">
           총 {allItems.length}개의 글
         </p>
@@ -57,11 +57,11 @@ export default function ArchivesPage() {
             <section key={year}>
               {/* Year header */}
               <div className="flex items-center gap-3 mb-5">
-                <h2 className="text-2xl font-bold sora-gradient-text">{year}</h2>
+                <h2 className="text-2xl font-bold theme-gradient-text">{year}</h2>
                 <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                   {items.length}
                 </span>
-                <div className="flex-1 sora-divider" />
+                <div className="flex-1 theme-divider" />
               </div>
 
               {/* Timeline items */}
@@ -81,7 +81,7 @@ export default function ArchivesPage() {
                       className="group relative flex items-center gap-4 py-3 border-b border-border/30 last:border-b-0"
                     >
                       {/* Timeline dot */}
-                      <div className="absolute -left-[29px] h-2 w-2 rounded-full sora-timeline-dot" />
+                      <div className="absolute -left-[29px] h-2 w-2 rounded-full theme-timeline-dot" />
 
                       {/* Date */}
                       <span className="text-xs text-muted-foreground/70 font-mono w-14 flex-shrink-0 tabular-nums">
@@ -93,7 +93,7 @@ export default function ArchivesPage() {
                         className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
                           item.type === "article"
                             ? "bg-emerald-500/8 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15"
-                            : "sora-tag"
+                            : "theme-tag"
                         }`}
                       >
                         {item.type === "article" ? "Article" : "Post"}

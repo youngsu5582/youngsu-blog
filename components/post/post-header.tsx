@@ -20,7 +20,7 @@ export function PostHeader({ title, date, author, categories, tags, readingTime 
             <Link
               key={cat}
               href={`/categories/${encodeURIComponent(cat)}`}
-              className="sora-category text-sm hover:opacity-70 transition-opacity"
+              className="theme-category text-sm hover:opacity-70 transition-opacity"
             >
               {cat}
             </Link>
@@ -63,7 +63,7 @@ export function PostHeader({ title, date, author, categories, tags, readingTime 
             <Link
               key={tag}
               href={`/tags/${encodeURIComponent(tag)}`}
-              className="sora-tag text-xs px-2.5 py-1 rounded-full"
+              className="theme-tag text-xs px-2.5 py-1 rounded-full"
             >
               #{tag}
             </Link>

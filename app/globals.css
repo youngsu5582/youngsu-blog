@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* ===== Theme (swap this import to change the entire theme) ===== */
+@import "../styles/themes/sora.css";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -47,101 +50,6 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/*
- * Sora (空) — Japanese Atmospheric Sky Theme
- * Inspired by: 空色 (sora-iro), 白練 (shironeri), 墨 (sumi)
- * Aesthetic: Clean, spacious, refined — Muji meets sky
- */
-
-/* Light: 晴天 (seiten) sunny sky — Shinkai Makoto palette */
-:root {
-  --background: oklch(0.97 0.012 220);
-  --foreground: oklch(0.18 0.02 250);
-  --card: oklch(0.99 0.005 220);
-  --card-foreground: oklch(0.18 0.02 250);
-  --popover: oklch(0.99 0.005 220);
-  --popover-foreground: oklch(0.18 0.02 250);
-  --primary: oklch(0.65 0.17 225);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.92 0.03 220);
-  --secondary-foreground: oklch(0.22 0.02 250);
-  --muted: oklch(0.94 0.02 220);
-  --muted-foreground: oklch(0.45 0.02 240);
-  --accent: oklch(0.90 0.04 220);
-  --accent-foreground: oklch(0.2 0.02 250);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.90 0.025 220);
-  --input: oklch(0.90 0.025 220);
-  --ring: oklch(0.65 0.17 225);
-  --chart-1: oklch(0.65 0.17 225);
-  --chart-2: oklch(0.60 0.14 205);
-  --chart-3: oklch(0.55 0.12 245);
-  --chart-4: oklch(0.72 0.10 195);
-  --chart-5: oklch(0.50 0.16 260);
-  --radius: 0.625rem;
-
-  /* Sidebar: 雲→空 cloud-to-sky gradient */
-  --sidebar: oklch(0.95 0.02 220);
-  --sidebar-foreground: oklch(0.18 0.02 250);
-  --sidebar-primary: oklch(0.65 0.17 225);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.90 0.04 220);
-  --sidebar-accent-foreground: oklch(0.18 0.02 250);
-  --sidebar-border: oklch(0.88 0.03 220);
-  --sidebar-ring: oklch(0.65 0.17 225);
-
-  /* Sora custom tokens — 晴天 vivid sky */
-  --sky-gradient-from: oklch(0.99 0.005 220);
-  --sky-gradient-to: oklch(0.92 0.05 218);
-  --sky-accent: oklch(0.65 0.17 225);
-  --sky-accent-soft: oklch(0.82 0.10 220);
-  --sky-glow: oklch(0.65 0.17 225 / 0.10);
-}
-
-/* Dark: 黄昏 (tasogare) twilight — soft deep blue, not too dark */
-.dark {
-  --background: oklch(0.22 0.035 245);
-  --foreground: oklch(0.93 0.01 220);
-  --card: oklch(0.25 0.035 243);
-  --card-foreground: oklch(0.93 0.01 220);
-  --popover: oklch(0.25 0.035 243);
-  --popover-foreground: oklch(0.93 0.01 220);
-  --primary: oklch(0.75 0.14 218);
-  --primary-foreground: oklch(0.18 0.03 245);
-  --secondary: oklch(0.28 0.035 243);
-  --secondary-foreground: oklch(0.93 0.01 220);
-  --muted: oklch(0.27 0.03 243);
-  --muted-foreground: oklch(0.65 0.025 220);
-  --accent: oklch(0.28 0.04 235);
-  --accent-foreground: oklch(0.93 0.01 220);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.32 0.03 240);
-  --input: oklch(0.32 0.03 240);
-  --ring: oklch(0.75 0.14 218);
-  --chart-1: oklch(0.75 0.14 218);
-  --chart-2: oklch(0.65 0.14 200);
-  --chart-3: oklch(0.6 0.10 240);
-  --chart-4: oklch(0.75 0.08 190);
-  --chart-5: oklch(0.55 0.15 260);
-
-  /* Sidebar: 黄昏の空 twilight sky */
-  --sidebar: oklch(0.24 0.038 243);
-  --sidebar-foreground: oklch(0.93 0.01 220);
-  --sidebar-primary: oklch(0.75 0.14 218);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.28 0.04 235);
-  --sidebar-accent-foreground: oklch(0.93 0.01 220);
-  --sidebar-border: oklch(0.32 0.03 240);
-  --sidebar-ring: oklch(0.75 0.14 218);
-
-  /* Sora custom tokens — 黄昏 twilight */
-  --sky-gradient-from: oklch(0.22 0.04 240);
-  --sky-gradient-to: oklch(0.26 0.035 248);
-  --sky-accent: oklch(0.75 0.14 218);
-  --sky-accent-soft: oklch(0.35 0.07 225);
-  --sky-glow: oklch(0.75 0.14 218 / 0.10);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -153,7 +61,7 @@
     @apply font-sans scroll-smooth;
   }
 
-  /* Typography — 間 (Ma) spacing */
+  /* Typography — shared across all themes */
   h1, h2, h3, h4, h5, h6 {
     letter-spacing: -0.025em;
     font-feature-settings: "kern" 1;
@@ -162,170 +70,8 @@
     line-height: 1.8;
   }
 
-  /* Selection — 晴天 bright sky */
-  ::selection {
-    background: oklch(0.65 0.17 225 / 0.20);
-  }
-  .dark ::selection {
-    background: oklch(0.75 0.14 218 / 0.30);
-  }
-
-  /* Scrollbar — 細い thin */
-  ::-webkit-scrollbar {
-    width: 5px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: oklch(0.82 0.015 225);
-    border-radius: 10px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.7 0.03 225);
-  }
-  .dark ::-webkit-scrollbar-thumb {
-    background: oklch(0.28 0.02 250);
-  }
-  .dark ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.35 0.025 250);
-  }
-
-  /* Smooth transitions — 穏やか gentle */
+  /* Smooth transitions for theme switching */
   body {
     transition: background-color 0.4s ease, color 0.3s ease;
   }
-}
-
-/* ===== Sora Component Styles ===== */
-
-/* Sidebar gradient background */
-.sora-sidebar {
-  background: linear-gradient(180deg, var(--sky-gradient-from) 0%, var(--sky-gradient-to) 100%);
-  border-right: 1px solid var(--sidebar-border);
-}
-
-/* Profile avatar ring — 晴天の虹 sunny sky ring */
-.sora-avatar-ring {
-  background: conic-gradient(
-    from 180deg,
-    oklch(0.75 0.14 200),
-    oklch(0.65 0.17 225),
-    oklch(0.70 0.13 245),
-    oklch(0.65 0.17 225),
-    oklch(0.75 0.14 200)
-  );
-  padding: 2.5px;
-  border-radius: 9999px;
-}
-.dark .sora-avatar-ring {
-  background: conic-gradient(
-    from 180deg,
-    oklch(0.65 0.13 200),
-    oklch(0.75 0.14 218),
-    oklch(0.60 0.11 240),
-    oklch(0.75 0.14 218),
-    oklch(0.65 0.13 200)
-  );
-}
-
-/* Navigation pill — active state */
-.sora-nav-active {
-  background: var(--sky-glow);
-  border-left: 2px solid var(--sky-accent);
-  color: var(--sky-accent);
-}
-
-/* Post card — Muji style */
-.sora-card {
-  border: none;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  transition: all 0.2s ease;
-}
-.sora-card:hover {
-  background: var(--sky-glow);
-  border-bottom-color: var(--sky-accent-soft);
-}
-
-/* Page section heading accent */
-.sora-heading::after {
-  content: '';
-  display: block;
-  width: 2rem;
-  height: 2px;
-  margin-top: 0.5rem;
-  background: linear-gradient(90deg, var(--sky-accent), transparent);
-  border-radius: 1px;
-}
-
-/* Tag pill — 晴天 bright sky */
-.sora-tag {
-  background: oklch(0.65 0.17 225 / 0.10);
-  color: oklch(0.55 0.18 225);
-  border: 1px solid oklch(0.65 0.17 225 / 0.18);
-  transition: all 0.2s ease;
-}
-.sora-tag:hover {
-  background: oklch(0.65 0.17 225 / 0.18);
-  border-color: oklch(0.65 0.17 225 / 0.30);
-}
-.dark .sora-tag {
-  background: oklch(0.75 0.14 218 / 0.10);
-  color: oklch(0.75 0.14 218);
-  border-color: oklch(0.75 0.14 218 / 0.18);
-}
-.dark .sora-tag:hover {
-  background: oklch(0.75 0.14 218 / 0.18);
-  border-color: oklch(0.75 0.14 218 / 0.30);
-}
-
-/* Category badge */
-.sora-category {
-  color: var(--sky-accent);
-  font-weight: 500;
-  position: relative;
-}
-.sora-category::before {
-  content: '—';
-  margin-right: 0.25rem;
-  opacity: 0.4;
-}
-
-/* Hero gradient text — 晴天 vivid sky */
-.sora-gradient-text {
-  background: linear-gradient(135deg, oklch(0.60 0.18 218), oklch(0.55 0.16 240));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.dark .sora-gradient-text {
-  background: linear-gradient(135deg, oklch(0.75 0.14 218), oklch(0.68 0.13 200));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* Timeline dot */
-.sora-timeline-dot {
-  background: var(--background);
-  border: 2px solid var(--border);
-  transition: all 0.2s ease;
-}
-.sora-timeline-dot-active,
-*:hover > .sora-timeline-dot {
-  border-color: var(--sky-accent);
-  box-shadow: 0 0 0 3px var(--sky-glow);
-}
-
-/* Subtle divider */
-.sora-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border), transparent);
-}
-
-/* Footer */
-.sora-footer {
-  border-top: 1px solid var(--border);
-  background: linear-gradient(180deg, transparent, var(--sky-glow));
 }

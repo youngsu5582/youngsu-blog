@@ -24,7 +24,7 @@ export function PostCard({
   readingTime,
 }: PostCardProps) {
   return (
-    <article className="group sora-card py-6 first:pt-0">
+    <article className="group theme-card py-6 first:pt-0">
       <div className="flex gap-5">
         {/* Content */}
         <div className="flex-1 min-w-0 space-y-2.5">
@@ -33,7 +33,7 @@ export function PostCard({
             <div className="flex gap-2">
               {categories.map((cat) => (
                 <Link key={cat} href={`/categories/${encodeURIComponent(cat)}`}>
-                  <span className="sora-category text-xs hover:opacity-70 transition-opacity">
+                  <span className="theme-category text-xs hover:opacity-70 transition-opacity">
                     {cat}
                   </span>
                 </Link>
@@ -84,7 +84,7 @@ export function PostCard({
                 <div className="flex flex-wrap gap-1.5">
                   {tags.slice(0, 3).map((tag) => (
                     <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`}>
-                      <span className="sora-tag text-[11px] px-2 py-0.5 rounded-full">
+                      <span className="theme-tag text-[11px] px-2 py-0.5 rounded-full">
                         {tag}
                       </span>
                     </Link>
