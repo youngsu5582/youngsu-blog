@@ -17,7 +17,6 @@ export default function ArchivesPage() {
   const posts = getAllPosts();
   const articles = getAllArticles();
 
-  // 모든 글을 합쳐서 날짜순 정렬
   const allItems: TimelineItem[] = [
     ...posts.map((p) => ({
       title: p.title,
@@ -33,7 +32,6 @@ export default function ArchivesPage() {
     })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // 연도별 그룹핑
   const grouped = new Map<number, TimelineItem[]>();
   allItems.forEach((item) => {
     const year = new Date(item.date).getFullYear();
@@ -44,28 +42,30 @@ export default function ArchivesPage() {
   const years = Array.from(grouped.keys()).sort((a, b) => b - a);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Archives</h1>
-        <p className="text-muted-foreground mt-2">
+        <h1 className="text-3xl font-bold tracking-tight sora-heading">Archives</h1>
+        <p className="text-muted-foreground mt-3 text-sm">
           총 {allItems.length}개의 글
         </p>
       </div>
 
-      <div className="space-y-10">
+      <div className="space-y-12">
         {years.map((year) => {
           const items = grouped.get(year)!;
           return (
             <section key={year}>
-              {/* 연도 헤더 */}
-              <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-2xl font-bold">{year}</h2>
-                <span className="text-sm text-muted-foreground">({items.length})</span>
-                <div className="h-2 w-2 rounded-full bg-primary" />
+              {/* Year header */}
+              <div className="flex items-center gap-3 mb-5">
+                <h2 className="text-2xl font-bold sora-gradient-text">{year}</h2>
+                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                  {items.length}
+                </span>
+                <div className="flex-1 sora-divider" />
               </div>
 
-              {/* 타임라인 아이템 */}
-              <div className="border-l-2 border-border ml-1 pl-6 space-y-0">
+              {/* Timeline items */}
+              <div className="border-l border-border/60 ml-2 pl-6 space-y-0">
                 {items.map((item) => {
                   const d = new Date(item.date);
                   const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -78,31 +78,31 @@ export default function ArchivesPage() {
                   return (
                     <div
                       key={`${item.type}-${item.slug}`}
-                      className="group relative flex items-center gap-4 py-2.5 border-b border-border/50 last:border-b-0"
+                      className="group relative flex items-center gap-4 py-3 border-b border-border/30 last:border-b-0"
                     >
-                      {/* 타임라인 도트 */}
-                      <div className="absolute -left-[31px] h-2.5 w-2.5 rounded-full border-2 border-border bg-background group-hover:border-primary transition-colors" />
+                      {/* Timeline dot */}
+                      <div className="absolute -left-[29px] h-2 w-2 rounded-full sora-timeline-dot" />
 
-                      {/* 날짜 */}
-                      <span className="text-sm text-muted-foreground font-mono w-14 flex-shrink-0">
-                        {day} / {month}
+                      {/* Date */}
+                      <span className="text-xs text-muted-foreground/70 font-mono w-14 flex-shrink-0 tabular-nums">
+                        {month}.{day}
                       </span>
 
-                      {/* 타입 뱃지 */}
+                      {/* Type badge */}
                       <span
-                        className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${
+                        className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
                           item.type === "article"
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "bg-primary/10 text-primary"
+                            ? "bg-emerald-500/8 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15"
+                            : "sora-tag"
                         }`}
                       >
-                        {item.type === "article" ? "📄 Article" : "📝 Post"}
+                        {item.type === "article" ? "Article" : "Post"}
                       </span>
 
-                      {/* 제목 */}
+                      {/* Title */}
                       <Link
                         href={href}
-                        className="text-sm font-medium hover:text-primary transition-colors truncate"
+                        className="text-sm hover:text-primary transition-colors duration-200 truncate"
                       >
                         {item.title}
                       </Link>

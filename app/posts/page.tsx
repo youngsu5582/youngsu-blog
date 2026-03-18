@@ -27,8 +27,8 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">포스트</h1>
-        <p className="text-muted-foreground mt-2">
+        <h1 className="text-3xl font-bold tracking-tight sora-heading">포스트</h1>
+        <p className="text-muted-foreground mt-3 text-sm">
           총 {allPosts.length}개의 포스트
         </p>
       </div>

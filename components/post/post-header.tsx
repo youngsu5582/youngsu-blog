@@ -12,15 +12,15 @@ interface PostHeaderProps {
 
 export function PostHeader({ title, date, author, categories, tags, readingTime }: PostHeaderProps) {
   return (
-    <header className="mb-8 pb-6 border-b border-border">
+    <header className="mb-10 pb-8">
       {/* Categories */}
       {categories.length > 0 && (
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-2 mb-4">
           {categories.map((cat) => (
             <Link
               key={cat}
               href={`/categories/${encodeURIComponent(cat)}`}
-              className="text-sm font-medium text-primary hover:underline"
+              className="sora-category text-sm hover:opacity-70 transition-opacity"
             >
               {cat}
             </Link>
@@ -28,16 +28,17 @@ export function PostHeader({ title, date, author, categories, tags, readingTime 
         </div>
       )}
 
-      <h1 className="text-3xl font-bold tracking-tight lg:text-4xl mb-4">{title}</h1>
+      <h1 className="text-3xl font-bold tracking-tight lg:text-4xl mb-5 leading-tight">{title}</h1>
 
       {/* Meta */}
       <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <User className="h-4 w-4" />
+          <User className="h-3.5 w-3.5" />
           {author}
         </span>
+        <span className="text-border">|</span>
         <span className="flex items-center gap-1.5">
-          <Calendar className="h-4 w-4" />
+          <Calendar className="h-3.5 w-3.5" />
           {new Date(date).toLocaleDateString("ko-KR", {
             year: "numeric",
             month: "long",
@@ -45,27 +46,33 @@ export function PostHeader({ title, date, author, categories, tags, readingTime 
           })}
         </span>
         {readingTime && (
-          <span className="flex items-center gap-1.5">
-            <Clock className="h-4 w-4" />
-            {readingTime}분 읽기
-          </span>
+          <>
+            <span className="text-border">|</span>
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              {readingTime}분 읽기
+            </span>
+          </>
         )}
       </div>
 
       {/* Tags */}
       {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-3">
+        <div className="flex flex-wrap gap-1.5 mt-4">
           {tags.map((tag) => (
             <Link
               key={tag}
               href={`/tags/${encodeURIComponent(tag)}`}
-              className="inline-flex items-center text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground hover:bg-accent transition-colors"
+              className="sora-tag text-xs px-2.5 py-1 rounded-full"
             >
               #{tag}
             </Link>
           ))}
         </div>
       )}
+
+      {/* Decorative divider */}
+      <div className="mt-8 w-12 h-0.5 rounded-full bg-gradient-to-r from-primary to-transparent" />
     </header>
   );
 }
