@@ -9,7 +9,11 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "blog:new": "tsx scripts/new-post.ts",
+    "blog:validate": "tsx scripts/validate-content.ts",
+    "blog:migrate": "tsx scripts/migrate-posts.ts",
+    "blog:translate": "tsx scripts/translate-post.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
