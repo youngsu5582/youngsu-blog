@@ -4,6 +4,7 @@ import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
 import type { Metadata } from "next";
+import { GiscusComments } from "@/components/common/giscus-comments";
 import fs from "fs";
 import path from "path";
 
@@ -102,6 +103,8 @@ export default async function PostPage({ params }: PostPageProps) {
         <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-p:leading-relaxed prose-pre:max-w-full prose-pre:overflow-x-auto">
           <MDXContent code={post.body} />
         </div>
+
+        {post.comments && <GiscusComments />}
       </article>
 
       {/* Table of Contents */}

@@ -10,10 +10,10 @@ export const siteConfig = {
   },
   locale: "ko" as const,
   giscus: {
-    repo: "youngsu5582/youngsu-blog" as `${string}/${string}`,
-    repoId: "",
+    repo: "youngsu5582/blog" as `${string}/${string}`,
+    repoId: "R_kgDOOI2eig",
     category: "Post",
-    categoryId: "",
+    categoryId: "DIC_kwDOOI2eis4Cob3Y",
   },
   analytics: {
     googleAnalyticsId: "G-GDSPGC31HX",
