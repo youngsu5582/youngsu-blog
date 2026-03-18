@@ -19,6 +19,7 @@ const posts = defineCollection({
     comments: s.boolean().default(true),
     draft: s.boolean().default(false),
     lang: s.enum(["ko", "en"]).default("ko"),
+    series: s.string().optional(),
     slug: s.path(),
     body: s.mdx(),
     metadata: s.metadata(),

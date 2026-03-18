@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchDialog } from "./search-dialog";
 import { buildSearchIndex, type SearchItem } from "@/lib/search";
+import { KeyboardShortcuts } from "@/components/common/keyboard-shortcuts";
 
 export function SearchButton() {
   const [open, setOpen] = useState(false);
@@ -30,6 +31,8 @@ export function SearchButton() {
 
   return (
     <>
+      <KeyboardShortcuts onSearchOpen={() => setOpen(true)} />
+
       <Button
         variant="outline"
         className="relative w-full justify-start text-sm text-muted-foreground"

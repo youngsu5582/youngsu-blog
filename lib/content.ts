@@ -30,6 +30,12 @@ export function getPostsByTag(tag: string) {
   return getAllPosts().filter((post: Post) => post.tags.includes(tag));
 }
 
+export function getPostsBySeries(series: string) {
+  return getAllPosts()
+    .filter((post: Post) => post.series === series)
+    .sort((a: Post, b: Post) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
 export function getAllCategories() {
   const categories = new Map<string, number>();
   // Posts

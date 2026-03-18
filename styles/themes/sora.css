@@ -254,6 +254,9 @@
 }
 
 /* Code blocks — preserve Shiki syntax highlighting */
+[data-rehype-pretty-code-figure] {
+  position: relative;
+}
 [data-rehype-pretty-code-figure] pre {
   overflow-x: auto;
   border-radius: 0.75rem;

@@ -11,6 +11,7 @@ declare module "#site/content" {
     comments: boolean;
     draft: boolean;
     lang: "ko" | "en";
+    series?: string;
     slug: string;
     body: string;
     metadata: {

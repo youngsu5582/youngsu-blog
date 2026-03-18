@@ -1,5 +1,5 @@
 import { getAllPosts, getAllArticles, getAllLibraryItems, getAllCategories, getAllTags } from "@/lib/content";
-import { FileText, BookOpen, Library, Tag, FolderOpen, ImageOff, Languages, FileWarning } from "lucide-react";
+import { FileText, BookOpen, Library, Tag, FolderOpen, ImageOff, Languages, FileWarning, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 function StatCard({ icon: Icon, label, value, sub }: { icon: React.ElementType; label: string; value: number; sub?: string }) {
@@ -31,6 +31,12 @@ export default function AdminDashboard() {
     return !enPosts.some((enPost) => enPost.slug.replace(/^posts\//, "").replace(/-en$/, "") === slug);
   });
 
+  // SEO issues
+  const postsWithLongTitle = koPosts.filter((p) => p.title.length > 60);
+  const postsWithoutDescription = koPosts.filter((p) => !p.description || p.description.trim() === "");
+  const postsWithoutTags = koPosts.filter((p) => !p.tags || p.tags.length === 0);
+  const totalSeoIssues = postsWithLongTitle.length + postsWithoutDescription.length + postsWithoutImage.length + postsWithoutTags.length;
+
   return (
     <div className="space-y-8">
       {/* Stats grid */}
@@ -43,34 +49,102 @@ export default function AdminDashboard() {
 
       {/* Action items */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Posts without thumbnail */}
-        <div className="rounded-lg border border-border/60 p-4">
+        {/* SEO Issues */}
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <ImageOff className="h-4 w-4 text-amber-500" />
-              <h3 className="text-sm font-semibold">썸네일 없는 포스트</h3>
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <h3 className="text-sm font-semibold">SEO 이슈</h3>
             </div>
-            <span className="text-xs text-muted-foreground bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
-              {postsWithoutImage.length}
+            <span className="text-xs text-muted-foreground bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">
+              {totalSeoIssues}
             </span>
           </div>
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {postsWithoutImage.slice(0, 10).map((post) => (
-              <div key={post.slug} className="text-xs text-muted-foreground truncate py-1 border-b border-border/30 last:border-0">
-                {post.title}
+          <div className="space-y-3">
+            {/* Long titles */}
+            {postsWithLongTitle.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-medium text-amber-600 dark:text-amber-400">제목 60자 초과</h4>
+                  <span className="text-xs text-amber-600/70 dark:text-amber-400/70">{postsWithLongTitle.length}개</span>
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {postsWithLongTitle.slice(0, 5).map((post) => (
+                    <div key={post.slug} className="text-xs text-muted-foreground truncate py-0.5">
+                      {post.title} <span className="text-amber-500">({post.title.length}자)</span>
+                    </div>
+                  ))}
+                  {postsWithLongTitle.length > 5 && (
+                    <p className="text-xs text-muted-foreground/50">+{postsWithLongTitle.length - 5}개 더</p>
+                  )}
+                </div>
               </div>
-            ))}
-            {postsWithoutImage.length > 10 && (
-              <p className="text-xs text-muted-foreground/50 pt-1">
-                +{postsWithoutImage.length - 10}개 더
-              </p>
+            )}
+
+            {/* Missing descriptions */}
+            {postsWithoutDescription.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-medium text-amber-600 dark:text-amber-400">설명 누락</h4>
+                  <span className="text-xs text-amber-600/70 dark:text-amber-400/70">{postsWithoutDescription.length}개</span>
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {postsWithoutDescription.slice(0, 5).map((post) => (
+                    <div key={post.slug} className="text-xs text-muted-foreground truncate py-0.5">
+                      {post.title}
+                    </div>
+                  ))}
+                  {postsWithoutDescription.length > 5 && (
+                    <p className="text-xs text-muted-foreground/50">+{postsWithoutDescription.length - 5}개 더</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Missing images */}
+            {postsWithoutImage.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-medium text-amber-600 dark:text-amber-400">이미지 누락</h4>
+                  <span className="text-xs text-amber-600/70 dark:text-amber-400/70">{postsWithoutImage.length}개</span>
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {postsWithoutImage.slice(0, 5).map((post) => (
+                    <div key={post.slug} className="text-xs text-muted-foreground truncate py-0.5">
+                      {post.title}
+                    </div>
+                  ))}
+                  {postsWithoutImage.length > 5 && (
+                    <p className="text-xs text-muted-foreground/50">+{postsWithoutImage.length - 5}개 더</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Missing tags */}
+            {postsWithoutTags.length > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-medium text-amber-600 dark:text-amber-400">태그 없음</h4>
+                  <span className="text-xs text-amber-600/70 dark:text-amber-400/70">{postsWithoutTags.length}개</span>
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {postsWithoutTags.slice(0, 5).map((post) => (
+                    <div key={post.slug} className="text-xs text-muted-foreground truncate py-0.5">
+                      {post.title}
+                    </div>
+                  ))}
+                  {postsWithoutTags.length > 5 && (
+                    <p className="text-xs text-muted-foreground/50">+{postsWithoutTags.length - 5}개 더</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {totalSeoIssues === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">모든 포스트가 SEO 기준을 충족합니다 ✓</p>
             )}
           </div>
-          {postsWithoutImage.length > 0 && (
-            <Link href="/admin/thumbnail" className="block mt-3 text-xs text-primary hover:underline">
-              썸네일 생성하러 가기 →
-            </Link>
-          )}
         </div>
 
         {/* Posts without translation */}

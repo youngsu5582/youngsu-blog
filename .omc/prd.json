@@ -1,0 +1,106 @@
+{
+  "title": "블로그 UX 개선",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "코드 복사 버튼",
+      "description": "코드 블록 우측 상단에 복사 버튼 추가. 클릭 시 코드 복사 + 체크 아이콘 피드백.",
+      "acceptanceCriteria": [
+        "코드 블록에 복사 버튼이 표시됨 (hover 시 또는 항상)",
+        "클릭 시 navigator.clipboard.writeText로 코드 복사",
+        "복사 후 체크 아이콘으로 2초간 피드백",
+        "다크/라이트 모드 모두 정상 표시",
+        "pnpm build 성공"
+      ],
+      "priority": 1,
+      "passes": false
+    },
+    {
+      "id": "US-002",
+      "title": "포스트 내 앵커 링크",
+      "description": "헤딩(h2~h4) hover 시 링크 아이콘 표시. 클릭 시 해당 위치 URL 복사.",
+      "acceptanceCriteria": [
+        "h2, h3, h4 헤딩에 hover 시 링크 아이콘(#) 표시",
+        "클릭 시 해당 앵커 URL로 이동",
+        "아이콘은 헤딩 왼쪽 또는 오른쪽에 위치",
+        "pnpm build 성공"
+      ],
+      "priority": 2,
+      "passes": false
+    },
+    {
+      "id": "US-003",
+      "title": "GitHub에서 수정 링크",
+      "description": "포스트 상단 또는 하단에 'GitHub에서 수정' 링크 추가.",
+      "acceptanceCriteria": [
+        "포스트 상세 페이지에 GitHub 편집 링크 표시",
+        "링크가 해당 MDX 파일의 GitHub edit URL로 연결",
+        "pnpm build 성공"
+      ],
+      "priority": 3,
+      "passes": false
+    },
+    {
+      "id": "US-004",
+      "title": "키보드 단축키",
+      "description": "j/k로 포스트 목록 이동, /로 검색 포커스.",
+      "acceptanceCriteria": [
+        "포스트 목록에서 j(다음)/k(이전) 키로 포스트 간 이동",
+        "/키로 검색 다이얼로그 열림 (input 포커스 시 비활성)",
+        "pnpm build 성공"
+      ],
+      "priority": 4,
+      "passes": false
+    },
+    {
+      "id": "US-005",
+      "title": "이미지 줌 (라이트박스)",
+      "description": "포스트 내 이미지 클릭 시 확대 오버레이.",
+      "acceptanceCriteria": [
+        "포스트 내 이미지 클릭 시 풀스크린 오버레이로 확대",
+        "오버레이 클릭 또는 ESC로 닫힘",
+        "다크 배경 + 이미지 중앙 배치",
+        "pnpm build 성공"
+      ],
+      "priority": 5,
+      "passes": false
+    },
+    {
+      "id": "US-006",
+      "title": "시리즈/연재 묶기",
+      "description": "frontmatter에 series 필드 추가. 같은 시리즈 포스트를 네비게이션으로 연결.",
+      "acceptanceCriteria": [
+        "frontmatter에 series 필드(선택) 지원",
+        "같은 series 값을 가진 포스트끼리 시리즈 네비게이션 표시",
+        "시리즈 내 순서(날짜순) + 현재 위치 표시",
+        "pnpm build 성공"
+      ],
+      "priority": 6,
+      "passes": false
+    },
+    {
+      "id": "US-007",
+      "title": "백오피스 SEO 점검",
+      "description": "/admin 대시보드에 SEO 체크 항목 추가.",
+      "acceptanceCriteria": [
+        "대시보드에 SEO 이슈 목록 표시 (제목 길이, 설명 유무, 이미지 유무)",
+        "각 이슈에 해당 포스트 표시",
+        "pnpm build 성공"
+      ],
+      "priority": 7,
+      "passes": false
+    },
+    {
+      "id": "US-008",
+      "title": "RSS 전문 피드",
+      "description": "RSS 피드에 포스트 전문(full content) 포함.",
+      "acceptanceCriteria": [
+        "/feed.xml에 포스트 본문 전체가 포함됨 (현재 요약만이면 전문으로 변경)",
+        "유효한 RSS/Atom XML 형식",
+        "pnpm build 성공"
+      ],
+      "priority": 8,
+      "passes": false
+    }
+  ]
+}

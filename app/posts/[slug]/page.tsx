@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAllPosts, getPostBySlug, getUrlSlug } from "@/lib/content";
+import { getAllPosts, getPostBySlug, getPostsBySeries, getUrlSlug } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
@@ -10,6 +10,7 @@ import { ShareButtons } from "@/components/post/share-buttons";
 import { PostNavigation } from "@/components/post/post-navigation";
 import { RelatedPosts } from "@/components/post/related-posts";
 import { ScrollToTop } from "@/components/common/scroll-to-top";
+import { SeriesNav } from "@/components/post/series-nav";
 import fs from "fs";
 import path from "path";
 
@@ -103,6 +104,9 @@ export default async function PostPage({ params }: PostPageProps) {
     .filter((p) => p.slug !== post.slug && p.categories.some((c) => post.categories.includes(c)))
     .slice(0, 4);
 
+  // Series navigation
+  const seriesPosts = post.series ? getPostsBySeries(post.series) : [];
+
   return (
     <>
       <ReadingProgress />
@@ -116,6 +120,15 @@ export default async function PostPage({ params }: PostPageProps) {
             tags={post.tags}
             readingTime={post.metadata.readingTime}
           />
+
+          {/* Series Navigation */}
+          {post.series && seriesPosts.length > 1 && (
+            <SeriesNav
+              seriesName={post.series}
+              posts={seriesPosts}
+              currentSlug={slug}
+            />
+          )}
 
           {/* MDX Content */}
           <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-p:leading-relaxed prose-pre:max-w-full prose-pre:overflow-x-auto">
