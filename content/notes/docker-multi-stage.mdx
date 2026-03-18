@@ -1,0 +1,21 @@
+---
+title: Docker multi-stage build
+date: 2026-03-16
+tags:
+  - docker
+  - devops
+---
+
+멀티스테이지 빌드로 이미지 크기를 줄일 수 있다:
+
+```dockerfile
+FROM maven:3.9 AS build
+COPY . .
+RUN mvn package -DskipTests
+
+FROM eclipse-temurin:21-jre
+COPY --from=build target/*.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+빌드 도구(maven)가 최종 이미지에 포함되지 않아 용량이 크게 줄어든다.

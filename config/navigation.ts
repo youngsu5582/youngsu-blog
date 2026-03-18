@@ -1,4 +1,4 @@
-import { Home, FileText, BookOpen, Library, MapPin, User, Tags, Archive, Clock } from "lucide-react";
+import { Home, FileText, BookOpen, Library, MapPin, User, Tags, Archive, Clock, StickyNote } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface NavItem {
@@ -13,6 +13,7 @@ export const navigation: NavItem[] = [
   { name: "포스트", href: "/posts", icon: FileText, description: "기술 아티클" },
   { name: "아티클", href: "/articles", icon: BookOpen, description: "장문 기술 문서" },
   { name: "서재", href: "/library", icon: Library, description: "독서/영화 리뷰" },
+  { name: "노트", href: "/notes", icon: StickyNote, description: "학습 메모" },
   { name: "활동", href: "/activities", icon: MapPin, description: "비개발 활동 기록" },
   { name: "소개", href: "/about", icon: User },
 ];

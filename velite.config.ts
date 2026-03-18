@@ -64,6 +64,19 @@ const library = defineCollection({
   }),
 });
 
+const notes = defineCollection({
+  name: "Note",
+  pattern: "notes/**/*.{mdx,md}",
+  schema: s.object({
+    title: s.string().optional().default(""),
+    date: s.isodate(),
+    tags: s.array(s.string()).default([]),
+    slug: s.path(),
+    body: s.mdx(),
+    metadata: s.metadata(),
+  }),
+});
+
 export default defineConfig({
   root: "content",
   output: {
@@ -73,7 +86,7 @@ export default defineConfig({
     name: "[name]-[hash:6].[ext]",
     clean: true,
   },
-  collections: { posts, articles, library },
+  collections: { posts, articles, library, notes },
   mdx: {
     remarkPlugins: [remarkBreaks],
     rehypePlugins: [

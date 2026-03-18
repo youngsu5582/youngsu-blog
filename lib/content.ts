@@ -1,6 +1,8 @@
 import { posts, articles, library, type Post, type Article, type LibraryItem } from "#site/content";
+// @ts-expect-error — Turbopack cache issue with new collection
+import { notes, type Note } from "#site/content";
 
-export type { Post, Article, LibraryItem };
+export type { Post, Article, LibraryItem, Note };
 
 /** Velite의 slug에서 컬렉션 접두사를 제거 (posts/hello-world → hello-world) */
 export function getUrlSlug(slug: string) {
@@ -79,4 +81,26 @@ export function getLibraryItemBySlug(slug: string) {
 
 export function getLibraryItemsByMediaType(mediaType: "book" | "movie") {
   return getAllLibraryItems().filter((item: LibraryItem) => item.mediaType === mediaType);
+}
+
+// Notes
+export function getAllNotes() {
+  return notes
+    .sort((a: Note, b: Note) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function getNoteBySlug(slug: string) {
+  return notes.find((n: Note) => n.slug === slug || n.slug === `notes/${slug}`);
+}
+
+export function getAllNoteTags() {
+  const tags = new Map<string, number>();
+  getAllNotes().forEach((note: Note) => {
+    note.tags.forEach((tag: string) => {
+      tags.set(tag, (tags.get(tag) || 0) + 1);
+    });
+  });
+  return Array.from(tags.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({ name, count }));
 }

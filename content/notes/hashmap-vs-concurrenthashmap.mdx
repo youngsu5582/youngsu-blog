@@ -1,0 +1,13 @@
+---
+title: HashMap vs ConcurrentHashMap
+date: 2026-03-18
+tags:
+  - java
+  - concurrency
+---
+
+`HashMap`은 thread-safe 하지 않다. 멀티스레드 환경에서는 `ConcurrentHashMap`을 사용해야 한다.
+
+- `ConcurrentHashMap`은 내부적으로 세그먼트 단위 락을 사용
+- Java 8부터는 `Node` 배열 + CAS 연산으로 개선
+- `putIfAbsent`, `computeIfAbsent` 등 원자적 연산 지원
