@@ -7,9 +7,10 @@ export function getUrlSlug(slug: string) {
   return slug.replace(/^(posts|articles|library)\//, "");
 }
 
-export function getAllPosts() {
+export function getAllPosts(lang?: "ko" | "en") {
   return posts
     .filter((post: Post) => !post.draft)
+    .filter((post: Post) => !lang || post.lang === lang)
     .sort((a: Post, b: Post) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 

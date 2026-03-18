@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 export default function Home() {
-  const recentPosts = getAllPosts().slice(0, 5);
+  const recentPosts = getAllPosts("ko").slice(0, 5);
 
   return (
     <div className="space-y-12">
