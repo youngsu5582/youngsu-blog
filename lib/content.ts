@@ -4,6 +4,14 @@ import { notes, type Note } from "#site/content";
 
 export type { Post, Article, LibraryItem, Note };
 
+/** 읽기 시간 계산 (한글 ~500자/분, 영문 ~200단어/분) */
+export function calcReadingTimeFromBody(body: string): number {
+  // body is compiled MDX, estimate from length
+  // Rough heuristic: compiled JS is ~3x longer than source
+  const estimatedChars = body.length / 3;
+  return Math.max(1, Math.ceil(estimatedChars / 500));
+}
+
 /** Velite의 slug에서 컬렉션 접두사를 제거 (posts/hello-world → hello-world) */
 export function getUrlSlug(slug: string) {
   return slug.replace(/^(posts|articles|library)\//, "");

@@ -81,6 +81,19 @@ function getRawContent(slug: string): string {
   }
 }
 
+// Calculate reading time from raw content (한글 기준 ~500자/분, 영문 ~200단어/분)
+function calcReadingTime(rawContent: string): number {
+  // Remove frontmatter
+  const body = rawContent.replace(/^---[\s\S]*?---/, "").trim();
+  // Remove code blocks
+  const noCode = body.replace(/```[\s\S]*?```/g, "");
+  // Count characters (한글) + words (영문)
+  const koreanChars = (noCode.match(/[가-힣]/g) || []).length;
+  const englishWords = (noCode.match(/[a-zA-Z]+/g) || []).length;
+  const minutes = Math.ceil(koreanChars / 500 + englishWords / 200);
+  return Math.max(1, minutes);
+}
+
 export default async function PostPage({ params }: PostPageProps) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
@@ -89,9 +102,10 @@ export default async function PostPage({ params }: PostPageProps) {
     notFound();
   }
 
-  // Extract headings from raw file (not compiled MDX)
+  // Extract headings + reading time from raw file
   const rawContent = getRawContent(slug);
   const headings = post.toc ? extractHeadings(rawContent) : [];
+  const readingTime = calcReadingTime(rawContent);
 
   // Prev/Next navigation
   const allPosts = getAllPosts(post.lang as "ko" | "en");
@@ -118,7 +132,7 @@ export default async function PostPage({ params }: PostPageProps) {
             author={post.author}
             categories={post.categories}
             tags={post.tags}
-            readingTime={post.metadata.readingTime}
+            readingTime={readingTime}
           />
 
           {/* Series Navigation */}
