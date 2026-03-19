@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/common/theme-toggle";
 import { LanguageSwitcher } from "@/components/common/language-switcher";
 import { Github, Mail, Rss } from "lucide-react";
 import { SearchButton } from "@/components/search/search-button";
+import { Avatar } from "@/components/common/avatar";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -19,11 +20,12 @@ export function Sidebar() {
         {/* Profile */}
         <div className="flex flex-col items-center text-center mb-8">
           <div className="theme-avatar-ring mb-4">
-            <div className="w-20 h-20 rounded-full bg-background flex items-center justify-center">
-              <span className="text-xl font-bold theme-gradient-text">
-                영
-              </span>
-            </div>
+            <Avatar
+              src="/assets/img/avatar.jpg"
+              alt={siteConfig.author.name}
+              size={80}
+              fallbackText="영"
+            />
           </div>
           <h2 className="font-semibold text-base text-sidebar-foreground tracking-tight">
             {siteConfig.author.name}

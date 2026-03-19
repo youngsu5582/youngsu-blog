@@ -1,5 +1,6 @@
 import { siteConfig } from "@/config/site";
 import { Github, Mail, Rss } from "lucide-react";
+import { Avatar } from "@/components/common/avatar";
 
 export const metadata = {
   title: "소개",
@@ -12,9 +13,12 @@ export default function AboutPage() {
       {/* Profile */}
       <section className="space-y-4">
         <div className="theme-avatar-ring inline-block">
-          <div className="w-24 h-24 rounded-full bg-background flex items-center justify-center">
-            <span className="text-2xl font-bold theme-gradient-text">영</span>
-          </div>
+          <Avatar
+            src="/assets/img/avatar.jpg"
+            alt={siteConfig.author.name}
+            size={96}
+            fallbackText="영"
+          />
         </div>
         <h1 className="text-3xl font-bold tracking-tight">{siteConfig.author.name}</h1>
         <p className="text-lg text-muted-foreground leading-relaxed">

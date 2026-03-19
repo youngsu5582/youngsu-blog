@@ -18,6 +18,43 @@ export async function GET(req: Request) {
     return NextResponse.json({ categories, tags });
   }
 
+  // Special: return all posts with metadata for bulk-edit
+  if (filePath === "_posts") {
+    try {
+      const postsDir = path.join(CONTENT_DIR, "posts");
+      let files: string[] = [];
+      try {
+        files = fs.readdirSync(postsDir).filter((f) => f.endsWith(".mdx") || f.endsWith(".md"));
+      } catch {}
+
+      const posts = files.map((filename) => {
+        const absPath = path.join(postsDir, filename);
+        const relPath = `content/posts/${filename}`;
+        let frontmatter: Record<string, unknown> = {};
+        try {
+          const raw = fs.readFileSync(absPath, "utf-8");
+          frontmatter = matter(raw).data;
+        } catch {}
+
+        return {
+          filePath: relPath,
+          filename: filename.replace(/\.mdx?$/, ""),
+          title: (frontmatter.title as string) || filename,
+          categories: (frontmatter.categories as string[]) || [],
+          tags: (frontmatter.tags as string[]) || [],
+        };
+      });
+
+      const { getAllCategories, getAllTags } = require("@/lib/content");
+      const categories = getAllCategories().map((c: { name: string }) => c.name);
+      const tags = getAllTags().map((t: { name: string }) => t.name);
+
+      return NextResponse.json({ posts, categories, tags });
+    } catch (err) {
+      return NextResponse.json({ error: String(err) }, { status: 500 });
+    }
+  }
+
   // Special: return all content items for preview
   if (!filePath) {
     try {

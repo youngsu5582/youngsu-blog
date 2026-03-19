@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/common/theme-provider";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { Footer } from "@/components/layout/footer";
+import { Analytics } from "@/components/common/analytics";
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -63,6 +64,7 @@ export default function RootLayout({
             </div>
           </div>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );

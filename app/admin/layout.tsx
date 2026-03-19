@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, Image, Languages, GitPullRequest, Eye, PenLine } from "lucide-react";
+import { LayoutDashboard, Image, Languages, GitPullRequest, Eye, PenLine, Settings } from "lucide-react";
 
 const adminNav = [
   { name: "대시보드", href: "/admin", icon: LayoutDashboard },
@@ -8,6 +8,7 @@ const adminNav = [
   { name: "발행", href: "/admin/publish", icon: GitPullRequest },
   { name: "미리보기", href: "/admin/preview", icon: Eye },
   { name: "작성", href: "/admin/write", icon: PenLine },
+  { name: "일괄 수정", href: "/admin/bulk-edit", icon: Settings },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
