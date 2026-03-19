@@ -5,7 +5,7 @@ import matter from "gray-matter";
 
 const CONTENT_DIR = path.join(process.cwd(), "content");
 
-// GET: 파일의 frontmatter 읽기
+// GET: 파일의 frontmatter 읽기 또는 전체 컨텐츠 목록
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const filePath = searchParams.get("file");
@@ -18,8 +18,50 @@ export async function GET(req: Request) {
     return NextResponse.json({ categories, tags });
   }
 
+  // Special: return all content items for preview
   if (!filePath) {
-    return NextResponse.json({ error: "file parameter required" }, { status: 400 });
+    try {
+      const {
+        getAllPosts,
+        getAllArticles,
+        getAllNotes,
+        getAllLibraryItems,
+        getUrlSlug,
+      } = require("@/lib/content");
+
+      const posts = getAllPosts().map((p: any) => ({
+        slug: getUrlSlug(p.slug),
+        title: p.title,
+        collection: "posts",
+        date: p.date,
+      }));
+
+      const articles = getAllArticles().map((a: any) => ({
+        slug: getUrlSlug(a.slug),
+        title: a.title,
+        collection: "articles",
+        date: a.date,
+      }));
+
+      const notes = getAllNotes().map((n: any) => ({
+        slug: getUrlSlug(n.slug),
+        title: n.title,
+        collection: "notes",
+        date: n.date,
+      }));
+
+      const library = getAllLibraryItems().map((l: any) => ({
+        slug: getUrlSlug(l.slug),
+        title: l.title,
+        collection: "library",
+        date: l.date,
+      }));
+
+      const items = [...posts, ...articles, ...notes, ...library];
+      return NextResponse.json({ items });
+    } catch (err) {
+      return NextResponse.json({ error: String(err) }, { status: 500 });
+    }
   }
 
   const absPath = path.join(process.cwd(), filePath);
