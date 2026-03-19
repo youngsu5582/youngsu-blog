@@ -45,7 +45,7 @@ function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
 
 export async function POST(req: Request) {
   try {
-    const { slug, frontmatter, includeEn, enSlug } = await req.json();
+    const { slug, frontmatter, includeEn, enSlug, autoPush = false } = await req.json();
     const cwd = process.cwd();
     const filesToCommit: string[] = [];
 
@@ -88,10 +88,24 @@ export async function POST(req: Request) {
 
     const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
 
+    // Optional push
+    let pushed = false;
+    let pushError: string | undefined;
+    if (autoPush) {
+      try {
+        execSync("git push origin main", { cwd, encoding: "utf-8" });
+        pushed = true;
+      } catch (e) {
+        pushError = String(e);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       hash,
       files: filesToCommit,
+      pushed,
+      pushError,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

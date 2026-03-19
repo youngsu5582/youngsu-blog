@@ -36,6 +36,7 @@ export default function PublishPage() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [autoPush, setAutoPush] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
@@ -109,11 +110,13 @@ export default function PublishPage() {
           frontmatter,
           includeEn,
           enSlug: selectedPost.enFilePath?.replace("content/posts/", "").replace(".mdx", ""),
+          autoPush,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setResult({ success: true, message: `발행 완료! (${data.hash})` });
+        const pushMsg = data.pushed ? " + 푸시 완료" : data.pushError ? " (푸시 실패)" : "";
+        setResult({ success: true, message: `발행 완료! (${data.hash})${pushMsg}` });
         // Remove from list
         setPosts((prev) => prev.filter((p) => p.filePath !== selectedPost.filePath));
         setSelectedPost(null);
@@ -285,6 +288,18 @@ export default function PublishPage() {
                     ) : (
                       <span className="text-[10px] text-muted-foreground ml-2">번역본 없음</span>
                     )}
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoPush}
+                    onChange={(e) => setAutoPush(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <div>
+                    <span className="text-sm">발행 후 자동 푸시</span>
+                    <span className="text-[10px] text-muted-foreground ml-2">git push origin main</span>
                   </div>
                 </label>
               </div>
