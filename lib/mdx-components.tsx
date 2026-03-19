@@ -12,27 +12,21 @@ export const mdxComponents = {
     </h1>
   ),
   h2: ({ children, id, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h2 className="text-2xl font-semibold mt-8 mb-3 border-b border-border pb-2 group" id={id} {...props}>
-      <a href={`#${id}`} className="flex items-center gap-2 no-underline">
-        <Hash className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
-        {children}
-      </a>
+    <h2 className="text-2xl font-semibold mt-8 mb-3 border-b border-border pb-2 group flex items-center gap-2" id={id} {...props}>
+      <Hash className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground flex-shrink-0" />
+      {children}
     </h2>
   ),
   h3: ({ children, id, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h3 className="text-xl font-semibold mt-6 mb-2 group" id={id} {...props}>
-      <a href={`#${id}`} className="flex items-center gap-2 no-underline">
-        <Hash className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
-        {children}
-      </a>
+    <h3 className="text-xl font-semibold mt-6 mb-2 group flex items-center gap-2" id={id} {...props}>
+      <Hash className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground flex-shrink-0" />
+      {children}
     </h3>
   ),
   h4: ({ children, id, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h4 className="text-lg font-semibold mt-4 mb-2 group" id={id} {...props}>
-      <a href={`#${id}`} className="flex items-center gap-2 no-underline">
-        <Hash className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
-        {children}
-      </a>
+    <h4 className="text-lg font-semibold mt-4 mb-2 group flex items-center gap-2" id={id} {...props}>
+      <Hash className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground flex-shrink-0" />
+      {children}
     </h4>
   ),
   p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (

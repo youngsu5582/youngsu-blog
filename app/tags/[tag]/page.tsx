@@ -30,8 +30,9 @@ export default async function TagPage({ params, searchParams }: TagPageProps) {
   const decoded = decodeURIComponent(tag);
   const lang = (sp.lang as "ko" | "en") || "ko";
   const posts = getPostsByTag(decoded, lang);
-
-  if (posts.length === 0) {
+  // Check if tag exists in any language (for 404 vs empty state)
+  const existsInAnyLang = getPostsByTag(decoded).length > 0;
+  if (!existsInAnyLang) {
     notFound();
   }
 
@@ -49,6 +50,11 @@ export default async function TagPage({ params, searchParams }: TagPageProps) {
         <LangToggle currentLang={lang} basePath={`/tags/${encodeURIComponent(decoded)}`} />
       </div>
 
+      {posts.length === 0 ? (
+        <div className="text-center py-12 text-sm text-muted-foreground">
+          이 태그에 {lang === "en" ? "영어" : "한국어"} 포스트가 없습니다.
+        </div>
+      ) : (
       <div>
         {posts.map((post) => (
           <PostCard
@@ -64,6 +70,7 @@ export default async function TagPage({ params, searchParams }: TagPageProps) {
           />
         ))}
       </div>
+      )}
     </div>
   );
 }
