@@ -118,7 +118,7 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
             key={name}
             onClick={() => setSelectedTag(selectedTag === name ? null : name)}
             className={`text-[11px] px-2.5 py-1 rounded-full transition-colors ${
-              selectedTag === name ? "bg-primary text-primary-foreground" : "theme-tag"
+              selectedTag === name ? "bg-violet-500 text-white" : "bg-violet-500/8 text-violet-600 dark:text-violet-400 border border-violet-500/20 hover:bg-violet-500/15"
             }`}
           >
             #{name} <span className="opacity-50">{count}</span>
@@ -153,7 +153,7 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                   </span>
                   <div className="flex gap-1 flex-shrink-0">
                     {note.tags.slice(0, 2).map((t) => (
-                      <span key={t} className="text-[10px] text-muted-foreground/60">#{t}</span>
+                      <span key={t} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{t}</span>
                     ))}
                   </div>
                 </button>
@@ -180,7 +180,7 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
             >
               <div className="flex items-center gap-2 mb-2">
                 {note.tags.slice(0, 2).map((t) => (
-                  <span key={t} className="theme-tag text-[10px] px-2 py-0.5 rounded-full">#{t}</span>
+                  <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/8 text-violet-600 dark:text-violet-400 border border-violet-500/20">#{t}</span>
                 ))}
               </div>
               <h3 className="text-sm font-semibold mb-1">{note.title}</h3>
@@ -215,7 +215,7 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                   </p>
                   <div className="flex gap-1.5 mt-1">
                     {note.tags.map((t) => (
-                      <span key={t} className="text-[10px] text-muted-foreground/60">#{t}</span>
+                      <span key={t} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{t}</span>
                     ))}
                   </div>
                 </button>

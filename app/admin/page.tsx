@@ -1,4 +1,4 @@
-import { getAllPosts, getAllArticles, getAllLibraryItems, getAllCategories, getAllTags } from "@/lib/content";
+import { getAllPosts, getAllArticles, getAllLibraryItems, getAllCategories, getAllTags, getUrlSlug } from "@/lib/content";
 import { FileText, BookOpen, Library, Tag, FolderOpen, ImageOff, Languages, FileWarning, AlertTriangle, Upload } from "lucide-react";
 import Link from "next/link";
 import ImageUpload from "@/components/admin/image-upload";
@@ -71,9 +71,9 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {postsWithLongTitle.slice(0, 5).map((post) => (
-                    <div key={post.slug} className="text-xs text-muted-foreground truncate py-0.5">
+                    <Link key={post.slug} href={`/posts/${getUrlSlug(post.slug)}`} className="block text-xs text-muted-foreground truncate py-0.5 hover:text-primary transition-colors">
                       {post.title} <span className="text-amber-500">({post.title.length}자)</span>
-                    </div>
+                    </Link>
                   ))}
                   {postsWithLongTitle.length > 5 && (
                     <p className="text-xs text-muted-foreground/50">+{postsWithLongTitle.length - 5}개 더</p>
@@ -91,9 +91,9 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {postsWithoutDescription.slice(0, 5).map((post) => (
-                    <div key={post.slug} className="text-xs text-muted-foreground truncate py-0.5">
+                    <Link key={post.slug} href={`/posts/${getUrlSlug(post.slug)}`} className="block text-xs text-muted-foreground truncate py-0.5 hover:text-primary transition-colors">
                       {post.title}
-                    </div>
+                    </Link>
                   ))}
                   {postsWithoutDescription.length > 5 && (
                     <p className="text-xs text-muted-foreground/50">+{postsWithoutDescription.length - 5}개 더</p>
@@ -111,9 +111,9 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {postsWithoutImage.slice(0, 5).map((post) => (
-                    <div key={post.slug} className="text-xs text-muted-foreground truncate py-0.5">
+                    <Link key={post.slug} href={`/posts/${getUrlSlug(post.slug)}`} className="block text-xs text-muted-foreground truncate py-0.5 hover:text-primary transition-colors">
                       {post.title}
-                    </div>
+                    </Link>
                   ))}
                   {postsWithoutImage.length > 5 && (
                     <p className="text-xs text-muted-foreground/50">+{postsWithoutImage.length - 5}개 더</p>
@@ -131,9 +131,9 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {postsWithoutTags.slice(0, 5).map((post) => (
-                    <div key={post.slug} className="text-xs text-muted-foreground truncate py-0.5">
+                    <Link key={post.slug} href={`/posts/${getUrlSlug(post.slug)}`} className="block text-xs text-muted-foreground truncate py-0.5 hover:text-primary transition-colors">
                       {post.title}
-                    </div>
+                    </Link>
                   ))}
                   {postsWithoutTags.length > 5 && (
                     <p className="text-xs text-muted-foreground/50">+{postsWithoutTags.length - 5}개 더</p>
@@ -161,9 +161,9 @@ export default function AdminDashboard() {
           </div>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {postsWithoutTranslation.slice(0, 10).map((post) => (
-              <div key={post.slug} className="text-xs text-muted-foreground truncate py-1 border-b border-border/30 last:border-0">
+              <Link key={post.slug} href={`/posts/${getUrlSlug(post.slug)}`} className="block text-xs text-muted-foreground truncate py-1 border-b border-border/30 last:border-0 hover:text-primary transition-colors">
                 {post.title}
-              </div>
+              </Link>
             ))}
             {postsWithoutTranslation.length > 10 && (
               <p className="text-xs text-muted-foreground/50 pt-1">
