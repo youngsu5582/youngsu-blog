@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
-import { getAllTags, getPostsByTag, getUrlSlug } from "@/lib/content";
+import { getAllTags, getPostsByTag, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { LangToggle } from "@/components/common/lang-toggle";
 import type { Metadata } from "next";
 
 interface TagPageProps {
   params: Promise<{ tag: string }>;
+  searchParams: Promise<{ lang?: string }>;
 }
 
 export async function generateStaticParams() {
@@ -19,16 +21,15 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: TagPageProps): Promise<Metadata> {
   const { tag } = await params;
   const decoded = decodeURIComponent(tag);
-  return {
-    title: `#${decoded}`,
-    description: `#${decoded} 태그의 모든 글`,
-  };
+  return { title: `#${decoded}` };
 }
 
-export default async function TagPage({ params }: TagPageProps) {
+export default async function TagPage({ params, searchParams }: TagPageProps) {
   const { tag } = await params;
+  const sp = await searchParams;
   const decoded = decodeURIComponent(tag);
-  const posts = getPostsByTag(decoded);
+  const lang = (sp.lang as "ko" | "en") || "ko";
+  const posts = getPostsByTag(decoded, lang);
 
   if (posts.length === 0) {
     notFound();
@@ -36,18 +37,16 @@ export default async function TagPage({ params }: TagPageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link
-          href="/tags"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors mb-3"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          전체 태그
-        </Link>
-        <h1 className="text-3xl font-bold tracking-tight theme-heading">#{decoded}</h1>
-        <p className="text-muted-foreground mt-3 text-sm">
-          {posts.length}개의 포스트
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <Link href={`/tags?lang=${lang}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors mb-3">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            전체 태그
+          </Link>
+          <h1 className="text-3xl font-bold tracking-tight theme-heading">#{decoded}</h1>
+          <p className="text-muted-foreground mt-3 text-sm">{posts.length}개의 포스트</p>
+        </div>
+        <LangToggle currentLang={lang} basePath={`/tags/${encodeURIComponent(decoded)}`} />
       </div>
 
       <div>
@@ -61,7 +60,7 @@ export default async function TagPage({ params }: TagPageProps) {
             categories={post.categories}
             tags={post.tags}
             image={post.image}
-            readingTime={post.metadata.readingTime}
+            readingTime={calcReadingTimeFromBody(post.body)}
           />
         ))}
       </div>

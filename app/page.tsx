@@ -1,5 +1,5 @@
 import { siteConfig } from "@/config/site";
-import { getAllPosts, getUrlSlug } from "@/lib/content";
+import { getAllPosts, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
@@ -51,7 +51,7 @@ export default function Home() {
                 categories={post.categories}
                 tags={post.tags}
                 image={post.image}
-                readingTime={post.metadata.readingTime}
+                readingTime={calcReadingTimeFromBody(post.body)}
               />
             ))}
           </div>

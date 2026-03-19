@@ -4,12 +4,15 @@ import { notes, type Note } from "#site/content";
 
 export type { Post, Article, LibraryItem, Note };
 
-/** 읽기 시간 계산 (한글 ~500자/분, 영문 ~200단어/분) */
+/** 읽기 시간 계산 — 컴파일된 MDX body에서 추정 (한글+영문) */
 export function calcReadingTimeFromBody(body: string): number {
-  // body is compiled MDX, estimate from length
-  // Rough heuristic: compiled JS is ~3x longer than source
-  const estimatedChars = body.length / 3;
-  return Math.max(1, Math.ceil(estimatedChars / 500));
+  // Extract string literals from compiled MDX (actual content)
+  const strings = body.match(/"[^"]{2,}"/g) || [];
+  const text = strings.join(" ");
+  const koreanChars = (text.match(/[가-힣]/g) || []).length;
+  const englishWords = (text.match(/[a-zA-Z]+/g) || []).length;
+  const minutes = Math.ceil(koreanChars / 500 + englishWords / 200);
+  return Math.max(1, minutes);
 }
 
 /** Velite의 slug에서 컬렉션 접두사를 제거 (posts/hello-world → hello-world) */
@@ -30,12 +33,12 @@ export function getPostBySlug(slug: string) {
   );
 }
 
-export function getPostsByCategory(category: string) {
-  return getAllPosts().filter((post: Post) => post.categories.includes(category));
+export function getPostsByCategory(category: string, lang?: "ko" | "en") {
+  return getAllPosts(lang).filter((post: Post) => post.categories.includes(category));
 }
 
-export function getPostsByTag(tag: string) {
-  return getAllPosts().filter((post: Post) => post.tags.includes(tag));
+export function getPostsByTag(tag: string, lang?: "ko" | "en") {
+  return getAllPosts(lang).filter((post: Post) => post.tags.includes(tag));
 }
 
 export function getPostsBySeries(series: string) {
@@ -44,10 +47,10 @@ export function getPostsBySeries(series: string) {
     .sort((a: Post, b: Post) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
-export function getAllCategories() {
+export function getAllCategories(lang?: "ko" | "en") {
   const categories = new Map<string, number>();
   // Posts
-  getAllPosts().forEach((post: Post) => {
+  getAllPosts(lang).forEach((post: Post) => {
     post.categories.forEach((cat: string) => {
       categories.set(cat, (categories.get(cat) || 0) + 1);
     });
@@ -63,10 +66,10 @@ export function getAllCategories() {
     .map(([name, count]) => ({ name, count }));
 }
 
-export function getAllTags() {
+export function getAllTags(lang?: "ko" | "en") {
   const tags = new Map<string, number>();
   // Posts
-  getAllPosts().forEach((post: Post) => {
+  getAllPosts(lang).forEach((post: Post) => {
     post.tags.forEach((tag: string) => {
       tags.set(tag, (tags.get(tag) || 0) + 1);
     });

@@ -1,6 +1,7 @@
 import { getAllPosts, getUrlSlug } from "@/lib/content";
 import Link from "next/link";
-import { ChevronRight, Folder, FolderOpen } from "lucide-react";
+import { ChevronRight, FolderOpen } from "lucide-react";
+import { LangToggle } from "@/components/common/lang-toggle";
 
 export const metadata = {
   title: "카테고리",
@@ -26,7 +27,6 @@ function buildCategoryTree(posts: Array<{ categories: string[] }>) {
     const parentNode = tree.get(parent)!;
     parentNode.count++;
 
-    // Sub-categories (2nd element onwards)
     for (let i = 1; i < post.categories.length; i++) {
       const child = post.categories[i];
       if (!parentNode.children.has(child)) {
@@ -36,14 +36,20 @@ function buildCategoryTree(posts: Array<{ categories: string[] }>) {
     }
   });
 
-  // Sort by count descending
   return new Map(
     [...tree.entries()].sort((a, b) => b[1].count - a[1].count)
   );
 }
 
-export default function CategoriesPage() {
-  const posts = getAllPosts();
+interface CategoriesPageProps {
+  searchParams: Promise<{ lang?: string }>;
+}
+
+export default async function CategoriesPage({ searchParams }: CategoriesPageProps) {
+  const params = await searchParams;
+  const lang = (params.lang as "ko" | "en") || "ko";
+
+  const posts = getAllPosts(lang);
   const tree = buildCategoryTree(posts);
   const totalCategories = [...tree.values()].reduce(
     (acc, node) => acc + 1 + node.children.size,
@@ -52,11 +58,14 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight theme-heading">카테고리</h1>
-        <p className="text-muted-foreground mt-3 text-sm">
-          {tree.size}개의 상위 카테고리, 총 {totalCategories}개
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight theme-heading">카테고리</h1>
+          <p className="text-muted-foreground mt-3 text-sm">
+            {tree.size}개의 상위 카테고리, 총 {totalCategories}개
+          </p>
+        </div>
+        <LangToggle currentLang={lang} basePath="/categories" />
       </div>
 
       <div className="space-y-4">
@@ -65,9 +74,8 @@ export default function CategoriesPage() {
             key={parentName}
             className="rounded-lg border border-border/60 overflow-hidden"
           >
-            {/* Parent category header */}
             <Link
-              href={`/categories/${encodeURIComponent(parentName)}`}
+              href={`/categories/${encodeURIComponent(parentName)}?lang=${lang}`}
               className="flex items-center justify-between px-5 py-3.5 bg-card hover:bg-primary/5 dark:hover:bg-primary/8 transition-colors group"
             >
               <div className="flex items-center gap-3">
@@ -81,7 +89,6 @@ export default function CategoriesPage() {
               </span>
             </Link>
 
-            {/* Child categories */}
             {node.children.size > 0 && (
               <div className="border-t border-border/40">
                 {[...node.children.entries()]
@@ -89,7 +96,7 @@ export default function CategoriesPage() {
                   .map(([childName, childNode]) => (
                     <Link
                       key={childName}
-                      href={`/categories/${encodeURIComponent(childName)}`}
+                      href={`/categories/${encodeURIComponent(childName)}?lang=${lang}`}
                       className="flex items-center justify-between px-5 py-2.5 pl-12 hover:bg-primary/4 dark:hover:bg-primary/6 transition-colors group border-b border-border/20 last:border-b-0"
                     >
                       <div className="flex items-center gap-2">

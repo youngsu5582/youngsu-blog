@@ -1,21 +1,23 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
-export function LangToggle({ currentLang }: { currentLang: "ko" | "en" }) {
+interface LangToggleProps {
+  currentLang: "ko" | "en";
+  basePath?: string; // default: "/posts"
+}
+
+export function LangToggle({ currentLang, basePath = "/posts" }: LangToggleProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const switchLang = (lang: "ko" | "en") => {
-    // Update localStorage
     localStorage.setItem("locale", lang);
-    // Dispatch event for search index
     window.dispatchEvent(new CustomEvent("locale-change", { detail: lang }));
-    // Navigate
+
     if (lang === "en") {
-      router.push("/posts?lang=en");
+      router.push(`${basePath}?lang=en`);
     } else {
-      router.push("/posts");
+      router.push(basePath);
     }
   };
 
