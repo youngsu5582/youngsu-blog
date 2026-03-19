@@ -20,6 +20,7 @@ const posts = defineCollection({
     draft: s.boolean().default(false),
     lang: s.enum(["ko", "en"]).default("ko"),
     series: s.string().optional(),
+    related: s.array(s.string()).default([]),
     slug: s.path(),
     body: s.mdx(),
     metadata: s.metadata(),

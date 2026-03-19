@@ -113,10 +113,20 @@ export default async function PostPage({ params }: PostPageProps) {
   const prevPost = currentIdx < allPosts.length - 1 ? allPosts[currentIdx + 1] : undefined;
   const nextPost = currentIdx > 0 ? allPosts[currentIdx - 1] : undefined;
 
-  // Related posts (same category, excluding current)
-  const related = allPosts
-    .filter((p) => p.slug !== post.slug && p.categories.some((c) => post.categories.includes(c)))
-    .slice(0, 4);
+  // Related posts — manual (frontmatter) first, then auto (same category)
+  const manualRelated = ((post as any).related || [])
+    .map((relSlug: string) => {
+      // Try language-matched version first
+      const langSuffix = post.lang === "en" ? "-en" : "";
+      return getPostBySlug(relSlug + langSuffix) || getPostBySlug(relSlug);
+    })
+    .filter(Boolean);
+
+  const autoRelated = manualRelated.length >= 4 ? [] : allPosts
+    .filter((p) => p.slug !== post.slug && !manualRelated.some((m: any) => m?.slug === p.slug) && p.categories.some((c) => post.categories.includes(c)))
+    .slice(0, 4 - manualRelated.length);
+
+  const related = [...manualRelated, ...autoRelated].slice(0, 4);
 
   // Series navigation
   const seriesPosts = post.series ? getPostsBySeries(post.series) : [];
