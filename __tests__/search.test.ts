@@ -14,7 +14,7 @@ describe("buildSearchIndex", () => {
       expect(item).toHaveProperty("title");
       expect(item).toHaveProperty("slug");
       expect(item).toHaveProperty("type");
-      expect(["post", "article", "library"]).toContain(item.type);
+      expect(["post", "article", "library", "note"]).toContain(item.type);
     });
   });
 
