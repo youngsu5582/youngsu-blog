@@ -1,4 +1,4 @@
-import { getAllPosts, getAllArticles, getAllLibraryItems } from "@/lib/content";
+import { getAllPosts, getAllArticles, getAllLibraryItems, getAllNotes } from "@/lib/content";
 
 export interface SearchItem {
   title: string;
@@ -6,7 +6,7 @@ export interface SearchItem {
   description: string;
   tags: string[];
   categories: string[];
-  type: "post" | "article" | "library";
+  type: "post" | "article" | "library" | "note";
   lang?: string;
 }
 
@@ -14,6 +14,7 @@ export function buildSearchIndex(): SearchItem[] {
   const posts = getAllPosts();
   const articles = getAllArticles();
   const libraryItems = getAllLibraryItems();
+  const notes = getAllNotes();
 
   const postItems: SearchItem[] = posts.map((post) => ({
     title: post.title,
@@ -43,5 +44,14 @@ export function buildSearchIndex(): SearchItem[] {
     type: "library" as const,
   }));
 
-  return [...postItems, ...articleItems, ...libraryItemsSearchable];
+  const noteItems: SearchItem[] = notes.map((note: any) => ({
+    title: note.title || note.slug.replace(/^notes\//, ""),
+    slug: note.slug.replace(/^notes\//, ""),
+    description: "",
+    tags: note.tags || [],
+    categories: [],
+    type: "note" as const,
+  }));
+
+  return [...postItems, ...articleItems, ...libraryItemsSearchable, ...noteItems];
 }
