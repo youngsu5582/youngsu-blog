@@ -36,6 +36,7 @@ export async function GET() {
     let collection = "posts";
     if (file.path.includes("content/articles")) collection = "articles";
     else if (file.path.includes("content/library")) collection = "library";
+    else if (file.path.includes("content/notes")) collection = "notes";
 
     const filename = path.basename(file.path, path.extname(file.path));
     const isEn = filename.endsWith("-en");
