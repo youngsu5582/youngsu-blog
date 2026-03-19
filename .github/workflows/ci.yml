@@ -26,5 +26,8 @@ jobs:
       - name: Validate content
         run: npx tsx scripts/validate-content.ts
 
+      - name: Test
+        run: pnpm test
+
       - name: Build
         run: pnpm build
