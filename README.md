@@ -17,7 +17,9 @@ Next.js 16 + Tailwind CSS v4 기반 커스텀 블로그 플랫폼.
 | Code Highlight | Shiki (rehype-pretty-code) |
 | Search | Fuse.js (클라이언트) |
 | Comments | Giscus (GitHub Discussions) |
-| Theme | Sora (空) — Japanese Sky 테마 |
+| Map | Leaflet + react-leaflet |
+| Theme | Sora (空) v2 — Glassmorphism Sky 테마 |
+| Test | Vitest (347 tests) |
 | Deploy | Vercel |
 
 ## 프로젝트 구조
@@ -239,10 +241,15 @@ pnpm blog:translate <file>    # Google Translate 기반 번역
 
 | 페이지 | 기능 |
 |--------|------|
-| `/admin` | 대시보드 — 포스트 현황, 썸네일/번역 누락 목록 |
-| `/admin/publish` | 발행 — 포스트 선택 + 메타데이터 편집 + AI 제안 + 원클릭 커밋 |
-| `/admin/thumbnail` | 썸네일 생성 — AI 모델로 생성 + 비교 (API 키 필요) |
-| `/admin/translate` | 번역 — AI 번역 + 비교 (API 키 필요) |
+| `/admin` | 대시보드 — 포스트 현황, SEO 점검, 이미지 업로드 |
+| `/admin/publish` | 발행 — 메타데이터 편집 + AI 제안 + 자동 push |
+| `/admin/write` | 간편 작성기 — 마크다운 에디터 + 미리보기 + 관련 포스트 선택 |
+| `/admin/preview` | 미리보기 — iframe 기반 콘텐츠 미리보기 |
+| `/admin/bulk-edit` | 일괄 수정 — 여러 포스트 태그/카테고리 변경 |
+| `/admin/obsidian` | 옵시디언 — vault에서 .md 파일 가져오기 |
+| `/admin/settings` | 설정 — API 키 상태, Git 정보 |
+| `/admin/thumbnail` | 썸네일 생성 — AI 모델로 생성 (API 키 필요) |
+| `/admin/translate` | 번역 — AI 번역 (API 키 필요) |
 
 ## 설정 파일 가이드
 
@@ -307,12 +314,18 @@ images: {
 | 읽기 진행률 바 | 상단 고정, 스크롤 연동 |
 | 목차 (TOC) | 우측 사이드바, 스크롤 추적 하이라이트 |
 | 이전/다음 네비게이션 | 포스트 하단 카드 |
-| 관련 포스트 추천 | 같은 카테고리 기반 |
+| 관련 포스트 추천 | 수동(frontmatter related) + 자동(카테고리 기반) |
+| 시리즈 연재 | frontmatter series → 접이식 시리즈 네비게이션 |
 | 소셜 공유 | Twitter, LinkedIn, 링크 복사 |
+| GitHub 수정 링크 | 포스트 하단 GitHub edit 링크 |
 | Giscus 댓글 | GitHub Discussions 기반 |
 | 맨 위로 버튼 | 우측 하단 플로팅 |
-| 코드 하이라이팅 | Shiki (라이트/다크 테마 자동) |
+| 코드 복사 버튼 | 코드 블록 hover 시 복사 아이콘 |
+| 이미지 줌 | 이미지 클릭 시 풀스크린 오버레이 |
+| 앵커 링크 | 헤딩 hover 시 # 아이콘 |
+| 코드 하이라이팅 | Shiki (라이트/다크 테마 + 언어 라벨) |
 | OG 이미지 | 포스트별 자동 생성 (하늘색 카드) |
+| 키보드 단축키 | / 검색, ⌘K 검색 |
 
 ## 라이선스
 
