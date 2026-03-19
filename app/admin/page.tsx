@@ -1,6 +1,7 @@
 import { getAllPosts, getAllArticles, getAllLibraryItems, getAllCategories, getAllTags } from "@/lib/content";
-import { FileText, BookOpen, Library, Tag, FolderOpen, ImageOff, Languages, FileWarning, AlertTriangle } from "lucide-react";
+import { FileText, BookOpen, Library, Tag, FolderOpen, ImageOff, Languages, FileWarning, AlertTriangle, Upload } from "lucide-react";
 import Link from "next/link";
+import ImageUpload from "@/components/admin/image-upload";
 
 function StatCard({ icon: Icon, label, value, sub }: { icon: React.ElementType; label: string; value: number; sub?: string }) {
   return (
@@ -192,6 +193,15 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Image Upload */}
+      <div className="rounded-lg border border-border/60 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Upload className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold">이미지 업로드</h3>
+        </div>
+        <ImageUpload />
       </div>
     </div>
   );
