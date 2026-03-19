@@ -41,6 +41,21 @@ export function getPostsByTag(tag: string, lang?: "ko" | "en") {
   return getAllPosts(lang).filter((post: Post) => post.tags.includes(tag));
 }
 
+/** 태그로 전 컬렉션 검색 (posts + articles + notes) */
+export function getContentByTag(tag: string, lang?: "ko" | "en") {
+  const postResults = getPostsByTag(tag, lang);
+  const articleResults = getAllArticles().filter((a: Article) => a.tags.includes(tag));
+  const noteResults = getAllNotes().filter((n: Note) => n.tags.includes(tag));
+  return { posts: postResults, articles: articleResults, notes: noteResults };
+}
+
+/** 카테고리로 전 컬렉션 검색 (posts + articles) */
+export function getContentByCategory(category: string, lang?: "ko" | "en") {
+  const postResults = getPostsByCategory(category, lang);
+  const articleResults = getAllArticles().filter((a: Article) => a.categories.includes(category));
+  return { posts: postResults, articles: articleResults };
+}
+
 export function getPostsBySeries(series: string) {
   return getAllPosts()
     .filter((post: Post) => post.series === series)
