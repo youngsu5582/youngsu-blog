@@ -316,8 +316,8 @@ body {
   font-size: 0.875em;
   border: 1px solid var(--theme-glass-border);
 }
-/* Language label */
-[data-rehype-pretty-code-figure] [data-language]::before {
+/* Language label — pre only (not code) */
+[data-rehype-pretty-code-figure] pre[data-language]::before {
   content: attr(data-language);
   display: block;
   margin-bottom: 0.5rem;
