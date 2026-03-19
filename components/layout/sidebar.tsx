@@ -7,7 +7,7 @@ import { navigation, taxonomyNavigation } from "@/config/navigation";
 import { siteConfig } from "@/config/site";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { LanguageSwitcher } from "@/components/common/language-switcher";
-import { Github, Mail, Rss } from "lucide-react";
+import { Github, Mail, Rss, Settings } from "lucide-react";
 import { SearchButton } from "@/components/search/search-button";
 import { Avatar } from "@/components/common/avatar";
 
@@ -93,6 +93,19 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        {/* Admin link (dev only) */}
+        {process.env.NODE_ENV === "development" && (
+          <div className="mt-4">
+            <Link
+              href="/admin"
+              className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 rounded-md transition-colors"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Admin
+            </Link>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="mt-auto pt-6">

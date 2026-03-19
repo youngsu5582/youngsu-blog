@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "velite": "velite",
-    "dev": "velite && next dev",
+    "dev": "velite dev & next dev",
     "build": "velite --clean && next build",
     "start": "next start",
     "lint": "eslint",
