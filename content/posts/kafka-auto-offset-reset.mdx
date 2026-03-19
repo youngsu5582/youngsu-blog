@@ -1,0 +1,49 @@
+---
+title: "카프카 auto offset reset 설정"
+date: 2026-03-19
+description: "카프카 auto.offset.reset 의 설정에 대한 설명"
+categories:
+  - Kafka
+tags:
+  - kafka-setting
+  - auto-offset-reset
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+---
+
+## auto.offset.reset
+
+- latest : 가장 마지막 offset consume
+
+설정 이후 들어오는 새 메시지부터 수신
+기존 메시지는 안 읽고 건너뛴다. (기존 메시지 유실)
+
+- earliest : 가장 처음 offset consume
+
+- none : 컨슈머 그룹이 가져가고자 하는 topic 의 consumer offset 정보 없으면 예외 발생
+
+---
+
+파티션의 가장 오래된 메시지부터 수신
+기존 메시지도 전부 읽는다.
+
+> 이미 committed offset 있으면 그 offset 부터 읽는다.
+
+- 새 컨슈머 그룹 : earliest/latest 따라감
+- committed offset 이 만료 : earliest/latest 따라감
+- 기존 그룹에서 운영 : committed offset 사용
+- 컨슈머 재시작 : committed offset 사용
+
+```sh
+ kafka-consumer-groups.sh \
+    --reset-offsets \
+    --to-datetime 2026-03-19T00:00:00.000 \
+    --group new-group \
+    --topic orders \
+    --execute
+```
+
+offset 을 특정 시점 이후부터 읽게 리셋이 가능하다.
