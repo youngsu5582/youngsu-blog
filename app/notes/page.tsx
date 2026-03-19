@@ -17,6 +17,7 @@ export default function NotesPage() {
     tags: note.tags,
     body: note.body,
     readingTime: note.metadata.readingTime,
+    references: (note as any).references || [],
   }));
 
   return (

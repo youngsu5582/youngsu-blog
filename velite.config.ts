@@ -72,6 +72,10 @@ const notes = defineCollection({
     title: s.string().optional().default(""),
     date: s.isodate(),
     tags: s.array(s.string()).default([]),
+    references: s.array(s.object({
+      title: s.string(),
+      url: s.string(),
+    })).default([]),
     slug: s.path(),
     body: s.mdx(),
     metadata: s.metadata(),

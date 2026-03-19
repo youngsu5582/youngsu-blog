@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { List, LayoutGrid, Clock, Search, ChevronDown, ChevronRight } from "lucide-react";
+import { List, LayoutGrid, Clock, Search, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { MDXContent } from "@/components/mdx/mdx-content";
+
+interface Reference {
+  title: string;
+  url: string;
+}
 
 interface NoteData {
   slug: string;
@@ -11,11 +16,35 @@ interface NoteData {
   tags: string[];
   body: string;
   readingTime: number;
+  references?: Reference[];
 }
 
 interface TagInfo {
   name: string;
   count: number;
+}
+
+function ReferenceLinks({ references }: { references?: Reference[] }) {
+  if (!references || references.length === 0) return null;
+  return (
+    <div className="mt-3 pt-3 border-t border-border/30">
+      <p className="text-[11px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">참고</p>
+      <div className="flex flex-col gap-1">
+        {references.map((ref, i) => (
+          <a
+            key={i}
+            href={ref.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary/70 hover:text-primary transition-colors truncate"
+          >
+            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+            {ref.title}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 type ViewMode = "list" | "card" | "timeline";
@@ -131,6 +160,7 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                 {isExpanded && (
                   <div className="px-4 pb-4 pl-12 prose prose-sm prose-neutral dark:prose-invert max-w-none">
                     <MDXContent code={note.body} />
+                    <ReferenceLinks references={note.references} />
                   </div>
                 )}
               </div>
@@ -192,6 +222,7 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                 {isExpanded && (
                   <div className="mt-3 prose prose-sm prose-neutral dark:prose-invert max-w-none">
                     <MDXContent code={note.body} />
+                    <ReferenceLinks references={note.references} />
                   </div>
                 )}
               </div>
