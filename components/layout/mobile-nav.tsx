@@ -20,7 +20,7 @@ export function MobileNav() {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
         render={
-          <Button variant="ghost" size="icon" className="lg:hidden" />
+          <Button variant="ghost" size="icon" className="lg:hidden" suppressHydrationWarning />
         }
       >
         <Menu className="h-5 w-5" />
