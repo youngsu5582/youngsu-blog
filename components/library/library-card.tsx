@@ -32,6 +32,9 @@ export function LibraryCard({
               alt={title}
               fill
               className="object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              quality={75}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-6xl">

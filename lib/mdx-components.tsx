@@ -137,6 +137,8 @@ export const mdxComponents = {
         width={800}
         height={400}
         className="rounded-lg my-4"
+        loading="lazy"
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 60vw"
       />
     </ImageZoom>
   ),

@@ -110,6 +110,9 @@ export function PostCard({
                 width={112}
                 height={112}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                loading="lazy"
+                sizes="112px"
+                quality={75}
               />
             </div>
           </Link>
