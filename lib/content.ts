@@ -24,7 +24,10 @@ export function getAllPosts(lang?: "ko" | "en") {
   return posts
     .filter((post: Post) => !post.draft)
     .filter((post: Post) => !lang || post.lang === lang)
-    .sort((a: Post, b: Post) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a: Post, b: Post) => {
+      const diff = new Date(b.date).getTime() - new Date(a.date).getTime();
+      return diff !== 0 ? diff : b.slug.localeCompare(a.slug);
+    });
 }
 
 export function getPostBySlug(slug: string) {
@@ -110,7 +113,7 @@ export function getAllTags(lang?: "ko" | "en") {
 export function getAllArticles() {
   return articles
     .filter((a: Article) => a.status !== "draft")
-    .sort((a: Article, b: Article) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a: Article, b: Article) => { const d = new Date(b.date).getTime() - new Date(a.date).getTime(); return d !== 0 ? d : b.slug.localeCompare(a.slug); });
 }
 
 export function getArticleBySlug(slug: string) {
@@ -124,7 +127,7 @@ export function getArticlesByMoc(moc: string) {
 // Library
 export function getAllLibraryItems() {
   return library
-    .sort((a: LibraryItem, b: LibraryItem) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a: LibraryItem, b: LibraryItem) => { const d = new Date(b.date).getTime() - new Date(a.date).getTime(); return d !== 0 ? d : b.slug.localeCompare(a.slug); });
 }
 
 export function getLibraryItemBySlug(slug: string) {
@@ -138,7 +141,7 @@ export function getLibraryItemsByMediaType(mediaType: "book" | "movie") {
 // Notes
 export function getAllNotes() {
   return notes
-    .sort((a: Note, b: Note) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a: Note, b: Note) => { const d = new Date(b.date).getTime() - new Date(a.date).getTime(); return d !== 0 ? d : b.slug.localeCompare(a.slug); });
 }
 
 export function getNoteBySlug(slug: string) {
