@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, Image, Languages, GitPullRequest, Eye, PenLine, Settings, FolderOpen, FileEdit } from "lucide-react";
+import { LayoutDashboard, Image, Languages, GitPullRequest, Eye, PenLine, Settings, FolderOpen, FileEdit, MapPin } from "lucide-react";
 
 const adminNav = [
   { name: "대시보드", href: "/admin", icon: LayoutDashboard },
@@ -8,6 +8,7 @@ const adminNav = [
   { name: "발행", href: "/admin/publish", icon: GitPullRequest },
   { name: "미리보기", href: "/admin/preview", icon: Eye },
   { name: "옵시디언", href: "/admin/obsidian", icon: FolderOpen },
+  { name: "활동관리", href: "/admin/activities", icon: MapPin },
   { name: "썸네일", href: "/admin/thumbnail", icon: Image },
   { name: "번역", href: "/admin/translate", icon: Languages },
   { name: "일괄 수정", href: "/admin/bulk-edit", icon: Settings },
