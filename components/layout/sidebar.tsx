@@ -15,7 +15,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 theme-sidebar">
+    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 theme-sidebar" aria-label="사이드바 네비게이션">
       <div className="flex flex-col h-full px-5 py-8">
         {/* Profile */}
         <div className="flex flex-col items-center text-center mb-8">
@@ -41,7 +41,7 @@ export function Sidebar() {
         </div>
 
         {/* Main Navigation */}
-        <nav className="flex-1 space-y-0.5">
+        <nav className="flex-1 space-y-0.5" aria-label="메인 메뉴">
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive =

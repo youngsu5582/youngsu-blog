@@ -52,12 +52,18 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <body className={`${plusJakarta.variable} ${notoSansKR.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:shadow-lg"
+        >
+          본문으로 건너뛰기
+        </a>
         <ThemeProvider>
           <div className="relative min-h-screen">
             <Sidebar />
             <div className="lg:pl-64">
               <Topbar />
-              <main className="max-w-6xl mx-auto px-6 py-10 lg:px-10">
+              <main id="main-content" className="max-w-6xl mx-auto px-6 py-10 lg:px-10">
                 {children}
               </main>
               <Footer />

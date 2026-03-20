@@ -25,6 +25,7 @@ export function ThemeToggle() {
       size="icon"
       className="h-8 w-8"
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      aria-label={theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"}
     >
       {theme === "dark" ? (
         <Sun className="h-4 w-4" />

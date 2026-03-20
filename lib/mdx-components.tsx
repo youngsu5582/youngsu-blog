@@ -129,11 +129,11 @@ export const mdxComponents = {
     );
   },
   hr: () => <hr className="my-8 border-border" />,
-  img: ({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) => (
+  img: ({ src, alt = "" }: React.ImgHTMLAttributes<HTMLImageElement>) => (
     <ImageZoom>
       <Image
         src={typeof src === "string" ? src : ""}
-        alt={alt || ""}
+        alt={alt}
         width={800}
         height={400}
         className="rounded-lg my-4"

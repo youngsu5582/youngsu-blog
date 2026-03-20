@@ -126,6 +126,7 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               className="w-full pl-10 pr-4 py-3 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring text-sm"
+              aria-label="검색"
               autoFocus
             />
           </div>
