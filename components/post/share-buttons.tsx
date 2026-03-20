@@ -3,6 +3,7 @@
 import { Twitter, Linkedin, Link2, Check, Github } from "lucide-react";
 import { useState } from "react";
 import { siteConfig } from "@/config/site";
+import { trackShare } from "@/lib/analytics";
 
 interface ShareButtonsProps {
   title: string;
@@ -18,6 +19,7 @@ export function ShareButtons({ title, slug }: ShareButtonsProps) {
   const copyLink = async () => {
     await navigator.clipboard.writeText(url);
     setCopied(true);
+    trackShare("copy_link", slug);
     setTimeout(() => setCopied(false), 2000);
   };
 

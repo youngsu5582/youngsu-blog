@@ -12,6 +12,7 @@ import {
 import { searchConfig } from "@/config/search";
 import type { SearchItem } from "@/lib/search";
 import { Search, Hash, Folder } from "lucide-react";
+import { trackSearch } from "@/lib/analytics";
 
 interface SearchDialogProps {
   searchIndex: SearchItem[];
@@ -60,7 +61,9 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
-    return fuse.search(query).slice(0, searchConfig.maxResults).map((r) => r.item);
+    const items = fuse.search(query).slice(0, searchConfig.maxResults).map((r) => r.item);
+    if (items.length > 0) trackSearch(query, items.length);
+    return items;
   }, [query, fuse]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
