@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search } from "lucide-react";
+import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, RotateCcw } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 
 const COLLECTIONS = [
@@ -36,6 +36,48 @@ export default function WritePage() {
 
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [hasDraft, setHasDraft] = useState(false);
+
+  const DRAFT_KEY = "admin-write-draft";
+
+  // 임시저장
+  const saveDraft = () => {
+    const draft = { collection, title, slug, slugManual, description, categories, tags, thumbnail, relatedSlugs, content };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    setResult({ success: true, message: "임시저장 완료" });
+    setTimeout(() => setResult(null), 2000);
+  };
+
+  // 임시저장 불러오기
+  const loadDraft = () => {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return;
+    try {
+      const d = JSON.parse(raw);
+      if (d.collection) setCollection(d.collection);
+      if (d.title) setTitle(d.title);
+      if (d.slug) { setSlug(d.slug); setSlugManual(!!d.slugManual); }
+      if (d.description) setDescription(d.description);
+      if (d.categories) setCategories(d.categories);
+      if (d.tags) setTags(d.tags);
+      if (d.thumbnail) setThumbnail(d.thumbnail);
+      if (d.relatedSlugs) setRelatedSlugs(d.relatedSlugs);
+      if (d.content) setContent(d.content);
+      setResult({ success: true, message: "임시저장 불러옴" });
+      setTimeout(() => setResult(null), 2000);
+    } catch {}
+  };
+
+  // 임시저장 삭제
+  const clearDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setHasDraft(false);
+  };
+
+  // 임시저장 존재 확인 (마운트 시)
+  useEffect(() => {
+    setHasDraft(!!localStorage.getItem(DRAFT_KEY));
+  }, []);
 
   // Auto-generate slug from title (unless manually edited)
   useEffect(() => {
@@ -82,7 +124,8 @@ export default function WritePage() {
         body: JSON.stringify({ collection, title, slug: slug || undefined, description, categories, tags, thumbnail, content, related: relatedSlugs }),
       });
       const data = await res.json();
-      setResult(data.success ? { success: true, message: `저장 완료: ${data.filePath}` } : { success: false, message: data.error });
+      if (data.success) { clearDraft(); setResult({ success: true, message: `저장 완료: ${data.filePath}` }); }
+      else { setResult({ success: false, message: data.error }); }
     } catch { setResult({ success: false, message: "저장 실패" }); }
     setSaving(false);
   };
@@ -104,6 +147,18 @@ export default function WritePage() {
           <p className="text-sm text-muted-foreground mt-1">마크다운으로 작성하고 저장</p>
         </div>
         <div className="flex gap-2">
+          {hasDraft && (
+            <button onClick={loadDraft}
+              className="text-xs px-3 py-1.5 rounded-md border border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 transition-colors flex items-center gap-1">
+              <RotateCcw className="h-3 w-3" />
+              임시저장 불러오기
+            </button>
+          )}
+          <button onClick={saveDraft}
+            className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+            <Archive className="h-3 w-3" />
+            임시저장
+          </button>
           <button onClick={() => setShowMeta(!showMeta)}
             className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${showMeta ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
             메타데이터 {showMeta ? "접기" : "펼치기"}
