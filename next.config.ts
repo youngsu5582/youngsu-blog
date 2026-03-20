@@ -1,19 +1,9 @@
 import type { NextConfig } from "next";
+import { siteConfig } from "./config/site";
 
 const nextConfig: NextConfig = {
   images: {
-    remotePatterns: [
-      { hostname: "velog.velcdn.com" },
-      { hostname: "i.imgur.com" },
-      { hostname: "i.pinimg.com" },
-      { hostname: "github.com" },
-      { hostname: "raw.githubusercontent.com" },
-      { hostname: "user-images.githubusercontent.com" },
-      { hostname: "www.notion.so" },
-      { hostname: "www.aladin.co.kr" },
-      { hostname: "image.yes24.com" },
-      { hostname: "d1apvpgu6ekv4q.cloudfront.net" },
-    ],
+    remotePatterns: siteConfig.imageDomains.map((hostname) => ({ hostname })),
   },
 };
 
