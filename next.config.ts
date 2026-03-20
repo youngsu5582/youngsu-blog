@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
       { hostname: "www.notion.so" },
       { hostname: "www.aladin.co.kr" },
       { hostname: "image.yes24.com" },
+      { hostname: "d1apvpgu6ekv4q.cloudfront.net" },
     ],
   },
 };

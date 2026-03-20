@@ -104,7 +104,7 @@ export function LibraryGrid({ items, currentPage, totalPages, basePath = "/libra
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
           {currentPage > 1 ? (
-            <Button variant="outline" size="sm" render={<Link href={`${basePath}${basePath.includes('?') ? '&' : '?'}page=${currentPage - 1}`} />}>
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`${basePath}${basePath.includes('?') ? '&' : '?'}page=${currentPage - 1}`} />}>
               <ChevronLeft className="h-4 w-4 mr-1" />
               이전
             </Button>
@@ -120,7 +120,7 @@ export function LibraryGrid({ items, currentPage, totalPages, basePath = "/libra
           </span>
 
           {currentPage < totalPages ? (
-            <Button variant="outline" size="sm" render={<Link href={`${basePath}${basePath.includes('?') ? '&' : '?'}page=${currentPage + 1}`} />}>
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`${basePath}${basePath.includes('?') ? '&' : '?'}page=${currentPage + 1}`} />}>
               다음
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
