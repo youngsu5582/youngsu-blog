@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { LayoutDashboard, Image, Languages, GitPullRequest, Eye, PenLine, Settings, FolderOpen } from "lucide-react";
+import { LayoutDashboard, Image, Languages, GitPullRequest, Eye, PenLine, Settings, FolderOpen, FileEdit } from "lucide-react";
 
 const adminNav = [
   { name: "대시보드", href: "/admin", icon: LayoutDashboard },
-  { name: "썸네일", href: "/admin/thumbnail", icon: Image },
-  { name: "번역", href: "/admin/translate", icon: Languages },
+  { name: "편집", href: "/admin/edit", icon: FileEdit },
+  { name: "작성", href: "/admin/write", icon: PenLine },
   { name: "발행", href: "/admin/publish", icon: GitPullRequest },
   { name: "미리보기", href: "/admin/preview", icon: Eye },
-  { name: "작성", href: "/admin/write", icon: PenLine },
-  { name: "일괄 수정", href: "/admin/bulk-edit", icon: Settings },
   { name: "옵시디언", href: "/admin/obsidian", icon: FolderOpen },
+  { name: "썸네일", href: "/admin/thumbnail", icon: Image },
+  { name: "번역", href: "/admin/translate", icon: Languages },
+  { name: "일괄 수정", href: "/admin/bulk-edit", icon: Settings },
   { name: "설정", href: "/admin/settings", icon: Settings },
 ];
 
