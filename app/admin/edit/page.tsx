@@ -232,6 +232,23 @@ export default function EditPage() {
                     onChange={(tags) => setFrontmatter({ ...frontmatter, tags: tags })} />
                 </div>
 
+                {/* Library: mediaType */}
+                {selectedItem.collection === "library" && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">미디어 타입</label>
+                    <div className="flex gap-2">
+                      {(["book", "movie", "life"] as const).map((type) => (
+                        <button key={type} onClick={() => setFrontmatter({ ...frontmatter, mediaType: type })}
+                          className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
+                            frontmatter.mediaType === type ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                          }`}>
+                          {type === "book" ? "📚 책" : type === "movie" ? "🎬 영화" : "🏃 라이프"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Move collection */}
                 <div className="flex items-center gap-2 pt-2 border-t border-border/30">
                   <span className="text-xs text-muted-foreground">컬렉션 이동:</span>
