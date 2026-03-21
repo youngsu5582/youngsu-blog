@@ -1,0 +1,70 @@
+---
+title: 블로그 댓글 기능 추가 - Giscus
+date: "Sat Mar 21 2026 09:00:00 GMT+0900 (한국 표준시)"
+description: 블로그에 댓글 기능을 추가해보자. with giscus
+categories:
+  - Blog
+tags:
+  - giscus
+  - blog-comment
+  - blog
+draft: false
+---
+
+## 블로그에 Giscus 활성화 시키기
+
+아래 단계를 통해 블로그에 댓글 기능을 간편히 연동시킬 수 있다.
+
+  1. youngsu5582/youngsu-blog 레포의 Settings → Features → Discussions 활성화
+  2. Discussions에 Post 카테고리 생성
+  3. giscus.app에서 새 레포 기준으로 repoId, categoryId 재발급
+
+```bash
+gh api graphql -f query='{
+    repository(owner:"youngsu5582", name:"youngsu-blog") {
+      id
+      discussionCategories(first:10) {
+        nodes {
+          id
+          name
+        }
+      }
+    }
+  }'
+```
+
+와 같이 실행하면
+
+```json
+{
+  "data": {
+    "repository": {
+      "id": "R_kgDORpdOAQ",
+      "discussionCategories": {
+        "nodes": [
+          {
+            "id": "DIC_kwDORpdOAc4C46w5",
+            "name": "Announcements"
+          },
+          ...
+          {
+            "id": "DIC_kwDORpdOAc4C46yB",
+            "name": "Post"
+          },
+        ]
+      }
+    }
+  }
+}
+```
+
+나오고, repostiory 의 id 와 Post 의 id 를 세팅하자.
+
+  4. Repository 에서 설정 업데이트
+5. https://github.com/apps/giscus 들어간 후 블로그 Repository 추가하기
+
+게시글에 확인용 댓글을 남기면
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/18a67db90f32033f3003df2dc48a31c2.png)
+
+Discussion 에 블로그 링크 및 코멘트가 남겨지는걸 확인할 수 있다.
