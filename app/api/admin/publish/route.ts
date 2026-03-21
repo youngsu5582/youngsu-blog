@@ -6,14 +6,19 @@ import { execSync } from "child_process";
 
 const CONTENT_DIR = path.join(process.cwd(), "content/posts");
 
+interface PublishPost {
+  slug: string;
+  frontmatter: Record<string, unknown>;
+  includeEn: boolean;
+  enSlug?: string;
+}
+
 function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
   const raw = fs.readFileSync(filePath, "utf-8");
   const { data, content } = matter(raw);
 
-  // Merge updates into existing frontmatter
   const merged = { ...data, ...updates };
 
-  // Rebuild
   const lines = ["---"];
   for (const [key, val] of Object.entries(merged)) {
     if (val === undefined || val === null) continue;
@@ -43,21 +48,16 @@ function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
   fs.writeFileSync(filePath, lines.join("\n") + "\n\n" + content.trim() + "\n", "utf-8");
 }
 
-export async function POST(req: Request) {
-  try {
-    const { slug, frontmatter, includeEn, enSlug, autoPush = false } = await req.json();
-    const cwd = process.cwd();
-    const filesToCommit: string[] = [];
+function prepareFiles(posts: PublishPost[]): string[] {
+  const filesToCommit: string[] = [];
 
-    // Update Korean post frontmatter
+  for (const { slug, frontmatter, includeEn, enSlug } of posts) {
     const koFile = path.join(CONTENT_DIR, `${slug}.mdx`);
     if (fs.existsSync(koFile)) {
-      // Remove draft flag on publish
       updateFrontmatter(koFile, { ...frontmatter, draft: false });
       filesToCommit.push(`content/posts/${slug}.mdx`);
     }
 
-    // Update English post frontmatter (sync categories, tags)
     if (includeEn && enSlug) {
       const enFile = path.join(CONTENT_DIR, `${enSlug}.mdx`);
       if (fs.existsSync(enFile)) {
@@ -70,25 +70,97 @@ export async function POST(req: Request) {
         filesToCommit.push(`content/posts/${enSlug}.mdx`);
       }
     }
+  }
+
+  return filesToCommit;
+}
+
+function buildCommitMessage(posts: PublishPost[]): string {
+  if (posts.length === 1) {
+    return `docs: '${posts[0].frontmatter.title || posts[0].slug}' 발행`;
+  }
+  const titles = posts.map((p) => `- ${p.frontmatter.title || p.slug}`).join("\n");
+  return `docs: ${posts.length}개 포스트 발행\n\n${titles}`;
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const cwd = process.cwd();
+
+    // 하위 호환: 단일 포스트 요청도 배열로 변환
+    const posts: PublishPost[] = body.posts ?? [
+      { slug: body.slug, frontmatter: body.frontmatter, includeEn: body.includeEn, enSlug: body.enSlug },
+    ];
+    const mode: "direct" | "pr" = body.mode ?? "direct";
+    const autoPush: boolean = body.autoPush ?? false;
+
+    const filesToCommit = prepareFiles(posts);
 
     if (filesToCommit.length === 0) {
       return NextResponse.json({ error: "발행할 파일이 없습니다" }, { status: 400 });
     }
 
-    // Git commit
+    const commitMsg = buildCommitMessage(posts);
+    const tmpFile = "/tmp/admin-publish-msg.txt";
+
+    if (mode === "pr") {
+      // PR 모드: 브랜치 생성 → 커밋 → 푸시 → PR 생성
+      const date = new Date().toISOString().slice(0, 10);
+      const branchName = `publish/${date}-${posts.length === 1 ? posts[0].slug : `${posts.length}-posts`}`;
+
+      execSync(`git checkout -b "${branchName}"`, { cwd });
+
+      try {
+        for (const f of filesToCommit) {
+          execSync(`git add "${f}"`, { cwd });
+        }
+
+        fs.writeFileSync(tmpFile, commitMsg, "utf-8");
+        execSync(`git commit -F ${tmpFile}`, { cwd, encoding: "utf-8" });
+        fs.unlinkSync(tmpFile);
+
+        const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
+
+        execSync(`git push -u origin "${branchName}"`, { cwd, encoding: "utf-8" });
+
+        // PR 생성
+        const prTitle = posts.length === 1
+          ? `docs: '${posts[0].frontmatter.title || posts[0].slug}' 발행`
+          : `docs: ${posts.length}개 포스트 발행`;
+
+        const prBody = posts.map((p) => `- ${p.frontmatter.title || p.slug}`).join("\\n");
+
+        const prUrl = execSync(
+          `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody}"`,
+          { cwd, encoding: "utf-8" },
+        ).trim();
+
+        return NextResponse.json({
+          success: true,
+          mode: "pr",
+          hash,
+          files: filesToCommit,
+          branch: branchName,
+          prUrl,
+        });
+      } finally {
+        // main으로 복귀
+        execSync("git checkout main", { cwd });
+      }
+    }
+
+    // Direct 모드: 기존 동작
     for (const f of filesToCommit) {
       execSync(`git add "${f}"`, { cwd });
     }
 
-    const msg = `docs: '${frontmatter.title || slug}' 발행`;
-    const tmpFile = "/tmp/admin-publish-msg.txt";
-    fs.writeFileSync(tmpFile, msg, "utf-8");
+    fs.writeFileSync(tmpFile, commitMsg, "utf-8");
     execSync(`git commit -F ${tmpFile}`, { cwd, encoding: "utf-8" });
     fs.unlinkSync(tmpFile);
 
     const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
 
-    // Optional push
     let pushed = false;
     let pushError: string | undefined;
     if (autoPush) {
@@ -102,6 +174,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      mode: "direct",
       hash,
       files: filesToCommit,
       pushed,

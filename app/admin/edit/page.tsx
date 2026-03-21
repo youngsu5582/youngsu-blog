@@ -35,6 +35,7 @@ export default function EditPage() {
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [body, setBody] = useState("");
   const [frontmatter, setFrontmatter] = useState<Record<string, any>>({});
+  const [editSlug, setEditSlug] = useState("");
   const [loadingContent, setLoadingContent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -66,6 +67,7 @@ export default function EditPage() {
 
   const loadContent = async (item: ContentItem) => {
     setSelectedItem(item);
+    setEditSlug(item.slug);
     setLoadingContent(true);
     setResult(null);
     setMoveTarget(null);
@@ -85,13 +87,26 @@ export default function EditPage() {
     setResult(null);
     try {
       const filePath = `content/${selectedItem.collection}/${selectedItem.slug}.mdx`;
+      const newSlug = editSlug !== selectedItem.slug ? editSlug : undefined;
       const res = await fetch("/api/admin/edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file: filePath, frontmatter, body }),
+        body: JSON.stringify({ file: filePath, frontmatter, body, newSlug }),
       });
       const data = await res.json();
-      setResult(data.success ? { success: true, message: "저장 완료" } : { success: false, message: data.error });
+      if (data.success) {
+        const msg = data.renamed ? `저장 완료 (파일명: ${editSlug}.mdx)` : "저장 완료";
+        setResult({ success: true, message: msg });
+        if (data.renamed) {
+          const updated = { ...selectedItem, slug: editSlug };
+          setSelectedItem(updated);
+          setItems((prev) => prev.map((i) =>
+            i.slug === selectedItem.slug && i.collection === selectedItem.collection ? updated : i
+          ));
+        }
+      } else {
+        setResult({ success: false, message: data.error });
+      }
     } catch {
       setResult({ success: false, message: "저장 실패" });
     }
@@ -223,6 +238,13 @@ export default function EditPage() {
                     <input value={frontmatter.description || ""} onChange={(e) => setFrontmatter({ ...frontmatter, description: e.target.value })}
                       className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" />
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Slug (파일명)</label>
+                  <input value={editSlug} onChange={(e) => setEditSlug(e.target.value)}
+                    className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                  <p className="text-[10px] text-muted-foreground/50">파일: content/{selectedItem.collection}/{editSlug || "..."}.mdx</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

@@ -22,11 +22,12 @@ export async function GET(req: Request) {
   }
 }
 
-// POST: frontmatter + body 저장
+// POST: frontmatter + body 저장 (newSlug로 파일명 변경 가능)
 export async function POST(req: Request) {
   try {
-    const { file, frontmatter, body } = await req.json();
-    const absPath = path.join(process.cwd(), file);
+    const { file, frontmatter, body, newSlug } = await req.json();
+    const cwd = process.cwd();
+    const absPath = path.join(cwd, file);
     if (!fs.existsSync(absPath)) return NextResponse.json({ error: "not found" }, { status: 404 });
 
     const lines = ["---"];
@@ -45,7 +46,22 @@ export async function POST(req: Request) {
     }
     lines.push("---");
 
-    fs.writeFileSync(absPath, lines.join("\n") + "\n\n" + (body || "").trim() + "\n", "utf-8");
+    const content = lines.join("\n") + "\n\n" + (body || "").trim() + "\n";
+
+    // slug 변경 시 파일명 rename
+    const currentSlug = path.basename(file, path.extname(file));
+    if (newSlug && newSlug !== currentSlug) {
+      const dir = path.dirname(absPath);
+      const ext = path.extname(file);
+      const newAbsPath = path.join(dir, `${newSlug}${ext}`);
+      if (fs.existsSync(newAbsPath)) return NextResponse.json({ error: "같은 이름의 파일이 이미 존재합니다" }, { status: 400 });
+      fs.writeFileSync(absPath, content, "utf-8");
+      fs.renameSync(absPath, newAbsPath);
+      const newFile = file.replace(`${currentSlug}${ext}`, `${newSlug}${ext}`);
+      return NextResponse.json({ success: true, renamed: true, newFile });
+    }
+
+    fs.writeFileSync(absPath, content, "utf-8");
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
