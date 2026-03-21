@@ -1,5 +1,6 @@
 import { execSync } from "child_process";
-import { CheckCircle, XCircle, Key, GitBranch, Info } from "lucide-react";
+import { CheckCircle, XCircle, Key, GitBranch, Info, Terminal } from "lucide-react";
+import { getAvailableProviders } from "@/lib/ai-provider";
 
 function getEnvStatus(key: string): boolean {
   return !!process.env[key];
@@ -23,6 +24,8 @@ export default function SettingsPage() {
   ];
 
   const gitInfo = getGitInfo();
+  const aiProviders = getAvailableProviders();
+  const cliProviders = aiProviders.filter((p) => p.type === "cli");
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -54,6 +57,34 @@ export default function SettingsPage() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* CLI Tools Section */}
+      <div className="rounded-lg border bg-card p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Terminal className="h-5 w-5" />
+          <h2 className="text-lg font-semibold">CLI 도구 상태</h2>
+        </div>
+        <div className="space-y-3">
+          {cliProviders.map((provider) => (
+            <div key={provider.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
+              <span className="text-sm font-medium">{provider.label}</span>
+              <div className="flex items-center gap-2">
+                {provider.available ? (
+                  <>
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-xs text-green-600">설치됨</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-xs text-red-600">미설치</span>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

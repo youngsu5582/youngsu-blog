@@ -2,16 +2,41 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
-
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
+import { executeAi, getAvailableProviders, type AiProvider } from "@/lib/ai-provider";
 
 export async function POST(req: Request) {
-  const { filePath, existingCategories, existingTags } = await req.json();
+  const { filePath, existingCategories, existingTags, provider } = await req.json();
 
-  // Check for available AI
-  if (!OPENAI_KEY && !GEMINI_KEY) {
-    return NextResponse.json({ error: "AI API 키가 설정되지 않았습니다. .env.local에 OPENAI_API_KEY 또는 GEMINI_API_KEY를 추가하세요." }, { status: 400 });
+  // Check for available AI providers
+  const availableProviders = getAvailableProviders();
+  const hasAnyProvider = availableProviders.some((p) => p.available);
+
+  if (!hasAnyProvider) {
+    return NextResponse.json({
+      error: "사용 가능한 AI 프로바이더가 없습니다. API 키를 설정하거나 CLI 도구를 설치하세요."
+    }, { status: 400 });
+  }
+
+  // Determine which provider to use
+  let selectedProvider: AiProvider;
+  if (provider) {
+    // Use explicitly requested provider
+    const providerInfo = availableProviders.find((p) => p.id === provider);
+    if (!providerInfo || !providerInfo.available) {
+      return NextResponse.json({
+        error: `선택한 프로바이더(${provider})를 사용할 수 없습니다`
+      }, { status: 400 });
+    }
+    selectedProvider = provider;
+  } else {
+    // Fall back to first available provider
+    const firstAvailable = availableProviders.find((p) => p.available);
+    if (!firstAvailable) {
+      return NextResponse.json({
+        error: "사용 가능한 AI 프로바이더가 없습니다"
+      }, { status: 400 });
+    }
+    selectedProvider = firstAvailable.id;
   }
 
   // Read post content
@@ -42,44 +67,20 @@ ${truncatedContent}
 {"description": "...", "categories": ["...", "..."], "tags": ["...", "...", "..."]}`;
 
   try {
-    let result: { description: string; categories: string[]; tags: string[] };
+    // Execute AI request
+    const response = await executeAi({
+      provider: selectedProvider,
+      prompt,
+    });
 
-    if (OPENAI_KEY) {
-      // OpenAI
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.3,
-          response_format: { type: "json_object" },
-        }),
-      });
-      const data = await res.json();
-      result = JSON.parse(data.choices[0].message.content);
-    } else {
-      // Gemini
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, responseMimeType: "application/json" },
-          }),
-        }
-      );
-      const data = await res.json();
-      const text = data.candidates[0].content.parts[0].text;
-      result = JSON.parse(text);
+    if (!response.success) {
+      return NextResponse.json({ error: response.error }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      model: OPENAI_KEY ? "OpenAI" : "Gemini",
-      suggestion: result,
+      model: response.provider,
+      suggestion: response.result,
     });
   } catch (err) {
     return NextResponse.json({ error: `AI 요청 실패: ${String(err)}` }, { status: 500 });

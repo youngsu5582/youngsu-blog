@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit } from "lucide-react";
+import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit, Zap } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 
 interface PostInfo {
@@ -34,6 +34,13 @@ interface SelectedPost {
 
 type PublishMode = "direct" | "pr";
 
+interface AiProvider {
+  id: string;
+  label: string;
+  available: boolean;
+  type: "cli" | "api";
+}
+
 export default function PublishPage() {
   const [posts, setPosts] = useState<PostInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,8 +54,11 @@ export default function PublishPage() {
   const [mode, setMode] = useState<PublishMode>("direct");
   const [autoPush, setAutoPush] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [aiProviders, setAiProviders] = useState<AiProvider[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
 
   useEffect(() => {
+    // Fetch posts
     fetch("/api/admin/posts")
       .then((r) => r.json())
       .then((data) => {
@@ -58,6 +68,26 @@ export default function PublishPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    // Fetch available AI providers
+    fetch("/api/admin/ai/providers")
+      .then((r) => r.json())
+      .then((data) => {
+        setAiProviders(data.providers || []);
+
+        // Load saved provider preference from localStorage
+        const savedProvider = localStorage.getItem("ai-provider-preference");
+        if (savedProvider) {
+          setSelectedProvider(savedProvider);
+        } else {
+          // Default to first available provider
+          const firstAvailable = (data.providers || []).find((p: AiProvider) => p.available);
+          if (firstAvailable) {
+            setSelectedProvider(firstAvailable.id);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const toggleSelect = (post: PostInfo) => {
@@ -107,6 +137,13 @@ export default function PublishPage() {
 
   const handleAiSuggest = async () => {
     if (!editing || !editingPost) return;
+
+    // Check if a provider is selected
+    if (!selectedProvider) {
+      setResult({ success: false, message: "AI 프로바이더를 선택하세요" });
+      return;
+    }
+
     setAiLoading(true);
     setResult(null);
     try {
@@ -117,6 +154,7 @@ export default function PublishPage() {
           filePath: editing.post.filePath,
           existingCategories: allCategories,
           existingTags: allTags,
+          provider: selectedProvider,
         }),
       });
       const data = await res.json();
@@ -129,6 +167,9 @@ export default function PublishPage() {
           tags: s.tags || editing.frontmatter.tags,
         });
         setResult({ success: true, message: `AI(${data.model}) 제안 적용됨 — 확인 후 수정하세요` });
+
+        // Save provider preference
+        localStorage.setItem("ai-provider-preference", selectedProvider);
       } else {
         setResult({ success: false, message: data.error });
       }
@@ -283,14 +324,29 @@ export default function PublishPage() {
               <div className="rounded-lg border border-border/60 p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold truncate">{editing.post.title}</h3>
-                  <button
-                    onClick={handleAiSuggest}
-                    disabled={aiLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-gradient-to-r from-violet-500/10 to-blue-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 hover:from-violet-500/20 hover:to-blue-500/20 transition-all disabled:opacity-50 shrink-0"
-                  >
-                    {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                    AI 도움받기
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <select
+                      value={selectedProvider}
+                      onChange={(e) => setSelectedProvider(e.target.value)}
+                      className="text-xs rounded-md border border-border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      disabled={aiLoading}
+                    >
+                      <option value="">AI 선택</option>
+                      {aiProviders.filter((p) => p.available).map((provider) => (
+                        <option key={provider.id} value={provider.id}>
+                          {provider.label} ({provider.type === "cli" ? "CLI" : "API"})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleAiSuggest}
+                      disabled={aiLoading || !selectedProvider}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-gradient-to-r from-violet-500/10 to-blue-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 hover:from-violet-500/20 hover:to-blue-500/20 transition-all disabled:opacity-50"
+                    >
+                      {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                      AI 도움받기
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
