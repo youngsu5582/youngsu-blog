@@ -11,7 +11,6 @@ const COLLECTIONS = [
   { id: "library", label: "서재", icon: Library },
 ];
 
-const AUTOSAVE_KEY = "admin-write-autosave";
 const DRAFTS_KEY = "admin-write-drafts";
 const MAX_DRAFTS = 10;
 const AUTOSAVE_DELAY = 5000; // 5 seconds
@@ -65,31 +64,24 @@ export default function WritePage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [showDraftPicker, setShowDraftPicker] = useState(false);
 
-  // Load drafts from localStorage
-  const loadDraftsFromStorage = useCallback(() => {
-    try {
-      const raw = localStorage.getItem(DRAFTS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setDrafts(Array.isArray(parsed) ? parsed : []);
-      }
-    } catch {
-      setDrafts([]);
-    }
-  }, []);
-
   // Save drafts to localStorage
   const saveDraftsToStorage = useCallback((newDrafts: Draft[]) => {
     localStorage.setItem(DRAFTS_KEY, JSON.stringify(newDrafts));
     setDrafts(newDrafts);
   }, []);
 
-  // Auto-save function
+  // Auto-save function — saves directly into drafts
   const performAutoSave = useCallback(() => {
-    const autoSaveData = {
+    const identifier = slug || title;
+    if (!identifier) return;
+
+    const now = new Date();
+    const newDraft: Draft = {
+      id: Date.now().toString(),
+      title: title || "(제목 없음)",
       collection,
-      title,
       slug,
+      savedAt: now.toISOString(),
       slugManual,
       description,
       categories,
@@ -98,8 +90,30 @@ export default function WritePage() {
       relatedSlugs,
       content,
     };
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autoSaveData));
-    const now = new Date();
+
+    // Read current drafts from localStorage directly (avoid stale closure)
+    let currentDrafts: Draft[] = [];
+    try {
+      const raw = localStorage.getItem(DRAFTS_KEY);
+      if (raw) currentDrafts = JSON.parse(raw) || [];
+    } catch {}
+
+    const existingIndex = currentDrafts.findIndex(d =>
+      (slug && d.slug === slug) || (!slug && d.title === title)
+    );
+
+    if (existingIndex >= 0) {
+      currentDrafts[existingIndex] = { ...newDraft, id: currentDrafts[existingIndex].id };
+    } else {
+      currentDrafts.push(newDraft);
+    }
+
+    if (currentDrafts.length > MAX_DRAFTS) {
+      currentDrafts = currentDrafts.slice(-MAX_DRAFTS);
+    }
+
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(currentDrafts));
+    setDrafts(currentDrafts);
     setAutoSaveTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
   }, [collection, title, slug, slugManual, description, categories, tags, thumbnail, relatedSlugs, content]);
 
@@ -124,76 +138,45 @@ export default function WritePage() {
     };
   }, [content, title, slug, collection, description, categories, tags, thumbnail, relatedSlugs, performAutoSave]);
 
-  // Restore auto-save on mount
+  // Save immediately on page unload (dev watch reload, tab close)
   useEffect(() => {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (raw) {
-      try {
-        const data = JSON.parse(raw);
-        if (data.collection) setCollection(data.collection);
-        if (data.title) setTitle(data.title);
-        if (data.slug) { setSlug(data.slug); setSlugManual(!!data.slugManual); }
-        if (data.description) setDescription(data.description);
-        if (data.categories) setCategories(data.categories);
-        if (data.tags) setTags(data.tags);
-        if (data.thumbnail) setThumbnail(data.thumbnail);
-        if (data.relatedSlugs) setRelatedSlugs(data.relatedSlugs);
-        if (data.content) setContent(data.content);
-      } catch {}
-    }
-    loadDraftsFromStorage();
-  }, [loadDraftsFromStorage]);
-
-  // Manual save to multi-draft
-  const saveManualDraft = () => {
-    const identifier = slug || title;
-    if (!identifier) {
-      setResult({ success: false, message: "제목 또는 slug가 필요합니다" });
-      setTimeout(() => setResult(null), 2000);
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const newDraft: Draft = {
-      id: Date.now().toString(),
-      title: title || "(제목 없음)",
-      collection,
-      slug,
-      savedAt: now,
-      slugManual,
-      description,
-      categories,
-      tags,
-      thumbnail,
-      relatedSlugs,
-      content,
+    const handleBeforeUnload = () => {
+      if (content || title || description) {
+        performAutoSave();
+      }
     };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [performAutoSave, content, title, description]);
 
-    let updatedDrafts = [...drafts];
-
-    // Find existing draft with same slug or title
-    const existingIndex = updatedDrafts.findIndex(d =>
-      (slug && d.slug === slug) || (!slug && d.title === title)
-    );
-
-    if (existingIndex >= 0) {
-      // Overwrite existing draft
-      updatedDrafts[existingIndex] = { ...newDraft, id: updatedDrafts[existingIndex].id };
-      setResult({ success: true, message: "임시저장 업데이트 완료" });
-    } else {
-      // Add new draft
-      updatedDrafts.push(newDraft);
-      setResult({ success: true, message: "임시저장 완료" });
+  // Restore most recent draft on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFTS_KEY);
+      if (raw) {
+        const parsed: Draft[] = JSON.parse(raw) || [];
+        setDrafts(parsed);
+        if (parsed.length > 0) {
+          // Load the most recently saved draft
+          const latest = parsed.reduce((a, b) =>
+            new Date(a.savedAt) > new Date(b.savedAt) ? a : b
+          );
+          setCollection(latest.collection);
+          setTitle(latest.title === "(제목 없음)" ? "" : latest.title);
+          setSlug(latest.slug);
+          setSlugManual(latest.slugManual);
+          setDescription(latest.description);
+          setCategories(latest.categories);
+          setTags(latest.tags);
+          setThumbnail(latest.thumbnail);
+          setRelatedSlugs(latest.relatedSlugs);
+          setContent(latest.content);
+        }
+      }
+    } catch {
+      setDrafts([]);
     }
-
-    // Keep only the latest MAX_DRAFTS
-    if (updatedDrafts.length > MAX_DRAFTS) {
-      updatedDrafts = updatedDrafts.slice(-MAX_DRAFTS);
-    }
-
-    saveDraftsToStorage(updatedDrafts);
-    setTimeout(() => setResult(null), 2000);
-  };
+  }, []);
 
   // Load a specific draft
   const loadDraft = (draft: Draft) => {
@@ -281,8 +264,14 @@ export default function WritePage() {
       });
       const data = await res.json();
       if (data.success) {
-        // Clear auto-save on successful save
-        localStorage.removeItem(AUTOSAVE_KEY);
+        // Clear saved draft on successful publish
+        const savedSlug = slug || title;
+        if (savedSlug) {
+          const updatedDrafts = drafts.filter(d =>
+            !(slug && d.slug === slug) && !(!slug && d.title === title)
+          );
+          saveDraftsToStorage(updatedDrafts);
+        }
         setAutoSaveTime(null);
         setResult({ success: true, message: `저장 완료: ${data.filePath}` });
       }
@@ -381,11 +370,6 @@ export default function WritePage() {
             )}
           </div>
 
-          <button onClick={saveManualDraft}
-            className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-            <Archive className="h-3 w-3" />
-            임시저장
-          </button>
           <button onClick={() => setShowMeta(!showMeta)}
             className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${showMeta ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
             메타데이터 {showMeta ? "접기" : "펼치기"}
