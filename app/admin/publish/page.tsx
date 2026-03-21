@@ -8,6 +8,7 @@ interface PostInfo {
   filePath: string;
   filename: string;
   gitStatus: string;
+  collection: string;
   title: string;
   description: string;
   categories: string[];
@@ -144,9 +145,10 @@ export default function PublishPage() {
     try {
       const postsPayload = Array.from(selectedPosts.values()).map((s) => ({
         slug: s.post.filename,
+        collection: s.post.collection,
         frontmatter: s.frontmatter,
         includeEn: s.includeEn,
-        enSlug: s.post.enFilePath?.replace("content/posts/", "").replace(".mdx", ""),
+        enSlug: s.post.enFilePath?.replace(`content/${s.post.collection}/`, "").replace(".mdx", ""),
       }));
 
       const res = await fetch("/api/admin/publish", {

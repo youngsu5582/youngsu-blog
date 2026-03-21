@@ -4,10 +4,11 @@ import path from "path";
 import matter from "gray-matter";
 import { execSync } from "child_process";
 
-const CONTENT_DIR = path.join(process.cwd(), "content/posts");
+const CONTENT_ROOT = path.join(process.cwd(), "content");
 
 interface PublishPost {
   slug: string;
+  collection?: string;
   frontmatter: Record<string, unknown>;
   includeEn: boolean;
   enSlug?: string;
@@ -51,15 +52,16 @@ function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
 function prepareFiles(posts: PublishPost[]): string[] {
   const filesToCommit: string[] = [];
 
-  for (const { slug, frontmatter, includeEn, enSlug } of posts) {
-    const koFile = path.join(CONTENT_DIR, `${slug}.mdx`);
+  for (const { slug, collection = "posts", frontmatter, includeEn, enSlug } of posts) {
+    const contentDir = path.join(CONTENT_ROOT, collection);
+    const koFile = path.join(contentDir, `${slug}.mdx`);
     if (fs.existsSync(koFile)) {
       updateFrontmatter(koFile, { ...frontmatter, draft: false });
-      filesToCommit.push(`content/posts/${slug}.mdx`);
+      filesToCommit.push(`content/${collection}/${slug}.mdx`);
     }
 
     if (includeEn && enSlug) {
-      const enFile = path.join(CONTENT_DIR, `${enSlug}.mdx`);
+      const enFile = path.join(contentDir, `${enSlug}.mdx`);
       if (fs.existsSync(enFile)) {
         updateFrontmatter(enFile, {
           categories: frontmatter.categories,
@@ -67,7 +69,7 @@ function prepareFiles(posts: PublishPost[]): string[] {
           image: frontmatter.image,
           draft: false,
         });
-        filesToCommit.push(`content/posts/${enSlug}.mdx`);
+        filesToCommit.push(`content/${collection}/${enSlug}.mdx`);
       }
     }
   }
