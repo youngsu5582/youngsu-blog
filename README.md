@@ -77,6 +77,17 @@ youngsu-blog/
 └── .github/workflows/      # CI/CD
 ```
 
+## CI/CD
+
+GitHub Actions가 모든 PR/push에서 자동 실행:
+
+1. **콘텐츠 검증** — `validate-content.ts` (frontmatter, 코드 블록, 이미지 경로)
+2. **Velite 빌드** — MDX → 콘텐츠 데이터 생성
+3. **테스트** — Vitest
+4. **빌드** — Next.js 프로덕션 빌드
+
+Vercel이 main 브랜치 push 시 자동 프로덕션 배포. PR에는 프리뷰 URL 자동 생성.
+
 ## 시작하기
 
 ### 사전 요구사항
@@ -242,9 +253,11 @@ pnpm blog:translate <file>    # Google Translate 기반 번역
 | 페이지 | 기능 |
 |--------|------|
 | `/admin` | 대시보드 — 포스트 현황, SEO 점검, 이미지 업로드 |
-| `/admin/publish` | 발행 — 메타데이터 편집 + AI 제안 + 자동 push |
-| `/admin/write` | 간편 작성기 — 마크다운 에디터 + 미리보기 + 관련 포스트 선택 |
+| `/admin/publish` | 발행 — 메타데이터 편집 + AI 제안 + PR 생성/직접 커밋 + 다중 선택 |
+| `/admin/write` | 간편 작성기 — 마크다운 에디터 + 미리보기 + 자동 저장 + 다중 드래프트 |
+| `/admin/edit` | 콘텐츠 편집 — 검색 + slug 변경 + 컬렉션 이동 |
 | `/admin/preview` | 미리보기 — iframe 기반 콘텐츠 미리보기 |
+| `/admin/activities` | 활동 관리 — CRUD + 다국어 + 좌표 + 이미지 업로드 |
 | `/admin/bulk-edit` | 일괄 수정 — 여러 포스트 태그/카테고리 변경 |
 | `/admin/obsidian` | 옵시디언 — vault에서 .md 파일 가져오기 |
 | `/admin/settings` | 설정 — API 키 상태, Git 정보 |
