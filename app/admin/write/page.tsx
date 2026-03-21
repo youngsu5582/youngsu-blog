@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, RotateCcw } from "lucide-react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, ChevronDown, Clock } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 
 const COLLECTIONS = [
@@ -11,7 +11,27 @@ const COLLECTIONS = [
   { id: "library", label: "서재", icon: Library },
 ];
 
+const AUTOSAVE_KEY = "admin-write-autosave";
+const DRAFTS_KEY = "admin-write-drafts";
+const MAX_DRAFTS = 10;
+const AUTOSAVE_DELAY = 5000; // 5 seconds
+
 interface PostItem { slug: string; title: string; collection: string; }
+
+interface Draft {
+  id: string;
+  title: string;
+  collection: string;
+  slug: string;
+  savedAt: string;
+  slugManual: boolean;
+  description: string;
+  categories: string[];
+  tags: string[];
+  thumbnail: string;
+  relatedSlugs: string[];
+  content: string;
+}
 
 export default function WritePage() {
   const [content, setContent] = useState("");
@@ -36,48 +56,184 @@ export default function WritePage() {
 
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [hasDraft, setHasDraft] = useState(false);
 
-  const DRAFT_KEY = "admin-write-draft";
+  // Auto-save state
+  const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 임시저장
-  const saveDraft = () => {
-    const draft = { collection, title, slug, slugManual, description, categories, tags, thumbnail, relatedSlugs, content };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    setResult({ success: true, message: "임시저장 완료" });
+  // Multi-draft state
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [showDraftPicker, setShowDraftPicker] = useState(false);
+
+  // Load drafts from localStorage
+  const loadDraftsFromStorage = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(DRAFTS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setDrafts(Array.isArray(parsed) ? parsed : []);
+      }
+    } catch {
+      setDrafts([]);
+    }
+  }, []);
+
+  // Save drafts to localStorage
+  const saveDraftsToStorage = useCallback((newDrafts: Draft[]) => {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(newDrafts));
+    setDrafts(newDrafts);
+  }, []);
+
+  // Auto-save function
+  const performAutoSave = useCallback(() => {
+    const autoSaveData = {
+      collection,
+      title,
+      slug,
+      slugManual,
+      description,
+      categories,
+      tags,
+      thumbnail,
+      relatedSlugs,
+      content,
+    };
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autoSaveData));
+    const now = new Date();
+    setAutoSaveTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
+  }, [collection, title, slug, slugManual, description, categories, tags, thumbnail, relatedSlugs, content]);
+
+  // Debounced auto-save effect
+  useEffect(() => {
+    // Clear existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    // Set new timer (only if there's content to save)
+    if (content || title || description) {
+      autoSaveTimerRef.current = setTimeout(() => {
+        performAutoSave();
+      }, AUTOSAVE_DELAY);
+    }
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [content, title, slug, collection, description, categories, tags, thumbnail, relatedSlugs, performAutoSave]);
+
+  // Restore auto-save on mount
+  useEffect(() => {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        if (data.collection) setCollection(data.collection);
+        if (data.title) setTitle(data.title);
+        if (data.slug) { setSlug(data.slug); setSlugManual(!!data.slugManual); }
+        if (data.description) setDescription(data.description);
+        if (data.categories) setCategories(data.categories);
+        if (data.tags) setTags(data.tags);
+        if (data.thumbnail) setThumbnail(data.thumbnail);
+        if (data.relatedSlugs) setRelatedSlugs(data.relatedSlugs);
+        if (data.content) setContent(data.content);
+      } catch {}
+    }
+    loadDraftsFromStorage();
+  }, [loadDraftsFromStorage]);
+
+  // Manual save to multi-draft
+  const saveManualDraft = () => {
+    const identifier = slug || title;
+    if (!identifier) {
+      setResult({ success: false, message: "제목 또는 slug가 필요합니다" });
+      setTimeout(() => setResult(null), 2000);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const newDraft: Draft = {
+      id: Date.now().toString(),
+      title: title || "(제목 없음)",
+      collection,
+      slug,
+      savedAt: now,
+      slugManual,
+      description,
+      categories,
+      tags,
+      thumbnail,
+      relatedSlugs,
+      content,
+    };
+
+    let updatedDrafts = [...drafts];
+
+    // Find existing draft with same slug or title
+    const existingIndex = updatedDrafts.findIndex(d =>
+      (slug && d.slug === slug) || (!slug && d.title === title)
+    );
+
+    if (existingIndex >= 0) {
+      // Overwrite existing draft
+      updatedDrafts[existingIndex] = { ...newDraft, id: updatedDrafts[existingIndex].id };
+      setResult({ success: true, message: "임시저장 업데이트 완료" });
+    } else {
+      // Add new draft
+      updatedDrafts.push(newDraft);
+      setResult({ success: true, message: "임시저장 완료" });
+    }
+
+    // Keep only the latest MAX_DRAFTS
+    if (updatedDrafts.length > MAX_DRAFTS) {
+      updatedDrafts = updatedDrafts.slice(-MAX_DRAFTS);
+    }
+
+    saveDraftsToStorage(updatedDrafts);
     setTimeout(() => setResult(null), 2000);
   };
 
-  // 임시저장 불러오기
-  const loadDraft = () => {
-    const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return;
-    try {
-      const d = JSON.parse(raw);
-      if (d.collection) setCollection(d.collection);
-      if (d.title) setTitle(d.title);
-      if (d.slug) { setSlug(d.slug); setSlugManual(!!d.slugManual); }
-      if (d.description) setDescription(d.description);
-      if (d.categories) setCategories(d.categories);
-      if (d.tags) setTags(d.tags);
-      if (d.thumbnail) setThumbnail(d.thumbnail);
-      if (d.relatedSlugs) setRelatedSlugs(d.relatedSlugs);
-      if (d.content) setContent(d.content);
-      setResult({ success: true, message: "임시저장 불러옴" });
-      setTimeout(() => setResult(null), 2000);
-    } catch {}
+  // Load a specific draft
+  const loadDraft = (draft: Draft) => {
+    setCollection(draft.collection);
+    setTitle(draft.title === "(제목 없음)" ? "" : draft.title);
+    setSlug(draft.slug);
+    setSlugManual(draft.slugManual);
+    setDescription(draft.description);
+    setCategories(draft.categories);
+    setTags(draft.tags);
+    setThumbnail(draft.thumbnail);
+    setRelatedSlugs(draft.relatedSlugs);
+    setContent(draft.content);
+    setShowDraftPicker(false);
+    setResult({ success: true, message: "임시저장 불러옴" });
+    setTimeout(() => setResult(null), 2000);
   };
 
-  // 임시저장 삭제
-  const clearDraft = () => {
-    localStorage.removeItem(DRAFT_KEY);
-    setHasDraft(false);
+  // Delete a specific draft
+  const deleteDraft = (id: string) => {
+    const updatedDrafts = drafts.filter(d => d.id !== id);
+    saveDraftsToStorage(updatedDrafts);
   };
 
-  // 임시저장 존재 확인 (마운트 시)
-  useEffect(() => {
-    setHasDraft(!!localStorage.getItem(DRAFT_KEY));
-  }, []);
+  // Get relative time string
+  const getRelativeTime = (isoString: string): string => {
+    const now = new Date();
+    const saved = new Date(isoString);
+    const diffMs = now.getTime() - saved.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return "방금 전";
+    if (diffMins < 60) return `${diffMins}분 전`;
+    if (diffHours < 24) return `${diffHours}시간 전`;
+    if (diffDays === 1) return "어제";
+    if (diffDays < 7) return `${diffDays}일 전`;
+    return saved.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  };
 
   // Auto-generate slug from title (unless manually edited)
   useEffect(() => {
@@ -124,7 +280,12 @@ export default function WritePage() {
         body: JSON.stringify({ collection, title, slug: slug || undefined, description, categories, tags, thumbnail, content, related: relatedSlugs }),
       });
       const data = await res.json();
-      if (data.success) { clearDraft(); setResult({ success: true, message: `저장 완료: ${data.filePath}` }); }
+      if (data.success) {
+        // Clear auto-save on successful save
+        localStorage.removeItem(AUTOSAVE_KEY);
+        setAutoSaveTime(null);
+        setResult({ success: true, message: `저장 완료: ${data.filePath}` });
+      }
       else { setResult({ success: false, message: data.error }); }
     } catch { setResult({ success: false, message: "저장 실패" }); }
     setSaving(false);
@@ -146,15 +307,81 @@ export default function WritePage() {
           <h2 className="text-xl font-semibold">간편 작성기</h2>
           <p className="text-sm text-muted-foreground mt-1">마크다운으로 작성하고 저장</p>
         </div>
-        <div className="flex gap-2">
-          {hasDraft && (
-            <button onClick={loadDraft}
-              className="text-xs px-3 py-1.5 rounded-md border border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 transition-colors flex items-center gap-1">
-              <RotateCcw className="h-3 w-3" />
-              임시저장 불러오기
-            </button>
+        <div className="flex items-center gap-2">
+          {/* Auto-save indicator */}
+          {autoSaveTime && (
+            <div className="text-[10px] text-muted-foreground/60 flex items-center gap-1 px-2 py-1 rounded-md bg-muted/50">
+              <Clock className="h-3 w-3" />
+              자동 저장됨 ({autoSaveTime})
+            </div>
           )}
-          <button onClick={saveDraft}
+
+          {/* Multi-draft picker */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDraftPicker(!showDraftPicker)}
+              className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+            >
+              <Archive className="h-3 w-3" />
+              임시저장 불러오기
+              {drafts.length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-medium rounded-full bg-primary/20 text-primary">
+                  {drafts.length}
+                </span>
+              )}
+              <ChevronDown className="h-3 w-3" />
+            </button>
+
+            {showDraftPicker && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowDraftPicker(false)} />
+                <div className="absolute right-0 top-full mt-1 w-80 max-h-96 overflow-y-auto rounded-md border border-border bg-popover shadow-lg z-20">
+                  {drafts.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      저장된 임시저장이 없습니다
+                    </div>
+                  ) : (
+                    <div className="py-1">
+                      {drafts.map((draft) => {
+                        const collectionLabel = COLLECTIONS.find(c => c.id === draft.collection)?.label || draft.collection;
+                        return (
+                          <div
+                            key={draft.id}
+                            className="group flex items-start gap-2 px-3 py-2 hover:bg-accent transition-colors"
+                          >
+                            <button
+                              onClick={() => loadDraft(draft)}
+                              className="flex-1 text-left min-w-0"
+                            >
+                              <div className="text-sm font-medium truncate">
+                                {draft.title || "(제목 없음)"}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                  {collectionLabel}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {getRelativeTime(draft.savedAt)}
+                                </span>
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => deleteDraft(draft.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:text-destructive transition-all"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          <button onClick={saveManualDraft}
             className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
             <Archive className="h-3 w-3" />
             임시저장
