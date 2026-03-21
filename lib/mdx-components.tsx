@@ -129,17 +129,24 @@ export const mdxComponents = {
     );
   },
   hr: () => <hr className="my-8 border-border" />,
-  img: ({ src, alt = "" }: React.ImgHTMLAttributes<HTMLImageElement>) => (
-    <ImageZoom>
-      <Image
-        src={typeof src === "string" ? src : ""}
-        alt={alt}
-        width={800}
-        height={400}
-        className="rounded-lg my-4"
-        loading="lazy"
-        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 60vw"
-      />
-    </ImageZoom>
-  ),
+  img: ({ src, alt = "" }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+    const sizeMatch = alt?.match(/^(\d+)$/);
+    const customWidth = sizeMatch ? Number(sizeMatch[1]) : null;
+    const displayAlt = customWidth ? "" : alt;
+
+    return (
+      <ImageZoom>
+        <Image
+          src={typeof src === "string" ? src : ""}
+          alt={displayAlt}
+          width={customWidth || 800}
+          height={customWidth ? Math.round(customWidth * 0.5) : 400}
+          className="rounded-lg my-4"
+          loading="lazy"
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 60vw"
+          {...(customWidth ? { style: { maxWidth: customWidth, width: "100%", height: "auto" } } : {})}
+        />
+      </ImageZoom>
+    );
+  },
 };
