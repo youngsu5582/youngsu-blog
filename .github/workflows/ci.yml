@@ -26,6 +26,9 @@ jobs:
       - name: Validate content
         run: npx tsx scripts/validate-content.ts
 
+      - name: Generate content data
+        run: npx velite
+
       - name: Test
         run: pnpm test
 
