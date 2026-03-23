@@ -1,0 +1,162 @@
+---
+title: TransactionalEventListener 사용할 때 주의점
+date: "Mon Mar 23 2026 09:00:00 GMT+0900 (한국 표준시)"
+description: TransactionalEvenetListener 를 사용할 때 주의해야 할 점
+categories:
+  - Spring
+tags:
+  - silent-failure
+  - transactional-event-listener
+  - transaction
+  - spring
+draft: false
+---
+
+### 세줄 요약
+
+- AFTER_COMMIT 이후 작업은 Silent Failure 가 발생할 수 있다.
+- 비동기 + TransactionalEveneListener 를 사용하자.
+- 동기로 처리해야한다면, REQUIRES_NEW 를 명시하자.
+
+## TransactionalEventListener 사용할 때 주의점
+
+아래와 같은 흐름으로 설계가 되어있다고 가정해보자.
+
+비즈니스 로직을 수행 -> 로직의 결과 콜백으로 전송 -> 콜백 결과에 따른 핸들링
+
+1. ProcessingService.processEvent
+
+- `@Transactional` 어노테이션 명시
+- ProcessedEvent 발행
+
+2. CallbackService.onProcessed
+
+- `@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)` 어노테이션 명시
+- ProcessedEvent 수신
+
+3. OperationProcessor.onCallbackSuccess
+
+- `@Transactional` 어노테이션 명시
+
+```java
+@Transactional
+public void onCallbackSuccess(PaidCreditProcessedEvent event) {
+    var paymentLog = paymentLogRepository.getByRequestIdOrThrow(event.getRequestId());
+    paymentLog.callbackSuccess();
+    paymentLogRepository.save(paymentLog);
+}
+```
+
+이와 같은 흐름은 아래 문제를 일으킨다.
+
+> 문제 및 해결이 됐는지 자세히 알아보기 위해 로그를 추적한다.
+
+```
+logging:
+  level:
+    org.springframework.transaction: TRACE
+    org.springframework.orm.jpa.JpaTransactionManager: TRACE
+```
+application.yml 에 TRACE 로 변경하자.
+
+### Silent Failure
+
+onCallbackSuccess 는 새로운 트랜잭션을 생성하는게 아닌
+이미 커밋된 트랜잭션에 참여한다.
+
+```
+// processEvent 트랜잭션
+Creating new transaction with name [processEvent]: PROPAGATION_REQUIRED
+...
+Completing transaction for [processEvent]
+Initiating transaction commit
+...
+
+// onCallbackSuccess
+Participating in existing transaction
+Getting transaction for [onCallbackSuccess]
+...
+Completing transaction for [onCallbackSuccess]
+Closing JPA EntityManager
+```
+
+엔티티의 상태를 바꿔도, `flush/commit` 이 일어나지 않아서 DB 에 반영되지 않는다.
+
+```
+paymentLogRepository.saveAndFlush(paymentLog);
+```
+
+flush 를 강제하는 메소드로 변경한다면?
+
+```
+jakarta.persistence.TransactionRequiredException: no transaction is in progress
+```
+
+에러가 발생한다. (Hibernate 가 감지를 해서 에러를 발생시킴)
+
+## 해결법
+
+### TransactionalEventListener + Async
+
+Async 로 새 스레드에서 작업을 한다.
+
+```
+// processEvent 트랜잭션
+Creating new transaction with name [processEvent]: PROPAGATION_REQUIRED
+...
+Completing transaction for [processEvent]
+Initiating transaction commit
+...
+
+// onProcessed 비동기 진입
+AnnotationAsyncExecutionInterceptor
+Closing JPA EntityManager
+
+// onCallbackSuccess
+Creating new transaction with name [onCallbackSuccess]: PROPAGATION_REQUIRED
+...
+Completing transaction for [onCallbackSuccess]
+Initiating transaction commit
+```
+
+기존 트랜잭션이 Closing 되고, 새로운 스레드는 Transaction 을 생성한다.
+
+### REQUIRES_NEW
+
+기존 스레드에서 동기로 처리해야할 필요가 있다면?
+필요한 로직에서 REQUIRES_NEW 를 사용하자.
+
+```
+// processEvent 트랜잭션
+Creating new transaction with name [processEvent]: PROPAGATION_REQUIRED
+...
+Completing transaction for [processEvent]
+Initiating transaction commit
+...
+
+// onCallbackSucces
+Suspending current transaction, creating new transaction with name [onCallbackSuccess]
+Completing transaction for [onCallbackSuccess]
+Initiating transaction commit
+
+// 기존 트랜잭션 복원 및 정리
+Resuming suspended transaction
+Closing JPA EntityManager
+```
+
+기존 트랜잭션을 Suspend(일시 중단) 하고, 새 트랜잭션을 만들어서 정상 동작한다.
+
+## Best Practice
+
+- REQUIRES_NEW 를 기본으로 명시하자.
+
+Async 와 상관없이, 트랜잭션이 앞에 처리가 되었으므로
+새로운 트랜잭션에 작업하는걸 보장해주자.
+
+- JDBC 트랜잭션과 ThreadLocal 트랜잭션 정보의 차이를 주의하자.
+
+AFTER_COMMIT 은 트랜잭션 커밋 후, 리소스 정리 전 실행된다.
+이때는 ThreadLocal 에 EntityManager 와 트랜잭션 플래그가 아직 남아있다.
+하지만, JDBC 트랜잭션 단에서는 이미 커밋이 완료된 상태이다.
+
+=> 이 간극을 잘 파악해야한다.
