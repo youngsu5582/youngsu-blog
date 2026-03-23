@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, ChevronDown, Clock } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const COLLECTIONS = [
   { id: "posts", label: "포스트", icon: FileText },
@@ -280,15 +282,6 @@ export default function WritePage() {
     setSaving(false);
   };
 
-  const previewHtml = content
-    .replace(/^### (.+)$/gm, "<h3 class='text-lg font-semibold mt-4 mb-2'>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2 class='text-xl font-semibold mt-6 mb-3'>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1 class='text-2xl font-bold mt-8 mb-4'>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/`([^`]+)`/g, "<code class='bg-muted px-1.5 py-0.5 rounded text-sm'>$1</code>")
-    .replace(/^- (.+)$/gm, "<li class='ml-4'>• $1</li>")
-    .replace(/\n\n/g, "<br/><br/>").replace(/\n/g, "<br/>");
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -503,8 +496,13 @@ export default function WritePage() {
             <div className="px-3 py-2 border-b border-border/40 bg-muted/30">
               <span className="text-xs font-medium text-muted-foreground">미리보기</span>
             </div>
-            <div className="flex-1 px-4 py-3 prose prose-sm prose-neutral dark:prose-invert max-w-none overflow-y-auto"
-              dangerouslySetInnerHTML={{ __html: previewHtml || '<p class="text-muted-foreground text-sm">내용을 입력하면 미리보기가 표시됩니다.</p>' }} />
+            <div className="flex-1 px-4 py-3 prose prose-sm prose-neutral dark:prose-invert max-w-none overflow-y-auto">
+              {content ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+              ) : (
+                <p className="text-muted-foreground text-sm">내용을 입력하면 미리보기가 표시됩니다.</p>
+              )}
+            </div>
           </div>
         )}
       </div>
