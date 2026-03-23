@@ -68,6 +68,40 @@ export async function POST(req: Request) {
   }
 }
 
+// DELETE: 콘텐츠 파일 삭제 (files 배열로 여러 파일 삭제 가능)
+export async function DELETE(req: Request) {
+  try {
+    const { files } = await req.json() as { files: string[] };
+    const cwd = process.cwd();
+    const allowedPrefixes = [path.join(cwd, "content/"), path.join(cwd, "public/")];
+
+    const deleted: string[] = [];
+    const errors: string[] = [];
+
+    for (const file of files) {
+      const absPath = path.join(cwd, file);
+      if (!allowedPrefixes.some((p) => absPath.startsWith(p))) {
+        errors.push(`${file}: 허용되지 않는 경로`);
+        continue;
+      }
+      if (!fs.existsSync(absPath)) {
+        errors.push(`${file}: 파일 없음`);
+        continue;
+      }
+      fs.unlinkSync(absPath);
+      deleted.push(file);
+    }
+
+    if (deleted.length === 0) {
+      return NextResponse.json({ error: errors.join(", ") || "삭제할 파일이 없습니다" }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, deleted, errors: errors.length > 0 ? errors : undefined });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
+
 // PUT: 컬렉션 간 파일 이동
 export async function PUT(req: Request) {
   try {
