@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit, Zap } from "lucide-react";
+import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 
 interface PostInfo {
@@ -51,11 +51,15 @@ export default function PublishPage() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [thumbnailLoading, setThumbnailLoading] = useState(false);
+  const [translateLoading, setTranslateLoading] = useState(false);
   const [mode, setMode] = useState<PublishMode>("direct");
   const [autoPush, setAutoPush] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [aiProviders, setAiProviders] = useState<AiProvider[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [generatedFiles, setGeneratedFiles] = useState<Map<string, string[]>>(new Map());
+  const [thumbnailPreview, setThumbnailPreview] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     // Fetch posts
@@ -179,6 +183,140 @@ export default function PublishPage() {
     setAiLoading(false);
   };
 
+  const handleGenerateThumbnail = async () => {
+    if (!editing || !editingPost) return;
+
+    setThumbnailLoading(true);
+    setResult(null);
+    try {
+      // Generate thumbnail
+      const genRes = await fetch("/api/admin/thumbnail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filePath: editing.post.filePath,
+          model: "gemini-2.5-flash-image",
+        }),
+      });
+      const genData = await genRes.json();
+
+      if (!genData.success) {
+        setResult({ success: false, message: genData.error || "썸네일 생성 실패" });
+        setThumbnailLoading(false);
+        return;
+      }
+
+      // Save thumbnail
+      const saveRes = await fetch("/api/admin/thumbnail/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base64: genData.base64,
+          filename: editing.post.filename,
+          originalPath: editing.post.filePath,
+        }),
+      });
+      const saveData = await saveRes.json();
+
+      if (saveData.success) {
+        // Update frontmatter with thumbnail URL
+        updateFrontmatter(editingPost, {
+          ...editing.frontmatter,
+          image: saveData.imagePath,
+        });
+
+        // Store preview
+        setThumbnailPreview((prev) => new Map(prev).set(editingPost, genData.base64));
+
+        // Track generated file
+        setGeneratedFiles((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(editingPost) || [];
+          next.set(editingPost, [...existing, saveData.savedPath]);
+          return next;
+        });
+
+        setResult({ success: true, message: "썸네일 생성 완료!" });
+      } else {
+        setResult({ success: false, message: saveData.error || "썸네일 저장 실패" });
+      }
+    } catch {
+      setResult({ success: false, message: "썸네일 생성 중 오류 발생" });
+    }
+    setThumbnailLoading(false);
+  };
+
+  const handleTranslate = async () => {
+    if (!editing || !editingPost) return;
+
+    if (!selectedProvider) {
+      setResult({ success: false, message: "AI 프로바이더를 선택하세요" });
+      return;
+    }
+
+    setTranslateLoading(true);
+    setResult(null);
+    try {
+      // Translate
+      const transRes = await fetch("/api/admin/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filePath: editing.post.filePath,
+          provider: selectedProvider,
+        }),
+      });
+      const transData = await transRes.json();
+
+      if (!transData.success) {
+        setResult({ success: false, message: transData.error || "번역 실패" });
+        setTranslateLoading(false);
+        return;
+      }
+
+      // Save translation
+      const saveRes = await fetch("/api/admin/translate/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          originalPath: editing.post.filePath,
+          translatedContent: transData.content,
+        }),
+      });
+      const saveData = await saveRes.json();
+
+      if (saveData.success) {
+        // Update state to reflect translation exists
+        setSelectedPosts((prev) => {
+          const next = new Map(prev);
+          const entry = next.get(editingPost);
+          if (entry) {
+            entry.post.hasEnVersion = true;
+            entry.post.enFilePath = saveData.enPath;
+            entry.includeEn = true;
+            next.set(editingPost, { ...entry });
+          }
+          return next;
+        });
+
+        // Track generated file
+        setGeneratedFiles((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(editingPost) || [];
+          next.set(editingPost, [...existing, saveData.enPath]);
+          return next;
+        });
+
+        setResult({ success: true, message: "번역 완료!" });
+      } else {
+        setResult({ success: false, message: saveData.error || "번역 저장 실패" });
+      }
+    } catch {
+      setResult({ success: false, message: "번역 중 오류 발생" });
+    }
+    setTranslateLoading(false);
+  };
+
   const handlePublish = async () => {
     if (selectedPosts.size === 0) return;
     setPublishing(true);
@@ -190,6 +328,7 @@ export default function PublishPage() {
         frontmatter: s.frontmatter,
         includeEn: s.includeEn,
         enSlug: s.post.enFilePath?.replace(`content/${s.post.collection}/`, "").replace(".mdx", ""),
+        generatedFiles: generatedFiles.get(s.post.filePath) || [],
       }));
 
       const res = await fetch("/api/admin/publish", {
@@ -209,6 +348,8 @@ export default function PublishPage() {
         setPosts((prev) => prev.filter((p) => !publishedPaths.has(p.filePath)));
         setSelectedPosts(new Map());
         setEditingPost(null);
+        setGeneratedFiles(new Map());
+        setThumbnailPreview(new Map());
       } else {
         setResult({ success: false, message: data.error });
       }
@@ -384,12 +525,32 @@ export default function PublishPage() {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">썸네일 URL</label>
-                  <input
-                    value={editing.frontmatter.image || ""}
-                    onChange={(e) => updateFrontmatter(editingPost!, { ...editing.frontmatter, image: e.target.value || undefined })}
-                    placeholder="https://... 또는 /assets/img/..."
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={editing.frontmatter.image || ""}
+                      onChange={(e) => updateFrontmatter(editingPost!, { ...editing.frontmatter, image: e.target.value || undefined })}
+                      placeholder="https://... 또는 /assets/img/..."
+                      className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      disabled={thumbnailLoading}
+                    />
+                    <button
+                      onClick={handleGenerateThumbnail}
+                      disabled={thumbnailLoading || aiLoading || translateLoading || !selectedProvider}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium bg-gradient-to-r from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 hover:from-purple-500/20 hover:to-pink-500/20 transition-all disabled:opacity-50 shrink-0"
+                    >
+                      {thumbnailLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
+                      {thumbnailLoading ? "생성 중..." : "생성하기"}
+                    </button>
+                  </div>
+                  {thumbnailPreview.has(editingPost!) && (
+                    <div className="mt-2">
+                      <img
+                        src={thumbnailPreview.get(editingPost!)}
+                        alt="Generated thumbnail"
+                        className="max-h-32 rounded-md border border-border"
+                      />
+                    </div>
+                  )}
                   {editing.frontmatter.image && (
                     <p className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-1">
                       <Check className="h-3 w-3" /> 썸네일 설정됨
@@ -397,23 +558,35 @@ export default function PublishPage() {
                   )}
                 </div>
 
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editing.includeEn}
-                    onChange={(e) => updateIncludeEn(editingPost!, e.target.checked)}
-                    disabled={!editing.post.hasEnVersion}
-                    className="rounded border-border"
-                  />
-                  <div>
-                    <span className="text-sm">영어 번역 포함</span>
-                    {editing.post.hasEnVersion ? (
-                      <span className="text-[10px] text-green-600 dark:text-green-400 ml-2">번역본 있음</span>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground ml-2">번역본 없음</span>
-                    )}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editing.includeEn}
+                        onChange={(e) => updateIncludeEn(editingPost!, e.target.checked)}
+                        disabled={!editing.post.hasEnVersion}
+                        className="rounded border-border"
+                      />
+                      <div>
+                        <span className="text-sm">영어 번역 포함</span>
+                        {editing.post.hasEnVersion ? (
+                          <span className="text-[10px] text-green-600 dark:text-green-400 ml-2">번역본 있음</span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground ml-2">번역본 없음</span>
+                        )}
+                      </div>
+                    </label>
+                    <button
+                      onClick={handleTranslate}
+                      disabled={translateLoading || aiLoading || thumbnailLoading || !selectedProvider}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-gradient-to-r from-blue-500/10 to-cyan-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:from-blue-500/20 hover:to-cyan-500/20 transition-all disabled:opacity-50 shrink-0"
+                    >
+                      {translateLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+                      {translateLoading ? "번역 중..." : editing.post.hasEnVersion ? "재번역" : "번역하기"}
+                    </button>
                   </div>
-                </label>
+                </div>
               </div>
             </>
           ) : selectedPosts.size > 0 ? (

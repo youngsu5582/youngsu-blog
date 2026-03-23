@@ -3,5 +3,7 @@ import { getAvailableProviders } from "@/lib/ai-provider";
 
 export async function GET() {
   const providers = getAvailableProviders();
-  return NextResponse.json({ providers });
+  return NextResponse.json({
+    providers,
+  });
 }

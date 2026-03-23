@@ -12,6 +12,7 @@ interface PublishPost {
   frontmatter: Record<string, unknown>;
   includeEn: boolean;
   enSlug?: string;
+  generatedFiles?: string[];
 }
 
 function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
@@ -52,7 +53,7 @@ function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
 function prepareFiles(posts: PublishPost[]): string[] {
   const filesToCommit: string[] = [];
 
-  for (const { slug, collection = "posts", frontmatter, includeEn, enSlug } of posts) {
+  for (const { slug, collection = "posts", frontmatter, includeEn, enSlug, generatedFiles } of posts) {
     const contentDir = path.join(CONTENT_ROOT, collection);
     const koFile = path.join(contentDir, `${slug}.mdx`);
     if (fs.existsSync(koFile)) {
@@ -70,6 +71,15 @@ function prepareFiles(posts: PublishPost[]): string[] {
           draft: false,
         });
         filesToCommit.push(`content/${collection}/${enSlug}.mdx`);
+      }
+    }
+
+    // Add generated files (thumbnails, translations)
+    if (generatedFiles && generatedFiles.length > 0) {
+      for (const genFile of generatedFiles) {
+        if (!filesToCommit.includes(genFile)) {
+          filesToCommit.push(genFile);
+        }
       }
     }
   }
