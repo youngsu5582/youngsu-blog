@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllPosts, getAllTags, getAllNotes } from "@/lib/content";
+import { getAllPosts, getAllTags, getAllNotes, type Note } from "@/lib/content";
 import { siteConfig } from "@/config/site";
 
 export async function GET(req: Request) {
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
   const tags = getAllTags("ko").slice(0, tagCount);
 
-  const notes = getAllNotes().slice(0, noteCount).map((note) => ({
+  const notes = getAllNotes().slice(0, noteCount).map((note: Note) => ({
     title: note.title,
     link: `${siteConfig.url}/notes/${note.slug.replace(/^notes\//, "")}`,
     date: note.date,
