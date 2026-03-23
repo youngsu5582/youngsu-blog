@@ -82,6 +82,15 @@ function prepareFiles(posts: PublishPost[]): string[] {
         }
       }
     }
+
+    // frontmatter image 필드에서 썸네일 자동 포함
+    if (typeof frontmatter.image === "string" && frontmatter.image.startsWith("/")) {
+      const thumbRelPath = `public${frontmatter.image}`;
+      const thumbAbsPath = path.join(process.cwd(), thumbRelPath);
+      if (fs.existsSync(thumbAbsPath) && !filesToCommit.includes(thumbRelPath)) {
+        filesToCommit.push(thumbRelPath);
+      }
+    }
   }
 
   return filesToCommit;
@@ -165,8 +174,10 @@ export async function POST(req: Request) {
 
       const commitMsg = buildCommitMessage(posts);
       const tmpFile = "/tmp/admin-publish-msg.txt";
-      const date = new Date().toISOString().slice(0, 10);
-      const branchName = `publish/${date}-${posts.length === 1 ? posts[0].slug : `${posts.length}-posts`}`;
+      const now = new Date();
+      const date = now.toISOString().slice(0, 10);
+      const time = now.toTimeString().slice(0, 8).replace(/:/g, "");
+      const branchName = `publish/${date}-${posts.length === 1 ? posts[0].slug : `${posts.length}-posts`}-${time}`;
 
       execSync(`git checkout -b "${branchName}"`, { cwd });
 
@@ -204,8 +215,9 @@ export async function POST(req: Request) {
           prUrl,
         });
       } finally {
-        // main 복귀 후 원본 파일 복원 (새 파일 삭제 방지 + frontmatter 원복)
+        // main 복귀 후 원본 파일 복원 + 로컬 브랜치 정리
         execSync("git checkout main", { cwd });
+        try { execSync(`git branch -D "${branchName}"`, { cwd }); } catch {}
         restoreFiles(preSaveContents);
       }
     }
