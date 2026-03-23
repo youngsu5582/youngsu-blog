@@ -95,6 +95,34 @@ function buildCommitMessage(posts: PublishPost[]): string {
   return `docs: ${posts.length}개 포스트 발행\n\n${titles}`;
 }
 
+function saveFileContents(cwd: string, posts: PublishPost[], filesToCommit: string[]): Map<string, Buffer> {
+  const saved = new Map<string, Buffer>();
+  // 콘텐츠 파일 (prepareFiles가 frontmatter 수정하므로 수정 전 저장)
+  for (const { slug, collection = "posts", includeEn, enSlug } of posts) {
+    const koFile = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
+    if (fs.existsSync(koFile)) saved.set(koFile, fs.readFileSync(koFile));
+    if (includeEn && enSlug) {
+      const enFile = path.join(CONTENT_ROOT, collection, `${enSlug}.mdx`);
+      if (fs.existsSync(enFile)) saved.set(enFile, fs.readFileSync(enFile));
+    }
+  }
+  // 생성된 파일 (썸네일 등)
+  for (const f of filesToCommit) {
+    const fullPath = path.join(cwd, f);
+    if (!saved.has(fullPath) && fs.existsSync(fullPath)) {
+      saved.set(fullPath, fs.readFileSync(fullPath));
+    }
+  }
+  return saved;
+}
+
+function restoreFiles(saved: Map<string, Buffer>) {
+  for (const [filePath, content] of saved) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content);
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -107,17 +135,36 @@ export async function POST(req: Request) {
     const mode: "direct" | "pr" = body.mode ?? "direct";
     const autoPush: boolean = body.autoPush ?? false;
 
-    const filesToCommit = prepareFiles(posts);
-
-    if (filesToCommit.length === 0) {
-      return NextResponse.json({ error: "발행할 파일이 없습니다" }, { status: 400 });
-    }
-
-    const commitMsg = buildCommitMessage(posts);
-    const tmpFile = "/tmp/admin-publish-msg.txt";
-
     if (mode === "pr") {
-      // PR 모드: 브랜치 생성 → 커밋 → 푸시 → PR 생성
+      // PR 모드: 원본 저장 → 수정 → 브랜치 → 커밋 → 푸시 → PR → 원본 복원
+      // 1. 콘텐츠 파일 원본 저장 (prepareFiles가 frontmatter를 수정하기 전)
+      const preSaveContents = new Map<string, Buffer>();
+      for (const { slug, collection = "posts", includeEn, enSlug } of posts) {
+        const koFile = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
+        if (fs.existsSync(koFile)) preSaveContents.set(koFile, fs.readFileSync(koFile));
+        if (includeEn && enSlug) {
+          const enFile = path.join(CONTENT_ROOT, collection, `${enSlug}.mdx`);
+          if (fs.existsSync(enFile)) preSaveContents.set(enFile, fs.readFileSync(enFile));
+        }
+      }
+
+      // 2. frontmatter 수정 + 커밋 대상 파일 목록
+      const filesToCommit = prepareFiles(posts);
+      if (filesToCommit.length === 0) {
+        restoreFiles(preSaveContents);
+        return NextResponse.json({ error: "발행할 파일이 없습니다" }, { status: 400 });
+      }
+
+      // 3. 생성된 파일(썸네일 등)도 저장
+      for (const f of filesToCommit) {
+        const fullPath = path.join(cwd, f);
+        if (!preSaveContents.has(fullPath) && fs.existsSync(fullPath)) {
+          preSaveContents.set(fullPath, fs.readFileSync(fullPath));
+        }
+      }
+
+      const commitMsg = buildCommitMessage(posts);
+      const tmpFile = "/tmp/admin-publish-msg.txt";
       const date = new Date().toISOString().slice(0, 10);
       const branchName = `publish/${date}-${posts.length === 1 ? posts[0].slug : `${posts.length}-posts`}`;
 
@@ -157,12 +204,22 @@ export async function POST(req: Request) {
           prUrl,
         });
       } finally {
-        // main으로 복귀
+        // main 복귀 후 원본 파일 복원 (새 파일 삭제 방지 + frontmatter 원복)
         execSync("git checkout main", { cwd });
+        restoreFiles(preSaveContents);
       }
     }
 
     // Direct 모드: 기존 동작
+    const filesToCommit = prepareFiles(posts);
+
+    if (filesToCommit.length === 0) {
+      return NextResponse.json({ error: "발행할 파일이 없습니다" }, { status: 400 });
+    }
+
+    const commitMsg = buildCommitMessage(posts);
+    const tmpFile = "/tmp/admin-publish-msg.txt";
+
     for (const f of filesToCommit) {
       execSync(`git add "${f}"`, { cwd });
     }
