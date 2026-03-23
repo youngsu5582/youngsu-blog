@@ -105,7 +105,7 @@ export const mdxComponents = {
 
     return (
       <div className="relative group">
-        <pre className="overflow-x-auto rounded-lg border border-border bg-muted p-4 my-4 text-sm" {...props}>
+        <pre className="overflow-x-auto rounded-lg border border-border bg-muted text-foreground p-4 my-4 text-sm" {...props}>
           {children}
         </pre>
         {codeText && <CodeCopyButton code={codeText} />}

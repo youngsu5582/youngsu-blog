@@ -308,6 +308,13 @@ body {
 .dark [data-rehype-pretty-code-figure] code span {
   color: var(--shiki-dark) !important;
 }
+/* 언어 미지정 코드 블록 — 텍스트 가독성 보장 */
+[data-rehype-pretty-code-figure] pre:not([data-language]) code span {
+  color: #24292e !important;
+}
+.dark [data-rehype-pretty-code-figure] pre:not([data-language]) code span {
+  color: #e1e4e8 !important;
+}
 /* Inline code — glass pill */
 :not(pre) > code {
   background: var(--theme-glass);
