@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { getAllPosts, getAllTags } from "@/lib/content";
+import { getAllPosts, getAllTags, getAllNotes } from "@/lib/content";
 import { siteConfig } from "@/config/site";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const postCount = Math.min(Number(searchParams.get("posts") || 5), 20);
   const tagCount = Math.min(Number(searchParams.get("tags") || 10), 50);
+  const noteCount = Math.min(Number(searchParams.get("notes") || 3), 10);
 
   const posts = getAllPosts("ko").slice(0, postCount).map((post) => ({
     title: post.title,
@@ -15,5 +16,12 @@ export async function GET(req: Request) {
 
   const tags = getAllTags("ko").slice(0, tagCount);
 
-  return NextResponse.json({ posts, tags });
+  const notes = getAllNotes().slice(0, noteCount).map((note) => ({
+    title: note.title,
+    link: `${siteConfig.url}/notes/${note.slug.replace(/^notes\//, "")}`,
+    date: note.date,
+    tags: note.tags,
+  }));
+
+  return NextResponse.json({ posts, tags, notes });
 }
