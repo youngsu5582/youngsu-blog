@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react";
+import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock, ChevronDown, ChevronUp, ArrowLeft, Trash2 } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -50,6 +50,12 @@ export default function EditPage() {
 
   // Move target
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
+
+  // Delete
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [associatedFiles, setAssociatedFiles] = useState<Array<{ path: string; label: string; checked: boolean }>>([]);
+  const [loadingAssociated, setLoadingAssociated] = useState(false);
 
   // Preview and auto-save state
   const [showPreview, setShowPreview] = useState(true);
@@ -218,6 +224,83 @@ export default function EditPage() {
       setResult({ success: false, message: "저장 실패" });
     }
     setSaving(false);
+  };
+
+  const openDeleteConfirm = async () => {
+    if (!selectedItem) return;
+    setLoadingAssociated(true);
+    setShowDeleteConfirm(true);
+
+    const slug = selectedItem.slug;
+    const col = selectedItem.collection;
+    const candidates: Array<{ path: string; label: string }> = [];
+
+    // 영문 번역 파일 (본인이 -en이 아닐 때만)
+    if (!slug.endsWith("-en")) {
+      candidates.push({ path: `content/${col}/${slug}-en.mdx`, label: "영문 번역" });
+    }
+
+    // 썸네일 이미지
+    if (frontmatter.image) {
+      const imgPath = (frontmatter.image as string).startsWith("/")
+        ? `public${frontmatter.image}`
+        : frontmatter.image as string;
+      candidates.push({ path: imgPath, label: "썸네일 이미지" });
+    }
+
+    // 존재 여부 확인
+    const checks = await Promise.all(
+      candidates.map(async (c) => {
+        try {
+          const res = await fetch(`/api/admin/edit?file=${encodeURIComponent(c.path)}`);
+          return { ...c, exists: res.ok };
+        } catch {
+          return { ...c, exists: false };
+        }
+      })
+    );
+
+    setAssociatedFiles(checks.filter((c) => c.exists).map((c) => ({ path: c.path, label: c.label, checked: false })));
+    setLoadingAssociated(false);
+  };
+
+  const handleDelete = async () => {
+    if (!selectedItem) return;
+    setDeleting(true);
+    setResult(null);
+    try {
+      const mainFile = `content/${selectedItem.collection}/${selectedItem.slug}.mdx`;
+      const filesToDelete = [mainFile, ...associatedFiles.filter((f) => f.checked).map((f) => f.path)];
+
+      const res = await fetch("/api/admin/edit", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: filesToDelete }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const autoSaveKey = `admin-edit-draft-${selectedItem.collection}-${selectedItem.slug}`;
+        localStorage.removeItem(autoSaveKey);
+
+        // 삭제된 slug들을 목록에서 제거 (영문 파일 포함)
+        const deletedSlugs = new Set((data.deleted as string[]).map((f: string) => {
+          const match = f.match(/content\/[^/]+\/(.+)\.mdx$/);
+          return match ? match[1] : null;
+        }).filter(Boolean));
+
+        setItems((prev) => prev.filter((i) => !deletedSlugs.has(i.slug)));
+        setSelectedItem(null);
+        setShowDeleteConfirm(false);
+        setAssociatedFiles([]);
+        const deletedList = (data.deleted as string[]).join(", ");
+        setResult({ success: true, message: `삭제 완료: ${deletedList}` });
+      } else {
+        setResult({ success: false, message: data.error });
+      }
+    } catch {
+      setResult({ success: false, message: "삭제 실패" });
+    }
+    setDeleting(false);
   };
 
   const handleMove = async () => {
@@ -427,6 +510,50 @@ export default function EditPage() {
                       className="text-[10px] px-2 py-1 rounded-full bg-amber-500 text-white flex items-center gap-1">
                       <ArrowRight className="h-3 w-3" /> 이동
                     </button>
+                  )}
+                </div>
+
+                {/* Delete */}
+                <div className="pt-2 border-t border-border/30">
+                  {!showDeleteConfirm ? (
+                    <button onClick={openDeleteConfirm}
+                      className="text-[10px] px-2 py-1 rounded-full text-red-500 hover:bg-red-500/10 transition-colors flex items-center gap-1">
+                      <Trash2 className="h-3 w-3" /> 삭제
+                    </button>
+                  ) : (
+                    <div className="p-2.5 rounded-md bg-red-500/5 border border-red-500/20 space-y-2">
+                      <p className="text-[10px] text-red-500 font-medium">정말 삭제하시겠습니까?</p>
+                      <div className="text-[10px] text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <input type="checkbox" checked disabled className="h-3 w-3 accent-red-500" />
+                          <span>{selectedItem.slug}.mdx</span>
+                        </div>
+                        {loadingAssociated && (
+                          <div className="flex items-center gap-1 text-muted-foreground/60">
+                            <Loader2 className="h-3 w-3 animate-spin" /> 연관 파일 확인 중...
+                          </div>
+                        )}
+                        {associatedFiles.map((af) => (
+                          <label key={af.path} className="flex items-center gap-1.5 cursor-pointer hover:text-foreground">
+                            <input type="checkbox" checked={af.checked} className="h-3 w-3 accent-red-500"
+                              onChange={(e) => setAssociatedFiles((prev) =>
+                                prev.map((f) => f.path === af.path ? { ...f, checked: e.target.checked } : f)
+                              )} />
+                            <span>{af.label} ({af.path})</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button onClick={handleDelete} disabled={deleting}
+                          className="text-[10px] px-2 py-1 rounded-full bg-red-500 text-white flex items-center gap-1 hover:bg-red-600 transition-colors">
+                          {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} 삭제
+                        </button>
+                        <button onClick={() => { setShowDeleteConfirm(false); setAssociatedFiles([]); }}
+                          className="text-[10px] px-2 py-1 rounded-full bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                          취소
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
                 </div>}
