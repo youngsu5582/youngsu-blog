@@ -44,9 +44,9 @@ export function ImageZoom({ children }: ImageZoomProps) {
 
   return (
     <>
-      <div onClick={handleClick} className="cursor-zoom-in">
+      <span onClick={handleClick} className="cursor-zoom-in inline-block">
         {children}
-      </div>
+      </span>
 
       {isOpen && (
         <div
