@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
   const notes = getAllNotes().slice(0, noteCount).map((note: Note) => ({
     title: note.title,
-    link: `${siteConfig.url}/notes`,
+    link: `${siteConfig.url}/notes/${note.slug.replace(/^notes\//, "")}`,
     date: note.date,
     tags: note.tags,
   }));
