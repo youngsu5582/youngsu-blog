@@ -70,7 +70,20 @@ Translate to English and return JSON only.`;
       });
     }
 
-    const translation = response.result;
+    let translation = response.result;
+
+    // result가 문자열인 경우 JSON 파싱 시도
+    if (typeof translation === "string") {
+      try {
+        const jsonMatch = translation.match(/\{[\s\S]*\}/);
+        if (jsonMatch) translation = JSON.parse(jsonMatch[0]);
+      } catch {
+        return NextResponse.json({
+          success: false,
+          error: "번역 응답을 파싱할 수 없습니다. 다시 시도해주세요.",
+        });
+      }
+    }
 
     return NextResponse.json({
       success: true,

@@ -103,32 +103,33 @@ async function executeCliProvider(provider: AiProvider, prompt: string): Promise
     // CLI 실행 (60초 타임아웃)
     const output = execSync(command, {
       encoding: "utf-8",
-      timeout: 60000,
+      timeout: 180000,
       maxBuffer: 1024 * 1024 * 10, // 10MB
     });
 
-    // JSON 추출
+    // JSON 추출 시도, 실패 시 원본 텍스트 반환
     const jsonMatch = output.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return {
-        success: false,
-        provider,
-        error: "CLI 응답에서 JSON을 찾을 수 없습니다",
-      };
+    if (jsonMatch) {
+      try {
+        const result = JSON.parse(jsonMatch[0]);
+        return { success: true, provider, result };
+      } catch {
+        // JSON 파싱 실패 — 텍스트로 반환
+      }
     }
 
-    const result = JSON.parse(jsonMatch[0]);
+    // 마크다운/텍스트 응답 그대로 반환
     return {
       success: true,
       provider,
-      result,
+      result: output.trim(),
     };
   } catch (err: any) {
     if (err.code === "ETIMEDOUT") {
       return {
         success: false,
         provider,
-        error: "CLI 실행 시간이 초과되었습니다 (60초)",
+        error: "CLI 실행 시간이 초과되었습니다 (180초)",
       };
     }
     return {

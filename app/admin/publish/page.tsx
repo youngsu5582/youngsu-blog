@@ -3,6 +3,33 @@
 import { useState, useEffect } from "react";
 import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+function TranslationPreview({ filePath }: { filePath: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/admin/edit?file=${encodeURIComponent(filePath)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setContent(data.body || null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [filePath]);
+
+  if (loading) return <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />;
+  if (!content) return <p className="text-[10px] text-muted-foreground">미리보기를 불러올 수 없습니다</p>;
+
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none text-xs">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content.slice(0, 1500)}</ReactMarkdown>
+      {content.length > 1500 && <p className="text-[10px] text-muted-foreground mt-2">... (일부만 표시)</p>}
+    </div>
+  );
+}
 
 interface PostInfo {
   filePath: string;
@@ -60,6 +87,11 @@ export default function PublishPage() {
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [generatedFiles, setGeneratedFiles] = useState<Map<string, string[]>>(new Map());
   const [thumbnailPreview, setThumbnailPreview] = useState<Map<string, string>>(new Map());
+  const [thumbnailModels, setThumbnailModels] = useState<{ id: string; displayName: string }[]>([]);
+  const [selectedThumbnailModel, setSelectedThumbnailModel] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewContent, setReviewContent] = useState<Map<string, string>>(new Map());
+  const [showReview, setShowReview] = useState(false);
 
   useEffect(() => {
     // Fetch posts
@@ -89,6 +121,21 @@ export default function PublishPage() {
           if (firstAvailable) {
             setSelectedProvider(firstAvailable.id);
           }
+        }
+      })
+      .catch(() => {});
+
+    // Fetch thumbnail models
+    fetch("/api/admin/thumbnail/models")
+      .then((r) => r.json())
+      .then((data) => {
+        const models = data.models || [];
+        setThumbnailModels(models);
+        const saved = localStorage.getItem("admin-thumbnail-model");
+        if (saved && models.some((m: any) => m.id === saved)) {
+          setSelectedThumbnailModel(saved);
+        } else if (models.length > 0) {
+          setSelectedThumbnailModel(models[0].id);
         }
       })
       .catch(() => {});
@@ -195,7 +242,7 @@ export default function PublishPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           filePath: editing.post.filePath,
-          model: "gemini-2.5-flash-image",
+          model: selectedThumbnailModel || "gemini-2.5-flash-image",
         }),
       });
       const genData = await genRes.json();
@@ -226,7 +273,7 @@ export default function PublishPage() {
         });
 
         // Store preview
-        setThumbnailPreview((prev) => new Map(prev).set(editingPost, genData.base64));
+        setThumbnailPreview((prev) => new Map(prev).set(editingPost, `data:image/png;base64,${genData.base64}`));
 
         // Track generated file
         setGeneratedFiles((prev) => {
@@ -275,12 +322,17 @@ export default function PublishPage() {
       }
 
       // Save translation
+      const t = transData.translation;
       const saveRes = await fetch("/api/admin/translate/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           originalPath: editing.post.filePath,
-          translatedContent: transData.content,
+          title: t.title,
+          description: t.description,
+          categories: t.categories,
+          tags: t.tags,
+          content: t.content,
         }),
       });
       const saveData = await saveRes.json();
@@ -315,6 +367,42 @@ export default function PublishPage() {
       setResult({ success: false, message: "번역 중 오류 발생" });
     }
     setTranslateLoading(false);
+  };
+
+  const handleReview = async () => {
+    if (!editing || !editingPost) return;
+    if (!selectedProvider) {
+      setResult({ success: false, message: "AI 프로바이더를 선택하세요" });
+      return;
+    }
+
+    setReviewLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/ai/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filePath: editing.post.filePath,
+          provider: selectedProvider,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReviewContent((prev) => new Map(prev).set(editingPost, data.review));
+        setShowReview(true);
+        setResult({ success: true, message: `리뷰 완료 (${data.provider})` });
+        // 리뷰 영역으로 스크롤
+        setTimeout(() => {
+          document.getElementById("review-result")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
+      } else {
+        setResult({ success: false, message: data.error || "리뷰 실패" });
+      }
+    } catch {
+      setResult({ success: false, message: "리뷰 중 오류 발생" });
+    }
+    setReviewLoading(false);
   };
 
   const handlePublish = async () => {
@@ -487,6 +575,14 @@ export default function PublishPage() {
                       {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                       AI 도움받기
                     </button>
+                    <button
+                      onClick={handleReview}
+                      disabled={reviewLoading || aiLoading || !selectedProvider}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:from-amber-500/20 hover:to-orange-500/20 transition-all disabled:opacity-50"
+                    >
+                      {reviewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
+                      {reviewLoading ? "리뷰 중..." : "AI 리뷰"}
+                    </button>
                   </div>
                 </div>
 
@@ -533,9 +629,22 @@ export default function PublishPage() {
                       className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                       disabled={thumbnailLoading}
                     />
+                    <select
+                      value={selectedThumbnailModel}
+                      onChange={(e) => {
+                        setSelectedThumbnailModel(e.target.value);
+                        localStorage.setItem("admin-thumbnail-model", e.target.value);
+                      }}
+                      disabled={thumbnailLoading}
+                      className="text-[10px] rounded-md border border-border bg-background px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-primary/50 max-w-[120px]"
+                    >
+                      {thumbnailModels.map((m) => (
+                        <option key={m.id} value={m.id}>{m.displayName}</option>
+                      ))}
+                    </select>
                     <button
                       onClick={handleGenerateThumbnail}
-                      disabled={thumbnailLoading || aiLoading || translateLoading || !selectedProvider}
+                      disabled={thumbnailLoading || aiLoading || translateLoading}
                       className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium bg-gradient-to-r from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 hover:from-purple-500/20 hover:to-pink-500/20 transition-all disabled:opacity-50 shrink-0"
                     >
                       {thumbnailLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
@@ -543,18 +652,37 @@ export default function PublishPage() {
                     </button>
                   </div>
                   {thumbnailPreview.has(editingPost!) && (
-                    <div className="mt-2">
+                    <div className="mt-2 space-y-2">
                       <img
                         src={thumbnailPreview.get(editingPost!)}
                         alt="Generated thumbnail"
-                        className="max-h-32 rounded-md border border-border"
+                        className="max-h-40 rounded-md border border-border cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => window.open(thumbnailPreview.get(editingPost!), "_blank")}
+                        title="클릭하면 크게 보기"
                       />
+                      <button
+                        onClick={handleGenerateThumbnail}
+                        disabled={thumbnailLoading || aiLoading || translateLoading}
+                        className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        마음에 안 들면 재생성
+                      </button>
                     </div>
                   )}
-                  {editing.frontmatter.image && (
-                    <p className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-1">
-                      <Check className="h-3 w-3" /> 썸네일 설정됨
-                    </p>
+                  {editing.frontmatter.image && !thumbnailPreview.has(editingPost!) && (
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-1">
+                        <Check className="h-3 w-3" /> 썸네일 설정됨
+                      </p>
+                      {editing.frontmatter.image.startsWith("/") && (
+                        <button
+                          onClick={() => window.open(editing.frontmatter.image, "_blank")}
+                          className="text-[10px] text-primary hover:underline"
+                        >
+                          미리보기
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -577,16 +705,58 @@ export default function PublishPage() {
                         )}
                       </div>
                     </label>
-                    <button
-                      onClick={handleTranslate}
-                      disabled={translateLoading || aiLoading || thumbnailLoading || !selectedProvider}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-gradient-to-r from-blue-500/10 to-cyan-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:from-blue-500/20 hover:to-cyan-500/20 transition-all disabled:opacity-50 shrink-0"
-                    >
-                      {translateLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
-                      {translateLoading ? "번역 중..." : editing.post.hasEnVersion ? "재번역" : "번역하기"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {editing.post.hasEnVersion && editing.post.enFilePath && (
+                        <button
+                          onClick={() => window.open(`/posts/${editing.post.filename}-en`, "_blank")}
+                          className="text-[10px] text-primary hover:underline"
+                        >
+                          새 탭에서 보기
+                        </button>
+                      )}
+                      <button
+                        onClick={handleTranslate}
+                        disabled={translateLoading || aiLoading || thumbnailLoading || !selectedProvider}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-gradient-to-r from-blue-500/10 to-cyan-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:from-blue-500/20 hover:to-cyan-500/20 transition-all disabled:opacity-50 shrink-0"
+                      >
+                        {translateLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+                        {translateLoading ? "번역 중..." : editing.post.hasEnVersion ? "재번역" : "번역하기"}
+                      </button>
+                    </div>
                   </div>
+                  {/* Translation preview */}
+                  {editing.post.hasEnVersion && editing.post.enFilePath && (
+                    <div className="mt-2 p-3 rounded-md border border-blue-500/20 bg-blue-500/5 max-h-48 overflow-y-auto">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span className="text-[10px] font-medium text-muted-foreground">번역 미리보기</span>
+                      </div>
+                      <TranslationPreview filePath={editing.post.enFilePath} />
+                    </div>
+                  )}
                 </div>
+
+                {/* AI Review */}
+                {reviewContent.has(editingPost!) && (
+                  <div id="review-result" className="space-y-1.5">
+                    <button
+                      onClick={() => setShowReview(!showReview)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline"
+                    >
+                      <FileText className="h-3 w-3" />
+                      AI 리뷰 결과 {showReview ? "접기" : "보기"}
+                    </button>
+                    {showReview && (
+                      <div className="p-4 rounded-md border border-amber-500/20 bg-amber-500/5 max-h-96 overflow-y-auto">
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {reviewContent.get(editingPost!) || ""}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           ) : selectedPosts.size > 0 ? (

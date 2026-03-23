@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock } from "lucide-react";
+import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -53,6 +53,7 @@ export default function EditPage() {
 
   // Preview and auto-save state
   const [showPreview, setShowPreview] = useState(true);
+  const [showMeta, setShowMeta] = useState(true);
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -288,9 +289,9 @@ export default function EditPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
+      <div className={selectedItem ? "" : "grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4"}>
         {/* Left: Content list */}
-        <div className="rounded-lg border border-border/60 p-3 space-y-3">
+        <div className={`rounded-lg border border-border/60 p-3 space-y-3 ${selectedItem ? "hidden" : ""}`}>
           <div className="relative">
             <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="검색..."
@@ -343,15 +344,31 @@ export default function EditPage() {
             <div className="flex items-center justify-center py-20"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
             <div className="space-y-4">
-              {/* Frontmatter */}
-              <div className="rounded-lg border border-border/60 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">메타데이터</h3>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${COLLECTION_BADGE[selectedItem.collection]}`}>
-                    {selectedItem.collection}
-                  </span>
-                </div>
+              {/* Back button */}
+              <button
+                onClick={() => { setSelectedItem(null); setShowMeta(true); }}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                목록으로
+              </button>
 
+              {/* Frontmatter */}
+              <div className="rounded-lg border border-border/60 p-4">
+                <button
+                  onClick={() => setShowMeta(!showMeta)}
+                  className="flex items-center justify-between w-full"
+                >
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold">메타데이터</h3>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${COLLECTION_BADGE[selectedItem.collection]}`}>
+                      {selectedItem.collection}
+                    </span>
+                  </div>
+                  {showMeta ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                </button>
+
+                {showMeta && <div className="space-y-3 mt-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">제목</label>
@@ -412,6 +429,7 @@ export default function EditPage() {
                     </button>
                   )}
                 </div>
+                </div>}
               </div>
 
               {/* Body editor + Preview */}

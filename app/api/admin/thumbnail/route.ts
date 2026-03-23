@@ -54,7 +54,7 @@ Generate a detailed English prompt for an image generation AI that will create a
 STYLE REQUIREMENTS:
 - Cute cartoon/illustration style with kawaii aesthetic
 - Pastel color palette (soft blue, pink, yellow, mint, lavender)
-- Include small cute character/mascot (chibi style programmer, friendly robot, or tech animal)
+- Include a cute male character/mascot (chibi style young male programmer with short brown hair, friendly expression)
 - Clean infographic-like layout with visual hierarchy
 - Card-based or section-based organization
 - Minimal, rounded shapes and soft edges
@@ -64,11 +64,12 @@ STYLE REQUIREMENTS:
 
 TEXT IN IMAGE:
 - Include the blog post title "${title}" as prominent text in the image
-- If the title is Korean, use Korean text
-- The title should be clearly readable, large, and well-positioned (center or top area)
-- Optionally include a short subtitle or description below the title
-- Use clean, modern typography that fits the cute illustration style
-- Text should have good contrast against the background
+- The title MUST be in Korean (한국어) — render Korean characters accurately and clearly
+- The title should be clearly readable, large, bold, and well-positioned (center or top area)
+- Optionally include a short Korean subtitle or description below the title
+- Use clean, modern sans-serif typography (similar to Pretendard or Noto Sans KR)
+- Text should have strong contrast against the background
+- CRITICAL: Korean text must be legible and not distorted — each character should be recognizable
 
 COMPOSITION:
 - Keep the overall layout clean and uncluttered
@@ -114,53 +115,83 @@ Return ONLY the image generation prompt as plain text, nothing else.`,
       );
     }
 
-    // Step 2: Generate image using selected Gemini model
+    // Step 2: Generate image using selected model
     let base64Image: string | null = null;
     let generationMethod = "";
     let imageError = "";
 
-    try {
-      const geminiImageRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `Generate a high-resolution (at least 2048x2048 pixels) thumbnail image for a tech blog post. ${imagePrompt}`,
-                  },
-                ],
-              },
-            ],
-            generationConfig: {
-              responseModalities: ["IMAGE", "TEXT"],
-            },
-          }),
-        }
-      );
+    const isImagenModel = selectedModel.startsWith("imagen");
 
-      if (geminiImageRes.ok) {
-        const geminiImageData = await geminiImageRes.json();
-        const parts = geminiImageData.candidates?.[0]?.content?.parts || [];
-        for (const part of parts) {
-          if (part.inlineData?.data) {
-            base64Image = part.inlineData.data;
-            generationMethod = selectedModel;
-            break;
+    try {
+      if (isImagenModel) {
+        // Imagen API uses different endpoint and format
+        const imagenRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:predict?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              instances: [{ prompt: `High-resolution tech blog thumbnail. ${imagePrompt}` }],
+              parameters: {
+                sampleCount: 1,
+                aspectRatio: "16:9",
+              },
+            }),
           }
-        }
-        if (!base64Image) {
-          imageError = "Gemini가 이미지를 반환하지 않았습니다. 텍스트만 응답됨.";
+        );
+
+        if (imagenRes.ok) {
+          const imagenData = await imagenRes.json();
+          base64Image = imagenData.predictions?.[0]?.bytesBase64Encoded;
+          generationMethod = selectedModel;
+        } else {
+          const errData = await imagenRes.json().catch(() => ({}));
+          imageError = `Imagen ${imagenRes.status}: ${errData.error?.message || "알 수 없는 오류"}`;
         }
       } else {
-        const errData = await geminiImageRes.json().catch(() => ({}));
-        imageError = `Gemini ${geminiImageRes.status}: ${errData.error?.message || "알 수 없는 오류"}`;
+        // Gemini API
+        const geminiImageRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: `Generate a high-resolution (at least 2048x2048 pixels) thumbnail image for a tech blog post. ${imagePrompt}`,
+                    },
+                  ],
+                },
+              ],
+              generationConfig: {
+                responseModalities: ["IMAGE", "TEXT"],
+              },
+            }),
+          }
+        );
+
+        if (geminiImageRes.ok) {
+          const geminiImageData = await geminiImageRes.json();
+          const parts = geminiImageData.candidates?.[0]?.content?.parts || [];
+          for (const part of parts) {
+            if (part.inlineData?.data) {
+              base64Image = part.inlineData.data;
+              generationMethod = selectedModel;
+              break;
+            }
+          }
+          if (!base64Image) {
+            imageError = "Gemini가 이미지를 반환하지 않았습니다. 텍스트만 응답됨.";
+          }
+        } else {
+          const errData = await geminiImageRes.json().catch(() => ({}));
+          imageError = `Gemini ${geminiImageRes.status}: ${errData.error?.message || "알 수 없는 오류"}`;
+        }
       }
     } catch (e: any) {
-      imageError = `Gemini 요청 실패: ${e.message}`;
+      imageError = `이미지 생성 요청 실패: ${e.message}`;
     }
 
     if (!base64Image) {

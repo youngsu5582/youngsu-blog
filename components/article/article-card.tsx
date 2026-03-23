@@ -105,16 +105,16 @@ export function ArticleCard({
         {/* Thumbnail */}
         {image && (
           <Link href={`/articles/${slug}`} className="flex-shrink-0">
-            <div className="w-28 h-28 rounded-lg overflow-hidden bg-muted">
+            <div className="w-48 h-28 rounded-lg overflow-hidden bg-muted">
               <Image
                 src={image}
                 alt={title}
-                width={112}
-                height={112}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                width={384}
+                height={384}
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                 loading="lazy"
-                sizes="112px"
-                quality={75}
+                sizes="192px"
+                quality={90}
               />
             </div>
           </Link>

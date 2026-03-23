@@ -13,14 +13,19 @@ export async function GET() {
     // Hardcoded curated list of known image-capable models
     const curatedModels = [
       {
-        id: "gemini-2.5-flash-image",
-        displayName: "Gemini 2.5 Flash Image (권장)",
-        description: "빠른 이미지 생성에 최적화된 모델",
+        id: "imagen-4.0-generate-001",
+        displayName: "Imagen 4 (고화질, 유료)",
+        description: "Google 최고 화질 이미지 생성 모델",
       },
       {
-        id: "gemini-2.0-flash-exp",
-        displayName: "Gemini 2.0 Flash Experimental",
-        description: "실험적 이미지 생성 기능",
+        id: "gemini-3.1-flash-image-preview",
+        displayName: "Nano Banana 2 (최신, 한글 우수)",
+        description: "최신 이미지 생성 모델, 한글 텍스트 렌더링 개선",
+      },
+      {
+        id: "gemini-2.5-flash-image",
+        displayName: "Gemini 2.5 Flash Image",
+        description: "빠른 이미지 생성에 최적화된 모델",
       },
     ];
 
