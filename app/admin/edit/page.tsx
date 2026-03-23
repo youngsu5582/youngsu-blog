@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ContentItem {
   slug: string;
@@ -24,6 +26,8 @@ const COLLECTION_BADGE: Record<string, string> = {
   notes: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
   library: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
 };
+
+const AUTOSAVE_DELAY = 5000; // 5 seconds
 
 export default function EditPage() {
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -47,6 +51,61 @@ export default function EditPage() {
   // Move target
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
 
+  // Preview and auto-save state
+  const [showPreview, setShowPreview] = useState(true);
+  const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-save function
+  const performAutoSave = useCallback(() => {
+    if (!selectedItem) return;
+
+    const key = `admin-edit-draft-${selectedItem.collection}-${selectedItem.slug}`;
+    const data = {
+      frontmatter,
+      body,
+      editSlug,
+      savedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(key, JSON.stringify(data));
+
+    const now = new Date();
+    setAutoSaveTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
+  }, [selectedItem, frontmatter, body, editSlug]);
+
+  // Debounced auto-save effect
+  useEffect(() => {
+    if (!selectedItem) return;
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    if (body || frontmatter.title || frontmatter.description) {
+      autoSaveTimerRef.current = setTimeout(() => {
+        performAutoSave();
+      }, AUTOSAVE_DELAY);
+    }
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [body, frontmatter, editSlug, selectedItem, performAutoSave]);
+
+  // Save immediately on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (selectedItem && (body || frontmatter.title || frontmatter.description)) {
+        performAutoSave();
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [performAutoSave, selectedItem, body, frontmatter]);
+
   useEffect(() => {
     Promise.all([
       fetch("/api/admin/content").then((r) => r.json()),
@@ -66,17 +125,55 @@ export default function EditPage() {
   });
 
   const loadContent = async (item: ContentItem) => {
+    // Save current auto-save before switching
+    if (selectedItem && (body || frontmatter.title || frontmatter.description)) {
+      performAutoSave();
+    }
+
     setSelectedItem(item);
     setEditSlug(item.slug);
     setLoadingContent(true);
     setResult(null);
     setMoveTarget(null);
+    setAutoSaveTime(null);
+
     try {
       const filePath = `content/${item.collection}/${item.slug}.mdx`;
       const res = await fetch(`/api/admin/edit?file=${encodeURIComponent(filePath)}`);
       const data = await res.json();
-      if (data.frontmatter) setFrontmatter(data.frontmatter);
-      if (data.body !== undefined) setBody(data.body);
+
+      // Check for auto-save
+      const autoSaveKey = `admin-edit-draft-${item.collection}-${item.slug}`;
+      const autoSaveData = localStorage.getItem(autoSaveKey);
+
+      if (autoSaveData) {
+        try {
+          const saved = JSON.parse(autoSaveData);
+          const serverTime = data.frontmatter?.date ? new Date(data.frontmatter.date).getTime() : 0;
+          const savedTime = new Date(saved.savedAt).getTime();
+
+          // If auto-save is newer, restore it
+          if (savedTime > serverTime) {
+            setFrontmatter(saved.frontmatter);
+            setBody(saved.body);
+            setEditSlug(saved.editSlug);
+            setResult({ success: true, message: "자동 저장된 내용을 불러왔습니다" });
+            setTimeout(() => setResult(null), 3000);
+          } else {
+            // Use server data
+            if (data.frontmatter) setFrontmatter(data.frontmatter);
+            if (data.body !== undefined) setBody(data.body);
+          }
+        } catch {
+          // Fallback to server data
+          if (data.frontmatter) setFrontmatter(data.frontmatter);
+          if (data.body !== undefined) setBody(data.body);
+        }
+      } else {
+        // No auto-save, use server data
+        if (data.frontmatter) setFrontmatter(data.frontmatter);
+        if (data.body !== undefined) setBody(data.body);
+      }
     } catch {}
     setLoadingContent(false);
   };
@@ -95,9 +192,18 @@ export default function EditPage() {
       });
       const data = await res.json();
       if (data.success) {
+        // Clear auto-save on successful save
+        const autoSaveKey = `admin-edit-draft-${selectedItem.collection}-${selectedItem.slug}`;
+        localStorage.removeItem(autoSaveKey);
+        setAutoSaveTime(null);
+
         const msg = data.renamed ? `저장 완료 (파일명: ${editSlug}.mdx)` : "저장 완료";
         setResult({ success: true, message: msg });
         if (data.renamed) {
+          // Clear old auto-save key if renamed
+          const oldKey = `admin-edit-draft-${selectedItem.collection}-${selectedItem.slug}`;
+          localStorage.removeItem(oldKey);
+
           const updated = { ...selectedItem, slug: editSlug };
           setSelectedItem(updated);
           setItems((prev) => prev.map((i) =>
@@ -152,9 +258,28 @@ export default function EditPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold">콘텐츠 편집</h2>
-        <p className="text-sm text-muted-foreground mt-1">포스트, 아티클, 노트, 서재를 검색하고 편집합니다</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">콘텐츠 편집</h2>
+          <p className="text-sm text-muted-foreground mt-1">포스트, 아티클, 노트, 서재를 검색하고 편집합니다</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Auto-save indicator */}
+          {autoSaveTime && selectedItem && (
+            <div className="text-[10px] text-muted-foreground/60 flex items-center gap-1 px-2 py-1 rounded-md bg-muted/50">
+              <Clock className="h-3 w-3" />
+              자동 저장됨 ({autoSaveTime})
+            </div>
+          )}
+
+          {/* Preview toggle */}
+          {selectedItem && (
+            <button onClick={() => setShowPreview(!showPreview)}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground border border-border transition-colors">
+              {showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          )}
+        </div>
       </div>
 
       {result && (
@@ -289,15 +414,33 @@ export default function EditPage() {
                 </div>
               </div>
 
-              {/* Body editor */}
-              <div className="rounded-lg border border-border/60 overflow-hidden" style={{ minHeight: "50vh" }}>
-                <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30">
-                  <span className="text-xs font-medium text-muted-foreground">마크다운</span>
-                  <span className="text-[10px] text-muted-foreground/50">{body.length}자</span>
+              {/* Body editor + Preview */}
+              <div className={`grid gap-4 ${showPreview ? "grid-cols-1 lg:grid-cols-[1.2fr_1fr]" : "grid-cols-1"}`} style={{ minHeight: "50vh" }}>
+                {/* Editor */}
+                <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30">
+                    <span className="text-xs font-medium text-muted-foreground">마크다운</span>
+                    <span className="text-[10px] text-muted-foreground/50">{body.length}자</span>
+                  </div>
+                  <textarea value={body} onChange={(e) => setBody(e.target.value)} spellCheck={false}
+                    className="flex-1 w-full bg-background px-4 py-3 text-sm font-mono resize-none focus:outline-none leading-relaxed" />
                 </div>
-                <textarea value={body} onChange={(e) => setBody(e.target.value)} spellCheck={false}
-                  className="w-full bg-background px-4 py-3 text-sm font-mono resize-none focus:outline-none leading-relaxed"
-                  style={{ minHeight: "45vh" }} />
+
+                {/* Preview */}
+                {showPreview && (
+                  <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-border/40 bg-muted/30">
+                      <span className="text-xs font-medium text-muted-foreground">미리보기</span>
+                    </div>
+                    <div className="flex-1 px-4 py-3 prose prose-sm prose-neutral dark:prose-invert max-w-none overflow-y-auto">
+                      {body ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+                      ) : (
+                        <p className="text-muted-foreground text-sm">내용을 입력하면 미리보기가 표시됩니다.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Save */}
