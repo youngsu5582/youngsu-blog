@@ -55,15 +55,22 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
 function extractHeadings(rawContent: string): Array<{ id: string; text: string; level: number }> {
   const headingRegex = /^(#{2,4})\s+(.+)$/gm;
   const headings: Array<{ id: string; text: string; level: number }> = [];
+  const slugCounts = new Map<string, number>();
   let match;
 
   while ((match = headingRegex.exec(rawContent)) !== null) {
     const level = match[1].length;
     const text = match[2].trim();
-    const id = text
+    let id = text
       .toLowerCase()
       .replace(/[^a-z0-9가-힣\s-]/g, "")
       .replace(/\s+/g, "-");
+
+    const count = slugCounts.get(id) ?? 0;
+    slugCounts.set(id, count + 1);
+    if (count > 0) {
+      id = `${id}-${count}`;
+    }
 
     headings.push({ id, text, level });
   }
