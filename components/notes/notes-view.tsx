@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { List, LayoutGrid, Clock, Search, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { List, LayoutGrid, Clock, Search, ChevronDown, ChevronRight, ExternalLink, Maximize2 } from "lucide-react";
 import { MDXContent } from "@/components/mdx/mdx-content";
+import Link from "next/link";
 
 interface Reference {
   title: string;
@@ -151,6 +152,16 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                   <span className={`text-sm font-medium flex-1 truncate ${isExpanded ? "text-primary" : ""}`}>
                     {note.title}
                   </span>
+                  {isExpanded && (
+                    <Link
+                      href={`/notes/${note.slug}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground/60 hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
+                    >
+                      전체 보기
+                      <Maximize2 className="h-3 w-3" />
+                    </Link>
+                  )}
                   <div className="flex gap-1 flex-shrink-0">
                     {note.tags.slice(0, 2).map((t) => (
                       <span key={t} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{t}</span>
@@ -188,8 +199,18 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                 {new Date(note.date).toLocaleDateString("ko-KR")} · {note.readingTime}분
               </p>
               {expandedSlug === note.slug && (
-                <div className="mt-3 pt-3 border-t border-border/30 prose prose-sm prose-neutral dark:prose-invert max-w-none">
-                  <MDXContent code={note.body} />
+                <div className="mt-3 pt-3 border-t border-border/30">
+                  <Link
+                    href={`/notes/${note.slug}`}
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mb-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Maximize2 className="h-3 w-3" />
+                    전체 보기
+                  </Link>
+                  <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                    <MDXContent code={note.body} />
+                  </div>
                 </div>
               )}
             </button>
@@ -220,9 +241,18 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                   </div>
                 </button>
                 {isExpanded && (
-                  <div className="mt-3 prose prose-sm prose-neutral dark:prose-invert max-w-none">
-                    <MDXContent code={note.body} />
-                    <ReferenceLinks references={note.references} />
+                  <div className="mt-3">
+                    <Link
+                      href={`/notes/${note.slug}`}
+                      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mb-3"
+                    >
+                      <Maximize2 className="h-3 w-3" />
+                      전체 보기
+                    </Link>
+                    <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                      <MDXContent code={note.body} />
+                      <ReferenceLinks references={note.references} />
+                    </div>
                   </div>
                 )}
               </div>

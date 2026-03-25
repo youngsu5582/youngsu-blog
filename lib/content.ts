@@ -17,7 +17,7 @@ export function calcReadingTimeFromBody(body: string): number {
 
 /** Velite의 slug에서 컬렉션 접두사를 제거 (posts/hello-world → hello-world) */
 export function getUrlSlug(slug: string) {
-  return slug.replace(/^(posts|articles|library)\//, "");
+  return slug.replace(/^(posts|articles|notes|library)\//, "");
 }
 
 export function getAllPosts(lang?: "ko" | "en") {
