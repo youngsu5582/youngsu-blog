@@ -1,0 +1,86 @@
+---
+title: CooperativeStickyAssignor
+date: "2026-03-25T00:00:00.000Z"
+categories:
+  - Kafka
+tags:
+  - cooperative-sticky-assignor
+  - eager-rebalancing
+  - kafka
+  - assignor
+description: CooperativeStickyAssignor 가 뭔지, 사용방법에 대해
+draft: false
+---
+
+## CooperativeStickyAssignor
+
+- 리밸런싱을 두 번 수행하는 프로토콜
+- 카프카 2.4 버전에서 도입
+
+해당 프로토콜을 이해하려면, 기존 Eager Rebalancing 프로토콜을 먼저 이해해야 한다.
+
+### Eager Rebalancing
+
+- 기본 방식
+
+간단하고, 안정적인 측면에선 좋지만 단점이 존재한다.
+컨슈머들이 리밸런싱을 하는 동안 컨슘을 할 수 없다. (임계 영역이 존재, 일종의 Stop-the-world)
+
+![500](https://d1apvpgu6ekv4q.cloudfront.net/bb0fa333c45c985d0433e0864d59dd7f.png)
+
+그리고, 변하지 않는 파티션들도 리밸런싱이 발생한다. (전부 revoke 후, 재할당)
+
+### Cooperative Sticky Assignor 단계
+
+- 1차 리밸런싱 : 리밸런싱 조건이 시작될 때 (컨슈머가 컨슈머 그룹에 추가되거나 삭제될 때)
+
+1. 컨슈머들이 자신의 파티션 정보를 Group Coordinator 에게 전달한다.
+2. Assignor 가 `이상적인 할당 방법`을 계산한다.
+3. 변경해야 하는 컨슈머만 선별한다. (EX: 컨슈머2번에서 3번 파티션 revoke)
+4. 컨슈머에게 revoke 작업을 요청해서, 컨슈머가 파티션을 반납한다.
+
+- 2차 리밸런싱 : 1차 리밸런싱 후, 자동으로 트리거
+
+1. Assignor 가 미할당 파티션을 새로운 컨슈머에게 할당한다.
+
+=> 이동이 필요한 파티션만 revoke 가 일어나고, 변하지 않는 파티션들은 그대로 유지된다.(sticky)
+
+## 사용 방법
+
+```java
+props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
+    "org.apache.kafka.clients.consumer.CooperativeStickyAssignor");
+```
+
+ConsumerFactory 의 Props 에 넣어주면 된다.
+
+```
+23:54:15.105 AbstractStickyAssignor - Final assignment of partitions to consumers:
+    ...
+```
+
+리밸런싱 할당 계산이 완료된 시점의 로그
+
+> AbstractStickyAssignor 는 CooperativeStickyAssignor 의 부모 클래스
+
+추가로
+
+```java
+ props.put(..., List.of(
+      "org.apache.kafka.clients.consumer.RangeAssignor",
+      "org.apache.kafka.clients.consumer.CooperativeStickyAssignor"
+  ));
+```
+
+List 로 넣어주자.
+나중에 다시 다른 요소로 전환해야 할 때 (CooperativeStickyAssignor -> Range)
+양쪽 서버가 공통으로 가지고 있는 프로토콜이 없으면
+
+```
+JoinGroup failed due to fatal error: The group member's supported protocols are incompatible with those of existing members or first group member tried to join with empty protocol type or empty protocol list.
+```
+
+이런 에러가 뜬다.
+
+Kafka 3.0 버전부터는 기본적으로
+`[RangeAssignor, CooperativeStickyAssignor]` 두개를 가지고 있는다.
