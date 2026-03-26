@@ -835,7 +835,10 @@ export default function PublishPage() {
                 ) : (
                   <Rocket className="h-4 w-4" />
                 )}
-                {mode === "pr" ? `PR 생성 (${selectedPosts.size}개)` : `발행하기 (${selectedPosts.size}개)`}
+                {mode === "pr" ? `PR 생성 (${selectedPosts.size}개)` : (() => {
+                  const allModified = Array.from(selectedPosts.values()).every((s) => s.post.gitStatus === "modified");
+                  return allModified ? `수정하기 (${selectedPosts.size}개)` : `발행하기 (${selectedPosts.size}개)`;
+                })()}
               </button>
             </div>
           )}

@@ -235,6 +235,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "발행할 파일이 없습니다" }, { status: 400 });
     }
 
+    const allModified = posts.every((p) => p.gitStatus === "modified");
     const commitMsg = buildCommitMessage(posts);
     const tmpFile = "/tmp/admin-publish-msg.txt";
 
@@ -243,7 +244,11 @@ export async function POST(req: Request) {
     }
 
     fs.writeFileSync(tmpFile, commitMsg, "utf-8");
-    execSync(`git commit -F ${tmpFile}`, { cwd, encoding: "utf-8" });
+    if (allModified) {
+      execSync(`git commit --amend -F ${tmpFile}`, { cwd, encoding: "utf-8" });
+    } else {
+      execSync(`git commit -F ${tmpFile}`, { cwd, encoding: "utf-8" });
+    }
     fs.unlinkSync(tmpFile);
 
     const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
@@ -252,7 +257,8 @@ export async function POST(req: Request) {
     let pushError: string | undefined;
     if (autoPush) {
       try {
-        execSync("git push origin main", { cwd, encoding: "utf-8" });
+        const pushCmd = allModified ? "git push --force-with-lease origin main" : "git push origin main";
+        execSync(pushCmd, { cwd, encoding: "utf-8" });
         pushed = true;
       } catch (e) {
         pushError = String(e);
