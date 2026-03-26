@@ -1,0 +1,111 @@
+---
+title: Sealed Interface
+date: "Thu Mar 26 2026 09:00:00 GMT+0900 (한국 표준시)"
+description: java 에 있는 sealed interface, 왜 써야하는가? switch 구문에서 코드 패턴을 강제화 할 수 있는 장점
+categories:
+  - Java
+tags:
+  - sealed
+  - sealed-interface
+  - sealed-class
+  - pattern-matching
+draft: false
+---
+
+## Sealed Interface
+
+- Java 17, [JEP 409](https://openjdk.org/jeps/409) 에서 도입된 기능
+- 클래스, 인터페이스를 누가 상속할 수 있는지를 명확히 명시한다.
+
+이를 통해, 컴파일 타임에 switch 구문에서 완전성을 검증 가능하다.
+
+### 문제점
+
+예전에, sealed 를 학습할 때 별로라고 생각했던 점은
+
+- `public abstract sealed class Vehicle permits Car, Truck`
+
+- `public non-sealed class Car extends Vehicle`
+- `public final class Car extends Vehicle`
+
+non-sealed 는 제한 해제, final 은 더 이상 상속 불가 ...
+permits 는 구현 허용 클래스 명시 ...
+
+와 같이 보일러 플레이트가 너무 많아서 별로라고 생각했다.
+
+### 해결법
+
+```java
+public sealed interface EntityModifiedEvent {
+
+    long id();
+
+    record EntityAdded(long id) implements EntityModifiedEvent { }
+    record EntityRemoved(long id) implements EntityModifiedEvent { }
+    record EntityUpdated(long id) implements EntityModifiedEvent { }
+}
+```
+
+이와같이, 내부 클래스 형태로 구현하면 permits 를 생략해도 된다고 한다. - 자동 추론
+레코드는 그리고 기본적으로 final 이므로 modifier 도 생략해도 된다.
+
+나름대로의 깔끔한 코드 패턴인거 같다.
+그러면 장점은 뭐가 있는가?
+
+## sealed interface in 패턴 매칭
+
+Java 21 부터 도입된 switch 패턴 매칭 구문을 사용하고
+3개 중 2개를 구현하면?
+
+```java
+var action = switch (event) {
+    case EntityModifiedEvent.MemberAdded e -> "추가: %d명".formatted(e.memberCount());
+    case EntityModifiedEvent.MemberUpdated e -> "수정: %d명".formatted(e.memberCount());
+};
+```
+
+![500](https://d1apvpgu6ekv4q.cloudfront.net/0a59fa16508e779d57407767b6152784.png)
+
+switch 표현식이 모든 가능성을 커버하지 못한다는 에러가 뜬다.
+여기서 컴파일러가 처리하는 방향이 달라진다.
+
+- sealed 가 선언되지 않은 interface
+
+모든 하위 class 에 대해 case 구문을 명시해도, 무조건 default 가 포함이 되어야 한다.
+
+```java
+var action = switch (event) {
+    case EntityModifiedEvent.MemberAdded e -> "추가: %d명".formatted(e.memberCount());
+    case EntityModifiedEvent.MemberRemoved e -> "삭제: %d명".formatted(e.memberCount());
+    case EntityModifiedEvent.MemberUpdated e -> "수정: %d명".formatted(e.memberCount());
+    default -> throw new IllegalStateException("Unexpected value: " + event);
+};
+```
+
+누구든 새 구현체가 될 수 있기 때문에 컴파일러가 3개가 전부라는 걸 보장할 수 없다.
+그래서, default 구문을 명시를 해줘야만 한다.
+
+![500](https://d1apvpgu6ekv4q.cloudfront.net/015a328ddcefc3a67afa32ef1e2b25eb.png)
+
+Intellij 타입 힌트에서도 나머지 요소에 대해 알려주지 않는다.
+
+- sealed 가 선언된 interface
+
+```java
+var action = switch (event) {
+    case EntityModifiedEvent.MemberAdded e -> "추가: %d명".formatted(e.memberCount());
+    case EntityModifiedEvent.MemberRemoved e -> "삭제: %d명".formatted(e.memberCount());
+    case EntityModifiedEvent.MemberUpdated e -> "수정: %d명".formatted(e.memberCount());
+};
+```
+
+default 메소드가 없어도, 모든 가능성을 커버했다는게 컴파일에 보장된다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/282edae8f290e6710eacb8e0ab559cfb.png)
+
+타입 힌트에서도 구현되지 않은 나머지 요소에 대해 알려준다.
+
+---
+
+하위에 강제를 하고 싶거나, switch 구문에서 default 를 쓰지 않고 컴파일 오류를 강제하고 싶다면
+해당 패턴을 사용해봐도 좋은거 같다.
