@@ -417,6 +417,7 @@ export default function PublishPage() {
         includeEn: s.includeEn,
         enSlug: s.post.enFilePath?.replace(`content/${s.post.collection}/`, "").replace(".mdx", ""),
         generatedFiles: generatedFiles.get(s.post.filePath) || [],
+        gitStatus: s.post.gitStatus,
       }));
 
       const res = await fetch("/api/admin/publish", {

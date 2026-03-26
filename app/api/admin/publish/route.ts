@@ -13,6 +13,7 @@ interface PublishPost {
   includeEn: boolean;
   enSlug?: string;
   generatedFiles?: string[];
+  gitStatus?: "new" | "modified";
 }
 
 function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
@@ -98,10 +99,15 @@ function prepareFiles(posts: PublishPost[]): string[] {
 
 function buildCommitMessage(posts: PublishPost[]): string {
   if (posts.length === 1) {
-    return `docs: '${posts[0].frontmatter.title || posts[0].slug}' 발행`;
+    const post = posts[0];
+    const action = post.gitStatus === "modified" ? "수정" : "발행";
+    return `docs: '${post.frontmatter.title || post.slug}' ${action}`;
   }
+  const hasModified = posts.some((p) => p.gitStatus === "modified");
+  const hasNew = posts.some((p) => p.gitStatus !== "modified");
+  const action = hasModified && hasNew ? "발행/수정" : hasModified ? "수정" : "발행";
   const titles = posts.map((p) => `- ${p.frontmatter.title || p.slug}`).join("\n");
-  return `docs: ${posts.length}개 포스트 발행\n\n${titles}`;
+  return `docs: ${posts.length}개 포스트 ${action}\n\n${titles}`;
 }
 
 function saveFileContents(cwd: string, posts: PublishPost[], filesToCommit: string[]): Map<string, Buffer> {
