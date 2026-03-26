@@ -77,7 +77,7 @@ function prepareFiles(posts: PublishPost[]): string[] {
     // Add generated files (thumbnails, translations)
     if (generatedFiles && generatedFiles.length > 0) {
       for (const genFile of generatedFiles) {
-        if (!filesToCommit.includes(genFile)) {
+        if (genFile && !filesToCommit.includes(genFile)) {
           filesToCommit.push(genFile);
         }
       }
