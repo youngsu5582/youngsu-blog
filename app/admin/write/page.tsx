@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, ChevronDown, Clock } from "lucide-react";
+import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, ChevronDown, Clock, Plus } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -290,6 +290,28 @@ export default function WritePage() {
           <p className="text-sm text-muted-foreground mt-1">마크다운으로 작성하고 저장</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* 새 글 작성 */}
+          <button
+            onClick={() => {
+              setCollection("posts");
+              setTitle("");
+              setSlug("");
+              setSlugManual(false);
+              setDescription("");
+              setCategories([]);
+              setTags([]);
+              setThumbnail("");
+              setRelatedSlugs([]);
+              setContent("");
+              setAutoSaveTime(null);
+              setResult(null);
+            }}
+            className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center gap-1.5"
+          >
+            <Plus className="h-3 w-3" />
+            새 글
+          </button>
+
           {/* Auto-save indicator */}
           {autoSaveTime && (
             <div className="text-[10px] text-muted-foreground/60 flex items-center gap-1 px-2 py-1 rounded-md bg-muted/50">
