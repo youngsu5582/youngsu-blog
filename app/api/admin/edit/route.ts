@@ -40,7 +40,7 @@ export async function POST(req: Request) {
         lines.push(`${key}: ${val}`);
       } else {
         const s = String(val);
-        if (s.includes(":") || s.includes("#") || s.includes('"')) lines.push(`${key}: "${s.replace(/"/g, '\\"')}"`);
+        if (s.includes(":") || s.includes("#") || s.includes('"') || s.includes("'")) lines.push(`${key}: "${s.replace(/"/g, '\\"')}"`);
         else lines.push(`${key}: ${s}`);
       }
     }

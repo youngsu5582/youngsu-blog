@@ -39,7 +39,7 @@ function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
       lines.push(`${key}: ${val}`);
     } else {
       const str = String(val);
-      if (str.includes(":") || str.includes("#") || str.includes('"')) {
+      if (str.includes(":") || str.includes("#") || str.includes('"') || str.includes("'")) {
         lines.push(`${key}: "${str.replace(/"/g, '\\"')}"`);
       } else {
         lines.push(`${key}: ${str}`);
