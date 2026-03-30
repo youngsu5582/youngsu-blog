@@ -1,0 +1,69 @@
+---
+title: Good Code - 플래그 vs 엔드포인트
+date: "Mon Mar 30 2026 09:00:00 GMT+0900 (한국 표준시)"
+description: 'flag 하나 추가하기, 엔드포인트 하나 추가하기' 뭐가 더 좋을까
+categories:
+  - Good Code
+tags:
+  - clean-code
+  - api-design
+  - boolean-flag
+draft: false
+---
+
+```java
+public class ChargeRequestDto {
+
+    @Schema(description = "충전할 양")
+    @Min(1)
+    private int amount;
+}
+```
+
+다른 팀의 요청을 받아서, 우리 서비스의 재화를 충전하는 API 를 개발하는데
+MSA 통신으로 인해 보상 트랜잭션을 고려해야 한다고 가정해보자.
+
+이번 내용은
+
+```java
+    @Schema(description = "보상 트랜잭션 요청인지 식별하기 위한 플래그)
+    private boolean compensation;
+```
+
+변수를 추가할지 
+
+```http
+POST /orders/{orderIdx}/charge
+POST /orders/{orderIdx}/compensation
+```
+
+API 엔드포인트를 분리할지에 대한 얘기이다.
+
+## Good Code
+
+내가 생각하는 정답은`엔드포인트를 분리` 이다.
+flag 의 문제라고 생각하는 부분들을 아래와 같다.
+
+### Boolean 의 모호성
+
+boolean 은 사실 2개가 아니라, 상태가 3개이다.
+Wrapper Boolean 을 생각해야 한다.
+
+- null : 변수에 값을 넣지 않은 상태
+- false : 변수에 값을 false 로 지정한 상태
+- true : 변수에 값을 true 로 지정한 상태
+
+만약 보내는 측이, 실수해서 보내지 않아도? `boolean` 은 false 로 지정된다.
+대문자 Boolean 으로 처리가 가능하긴 하겠지만..
+결국 우리는 3개를 핸들링해야 한다. (null 이라는 의도를 파악해야함)
+
+추가로, 사용자가 `true` , `false` 를 잘못 보낼수도 있다.
+API 를 잘못보낼수도 있긴 하겠지만…? 행위의 난이도가 달라진다.
+(boolean 을 true, false 지정하기 vs API 호출 로직을 잘못 사용하기)
+
+---
+
+API 를 하나 더 추가하는건 관리 포인트의 증가이기 때문에 부담이 될 수 있다.
+하지만, 두개가 서로 다른 방향으로 확장할 때 결국 고민을 반복할 수 밖에 없다.
+
+=> 당장의 편의를 위해, Flag 를 받지 말고 API 를 통해 의도를 분리하자.
