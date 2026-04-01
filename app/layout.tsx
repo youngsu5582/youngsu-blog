@@ -24,7 +24,10 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   alternates: {
     types: {
-      "application/rss+xml": "/feed.xml",
+      "application/rss+xml": [
+        { url: "/feed.xml", title: `${siteConfig.name} - Korean` },
+        { url: "/feed-en.xml", title: `${siteConfig.name} - English` },
+      ],
     },
     languages: {
       "ko": "/",
