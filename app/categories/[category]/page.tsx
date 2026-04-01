@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAllCategories, getContentByCategory, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
+import { getAllCategories, getContentByCategory, getUrlSlug, calcReadingTimeFromBody, type Note } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
@@ -109,7 +109,7 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
             <section>
               <h2 className="text-sm font-semibold text-muted-foreground mb-3">노트 ({notes.length})</h2>
               <div className="space-y-2">
-                {notes.map((note) => (
+                {notes.map((note: Note) => (
                   <Link
                     key={note.slug}
                     href={`/notes/${getUrlSlug(note.slug)}`}
