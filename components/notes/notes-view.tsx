@@ -55,17 +55,27 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+
+  // 카테고리 집계
+  const categoryList = useMemo(() => {
+    const map = new Map<string, number>();
+    notes.forEach((n) => n.categories.forEach((c) => map.set(c, (map.get(c) || 0) + 1)));
+    return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+  }, [notes]);
 
   const filtered = useMemo(() => {
     return notes.filter((note) => {
       const matchSearch = !search ||
         note.title.toLowerCase().includes(search.toLowerCase()) ||
-        note.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
+        note.tags.some((t) => t.toLowerCase().includes(search.toLowerCase())) ||
+        note.categories.some((c) => c.toLowerCase().includes(search.toLowerCase()));
       const matchTag = !selectedTag || note.tags.includes(selectedTag);
-      return matchSearch && matchTag;
+      const matchCategory = !selectedCategory || note.categories.includes(selectedCategory);
+      return matchSearch && matchTag && matchCategory;
     });
-  }, [notes, search, selectedTag]);
+  }, [notes, search, selectedTag, selectedCategory]);
 
   return (
     <div className="space-y-4">
@@ -105,20 +115,31 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
         </div>
       </div>
 
-      {/* Tag filter */}
+      {/* Category + Tag filter */}
       <div className="flex flex-wrap gap-1.5">
         <button
-          onClick={() => setSelectedTag(null)}
+          onClick={() => { setSelectedTag(null); setSelectedCategory(null); }}
           className={`text-[11px] px-2.5 py-1 rounded-full transition-colors ${
-            !selectedTag ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+            !selectedTag && !selectedCategory ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
           }`}
         >
           전체
         </button>
+        {categoryList.map(({ name, count }) => (
+          <button
+            key={`cat-${name}`}
+            onClick={() => { setSelectedCategory(selectedCategory === name ? null : name); setSelectedTag(null); }}
+            className={`text-[11px] px-2.5 py-1 rounded-full transition-colors ${
+              selectedCategory === name ? "bg-primary text-white" : "bg-primary/8 text-primary border border-primary/20 hover:bg-primary/15"
+            }`}
+          >
+            {name} <span className="opacity-50">{count}</span>
+          </button>
+        ))}
         {tags.map(({ name, count }) => (
           <button
-            key={name}
-            onClick={() => setSelectedTag(selectedTag === name ? null : name)}
+            key={`tag-${name}`}
+            onClick={() => { setSelectedTag(selectedTag === name ? null : name); setSelectedCategory(null); }}
             className={`text-[11px] px-2.5 py-1 rounded-full transition-colors ${
               selectedTag === name ? "bg-violet-500 text-white" : "bg-violet-500/8 text-violet-600 dark:text-violet-400 border border-violet-500/20 hover:bg-violet-500/15"
             }`}

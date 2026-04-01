@@ -38,10 +38,10 @@ comments: true
 
 ### Claude 의 세션 탐색 방법
 
-claude --resume {id} 실행 시
+`claude --resume {id}` 실행 시
 
 1. 현재 cwd 기준 프로젝트 키 생성
-2. ~/.claude/projects/{프로젝트 키} 에서 해당 Session ID 의 .jsonl 파일 탐색
+2. `~/.claude/projects/{프로젝트 키}` 에서 해당 Session ID 의 .jsonl 파일 탐색
 3. 찾으면 JSONL 을 읽어서 대화를 복원
 
 생각보다 매우 쉽고 정직한 방법으로 동작한다.
@@ -52,6 +52,6 @@ claude --resume {id} 실행 시
 -> ~/.claude/projects 에는 온전히 남아있는 것이다.
 
 워크트리에서 작업을 다하고 삭제해서 디렉토리가 없어도, 다시 디렉토리를 만들면
-claude --resume {Id} 를 해주면 온전히 남아있는 Key 를 기반으로 대화를 이어나갈 수 있다.
+`claude --resume {Id}` 를 해주면 온전히 남아있는 Key 를 기반으로 대화를 이어나갈 수 있다.
 
 > 이정도면 해결해줄만도 한데, 아직까지는 해결해줄 생각이 없는거 같다.
