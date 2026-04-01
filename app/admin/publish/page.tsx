@@ -5,6 +5,8 @@ import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText
 import { TagInput } from "@/components/admin/tag-input";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 function TranslationPreview({ filePath }: { filePath: string }) {
   const [content, setContent] = useState<string | null>(null);
@@ -99,6 +101,7 @@ export default function PublishPage() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewContent, setReviewContent] = useState<Map<string, string>>(new Map());
   const [showReview, setShowReview] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
   // Helper functions for localStorage persistence
   const updateGeneratedFiles = (updater: (prev: Map<string, string[]>) => Map<string, string[]>) => {
@@ -876,8 +879,64 @@ export default function PublishPage() {
                 </label>
               )}
 
+              {/* Quality Checklist */}
+              <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">발행 품질 체크</h4>
+                {(() => {
+                  const checks = Array.from(selectedPosts.values()).map(({ post, frontmatter }) => {
+                    const hasThumbnail = !!frontmatter.image;
+                    const hasDescription = !!frontmatter.description && frontmatter.description.trim().length > 0;
+                    const hasTags = frontmatter.tags.length > 0;
+                    const hasCategory = frontmatter.categories.length > 0;
+                    const isSlugEnglish = !/[^\x00-\x7F]/.test(post.filename.replace(/\.mdx?$/, ""));
+
+                    return {
+                      title: post.title,
+                      checks: [
+                        { label: "썸네일 이미지 있음", passed: hasThumbnail },
+                        { label: "설명(description) 있음", passed: hasDescription },
+                        { label: "태그 1개 이상", passed: hasTags },
+                        { label: "카테고리 있음", passed: hasCategory },
+                        { label: "slug가 영문", passed: isSlugEnglish },
+                      ],
+                      allPassed: hasThumbnail && hasDescription && hasTags && hasCategory && isSlugEnglish,
+                    };
+                  });
+
+                  const allPostsReady = checks.every((c) => c.allPassed);
+
+                  return (
+                    <div className="space-y-2">
+                      {checks.map((check, idx) => (
+                        <div key={idx} className="text-xs">
+                          {checks.length > 1 && (
+                            <div className="font-medium text-foreground mb-1 truncate">{check.title}</div>
+                          )}
+                          <div className="grid grid-cols-1 gap-1">
+                            {check.checks.map((item, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <span className={item.passed ? "text-green-600 dark:text-green-500" : "text-yellow-600 dark:text-yellow-500"}>
+                                  {item.passed ? "✅" : "⚠️"}
+                                </span>
+                                <span className={item.passed ? "text-muted-foreground" : "text-yellow-700 dark:text-yellow-400"}>
+                                  {item.label}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {idx < checks.length - 1 && <div className="border-t border-border/30 mt-2 pt-1" />}
+                        </div>
+                      ))}
+                      <div className={`mt-3 pt-3 border-t border-border/40 text-xs font-medium ${allPostsReady ? "text-green-600 dark:text-green-500" : "text-yellow-600 dark:text-yellow-500"}`}>
+                        {allPostsReady ? "✅ 발행 준비 완료" : "⚠️ 일부 항목 미충족 (발행 가능)"}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
               <button
-                onClick={handlePublish}
+                onClick={() => setShowPublishConfirm(true)}
                 disabled={publishing}
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors w-full justify-center"
               >
@@ -897,6 +956,93 @@ export default function PublishPage() {
           )}
         </div>
       </div>
+
+      {/* Publish Confirmation Dialog */}
+      <Dialog open={showPublishConfirm} onOpenChange={setShowPublishConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {mode === "pr" ? "PR 생성 확인" : "발행 확인"}
+            </DialogTitle>
+            <DialogDescription>
+              {mode === "pr"
+                ? "다음 포스트로 PR을 생성합니다."
+                : autoPush
+                  ? "다음 포스트를 발행하고 자동으로 푸시합니다."
+                  : "다음 포스트를 발행합니다."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-4 max-h-[400px] overflow-y-auto">
+            {Array.from(selectedPosts.values()).map(({ post, frontmatter, includeEn }) => (
+              <div key={post.filePath} className="rounded-md border border-border/40 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                    post.gitStatus === "new" ? "bg-green-500/10 text-green-600" : "bg-amber-500/10 text-amber-600"
+                  }`}>
+                    {post.gitStatus === "new" ? "NEW" : "MOD"}
+                  </span>
+                  <span className="font-medium text-sm">{frontmatter.title}</span>
+                </div>
+
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <div>파일: {post.filename}</div>
+                  {frontmatter.image && (
+                    <div className="flex items-center gap-1">
+                      <ImageIcon className="h-3 w-3" />
+                      썸네일 포함
+                    </div>
+                  )}
+                  {includeEn && (
+                    <div className="flex items-center gap-1">
+                      <Languages className="h-3 w-3" />
+                      영문 번역 포함
+                    </div>
+                  )}
+                  {generatedFiles.get(post.filePath) && generatedFiles.get(post.filePath)!.length > 0 && (
+                    <div className="text-[10px] text-blue-600 dark:text-blue-400">
+                      생성된 파일 {generatedFiles.get(post.filePath)!.length}개 포함
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowPublishConfirm(false)}
+              disabled={publishing}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={() => {
+                setShowPublishConfirm(false);
+                handlePublish();
+              }}
+              disabled={publishing}
+            >
+              {publishing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  {mode === "pr" ? "PR 생성 중..." : "발행 중..."}
+                </>
+              ) : (
+                <>
+                  {mode === "pr" ? (
+                    <GitPullRequest className="h-4 w-4 mr-2" />
+                  ) : (
+                    <Rocket className="h-4 w-4 mr-2" />
+                  )}
+                  확인
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

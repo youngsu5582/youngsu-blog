@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { Footer } from "@/components/layout/footer";
 import { Analytics } from "@/components/common/analytics";
+import { generateWebSiteSchema, renderJsonLd } from "@/lib/json-ld";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -37,11 +38,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const websiteSchema = generateWebSiteSchema();
+
   return (
     <html lang="ko" suppressHydrationWarning>
       <head>
         <link rel="stylesheet" as="style" crossOrigin="anonymous"
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+        {renderJsonLd(websiteSchema)}
       </head>
       <body className={`${jetbrainsMono.variable} font-sans antialiased`}>
         <a

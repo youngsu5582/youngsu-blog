@@ -1,11 +1,15 @@
 import { siteConfig } from "@/config/site";
-import { getAllPosts, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
+import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, calcReadingTimeFromBody, type Note, type Article } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
+import { ArticleCard } from "@/components/article/article-card";
+import { NoteCard } from "@/components/note/note-card";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 export default function Home() {
   const recentPosts = getAllPosts("ko").slice(0, 5);
+  const recentArticles = getAllArticles().slice(0, 3);
+  const recentNotes = getAllNotes().slice(0, 3);
 
   return (
     <div className="space-y-12">
@@ -35,7 +39,7 @@ export default function Home() {
               href="/posts"
               className="text-sm text-muted-foreground hover:text-primary transition-colors duration-200 flex items-center gap-1"
             >
-              전체 보기
+              더 보기
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -64,6 +68,74 @@ export default function Home() {
           <p className="text-muted-foreground mt-6 text-sm">
             아직 포스트가 없습니다.
           </p>
+        </section>
+      )}
+
+      {/* Recent Articles */}
+      {recentArticles.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold tracking-tight theme-heading">
+              최근 아티클
+            </h2>
+            <Link
+              href="/articles"
+              className="text-sm text-muted-foreground hover:text-primary transition-colors duration-200 flex items-center gap-1"
+            >
+              더 보기
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+
+          <div>
+            {recentArticles.map((article: Article) => (
+              <ArticleCard
+                key={article.slug}
+                title={article.title}
+                slug={getUrlSlug(article.slug)}
+                description={article.description}
+                date={article.date}
+                categories={article.categories}
+                tags={article.tags}
+                image={article.image}
+                status={article.status}
+                moc={article.moc}
+                readingTime={calcReadingTimeFromBody(article.body)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Recent Notes */}
+      {recentNotes.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold tracking-tight theme-heading">
+              최근 학습 노트
+            </h2>
+            <Link
+              href="/notes"
+              className="text-sm text-muted-foreground hover:text-primary transition-colors duration-200 flex items-center gap-1"
+            >
+              더 보기
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+
+          <div>
+            {recentNotes.map((note: Note) => (
+              <NoteCard
+                key={note.slug}
+                title={note.title}
+                slug={getUrlSlug(note.slug)}
+                date={note.date}
+                categories={note.categories}
+                tags={note.tags}
+                readingTime={calcReadingTimeFromBody(note.body)}
+              />
+            ))}
+          </div>
         </section>
       )}
     </div>

@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Loader2, Check, Settings, Search, Plus, Minus, Tag, FolderOpen } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface PostFile {
   filePath: string;
@@ -26,6 +28,7 @@ export default function BulkEditPage() {
   const [categoryValue, setCategoryValue] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   useEffect(() => {
     // Fetch all mdx files from content/posts
@@ -281,7 +284,7 @@ export default function BulkEditPage() {
           </div>
 
           <button
-            onClick={handleApply}
+            onClick={() => setShowConfirmDialog(true)}
             disabled={processing || selectedFiles.size === 0}
             className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors w-full justify-center"
           >
@@ -294,6 +297,111 @@ export default function BulkEditPage() {
           </button>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>일괄 수정 확인</DialogTitle>
+            <DialogDescription>
+              {selectedFiles.size}개의 포스트에 다음 작업을 적용합니다.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-4">
+            <div className="rounded-md border border-border/40 bg-muted/30 p-3">
+              <div className="text-sm font-medium mb-2">작업 내용</div>
+              <div className="text-sm text-muted-foreground">
+                {action === "addTag" && (
+                  <div className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    <span>태그 추가:</span>
+                    <div className="flex gap-1">
+                      {tagValue.map((tag) => (
+                        <span key={tag} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-primary/10 text-primary">
+                          <Tag className="h-3 w-3" />
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {action === "removeTag" && (
+                  <div className="flex items-center gap-2">
+                    <Minus className="h-4 w-4" />
+                    <span>태그 제거:</span>
+                    <div className="flex gap-1">
+                      {tagValue.map((tag) => (
+                        <span key={tag} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-600">
+                          <Tag className="h-3 w-3" />
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {action === "setCategory" && (
+                  <div className="flex items-center gap-2">
+                    <FolderOpen className="h-4 w-4" />
+                    <span>카테고리 설정:</span>
+                    <div className="flex gap-1">
+                      {categoryValue.map((cat) => (
+                        <span key={cat} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-600">
+                          <FolderOpen className="h-3 w-3" />
+                          {cat}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="text-sm">
+              <div className="font-medium mb-2">적용 대상 ({selectedFiles.size}개)</div>
+              <div className="max-h-40 overflow-y-auto space-y-1 text-xs text-muted-foreground">
+                {filtered
+                  .filter((p) => selectedFiles.has(p.filePath))
+                  .map((p) => (
+                    <div key={p.filePath} className="flex items-center gap-2">
+                      <Check className="h-3 w-3" />
+                      {p.title}
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowConfirmDialog(false)}
+              disabled={processing}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={() => {
+                setShowConfirmDialog(false);
+                handleApply();
+              }}
+              disabled={processing}
+            >
+              {processing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  적용 중...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  확인
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -3,8 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock, ChevronDown, ChevronUp, ArrowLeft, Trash2 } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface ContentItem {
   slug: string;
@@ -62,6 +65,9 @@ export default function EditPage() {
   const [showMeta, setShowMeta] = useState(true);
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Textarea ref for markdown toolbar
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-save function
   const performAutoSave = useCallback(() => {
@@ -515,46 +521,10 @@ export default function EditPage() {
 
                 {/* Delete */}
                 <div className="pt-2 border-t border-border/30">
-                  {!showDeleteConfirm ? (
-                    <button onClick={openDeleteConfirm}
-                      className="text-[10px] px-2 py-1 rounded-full text-red-500 hover:bg-red-500/10 transition-colors flex items-center gap-1">
-                      <Trash2 className="h-3 w-3" /> 삭제
-                    </button>
-                  ) : (
-                    <div className="p-2.5 rounded-md bg-red-500/5 border border-red-500/20 space-y-2">
-                      <p className="text-[10px] text-red-500 font-medium">정말 삭제하시겠습니까?</p>
-                      <div className="text-[10px] text-muted-foreground space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          <input type="checkbox" checked disabled className="h-3 w-3 accent-red-500" />
-                          <span>{selectedItem.slug}.mdx</span>
-                        </div>
-                        {loadingAssociated && (
-                          <div className="flex items-center gap-1 text-muted-foreground/60">
-                            <Loader2 className="h-3 w-3 animate-spin" /> 연관 파일 확인 중...
-                          </div>
-                        )}
-                        {associatedFiles.map((af) => (
-                          <label key={af.path} className="flex items-center gap-1.5 cursor-pointer hover:text-foreground">
-                            <input type="checkbox" checked={af.checked} className="h-3 w-3 accent-red-500"
-                              onChange={(e) => setAssociatedFiles((prev) =>
-                                prev.map((f) => f.path === af.path ? { ...f, checked: e.target.checked } : f)
-                              )} />
-                            <span>{af.label} ({af.path})</span>
-                          </label>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 pt-1">
-                        <button onClick={handleDelete} disabled={deleting}
-                          className="text-[10px] px-2 py-1 rounded-full bg-red-500 text-white flex items-center gap-1 hover:bg-red-600 transition-colors">
-                          {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} 삭제
-                        </button>
-                        <button onClick={() => { setShowDeleteConfirm(false); setAssociatedFiles([]); }}
-                          className="text-[10px] px-2 py-1 rounded-full bg-muted text-muted-foreground hover:text-foreground transition-colors">
-                          취소
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <button onClick={openDeleteConfirm}
+                    className="text-[10px] px-2 py-1 rounded-full text-red-500 hover:bg-red-500/10 transition-colors flex items-center gap-1">
+                    <Trash2 className="h-3 w-3" /> 삭제
+                  </button>
                 </div>
                 </div>}
               </div>
@@ -567,8 +537,14 @@ export default function EditPage() {
                     <span className="text-xs font-medium text-muted-foreground">마크다운</span>
                     <span className="text-[10px] text-muted-foreground/50">{body.length}자</span>
                   </div>
-                  <textarea value={body} onChange={(e) => setBody(e.target.value)} spellCheck={false}
-                    className="flex-1 w-full bg-background px-4 py-3 text-sm font-mono resize-none focus:outline-none leading-relaxed" />
+                  <MarkdownToolbar textareaRef={textareaRef} value={body} onChange={setBody} />
+                  <textarea
+                    ref={textareaRef}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    spellCheck={false}
+                    className="flex-1 w-full bg-background px-4 py-3 text-sm font-mono resize-none focus:outline-none leading-relaxed"
+                  />
                 </div>
 
                 {/* Preview */}
@@ -605,6 +581,79 @@ export default function EditPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={(open) => {
+        setShowDeleteConfirm(open);
+        if (!open) setAssociatedFiles([]);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>파일 삭제 확인</DialogTitle>
+            <DialogDescription>
+              다음 파일을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-4">
+            <div className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked disabled className="h-4 w-4 accent-red-500" />
+              <span className="font-medium">{selectedItem?.slug}.mdx</span>
+            </div>
+
+            {loadingAssociated && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> 연관 파일 확인 중...
+              </div>
+            )}
+
+            {associatedFiles.map((af) => (
+              <label key={af.path} className="flex items-center gap-2 text-sm cursor-pointer hover:text-foreground">
+                <input
+                  type="checkbox"
+                  checked={af.checked}
+                  className="h-4 w-4 accent-red-500"
+                  onChange={(e) => setAssociatedFiles((prev) =>
+                    prev.map((f) => f.path === af.path ? { ...f, checked: e.target.checked } : f)
+                  )}
+                />
+                <span>{af.label}</span>
+                <span className="text-xs text-muted-foreground">({af.path})</span>
+              </label>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                setAssociatedFiles([]);
+              }}
+              disabled={deleting}
+            >
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  삭제 중...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  삭제
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

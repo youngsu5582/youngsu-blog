@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, ChevronDown, Clock, Plus } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -65,6 +66,9 @@ export default function WritePage() {
   // Multi-draft state
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [showDraftPicker, setShowDraftPicker] = useState(false);
+
+  // Textarea ref for markdown toolbar
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Save drafts to localStorage
   const saveDraftsToStorage = useCallback((newDrafts: Draft[]) => {
@@ -509,9 +513,15 @@ export default function WritePage() {
             <span className="text-xs font-medium text-muted-foreground">마크다운</span>
             <span className="text-[10px] text-muted-foreground/50">{content.length}자</span>
           </div>
-          <textarea value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false}
+          <MarkdownToolbar textareaRef={textareaRef} value={content} onChange={setContent} />
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            spellCheck={false}
             placeholder={"마크다운으로 작성하세요...\n\n## 소제목\n\n본문 내용을 자유롭게 작성하세요.\n\n- 리스트 아이템\n\n```java\npublic class Hello {}\n```"}
-            className="flex-1 w-full bg-background px-4 py-3 text-sm font-mono resize-none focus:outline-none leading-relaxed" />
+            className="flex-1 w-full bg-background px-4 py-3 text-sm font-mono resize-none focus:outline-none leading-relaxed"
+          />
         </div>
         {showPreview && (
           <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden">

@@ -11,6 +11,8 @@ import { PostNavigation } from "@/components/post/post-navigation";
 import { RelatedPosts } from "@/components/post/related-posts";
 import { ScrollToTop } from "@/components/common/scroll-to-top";
 import { SeriesNav } from "@/components/post/series-nav";
+import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
+import { siteConfig } from "@/config/site";
 import fs from "fs";
 import path from "path";
 
@@ -138,8 +140,27 @@ export default async function PostPage({ params }: PostPageProps) {
   // Series navigation
   const seriesPosts = post.series ? getPostsBySeries(post.series) : [];
 
+  // JSON-LD structured data
+  const postUrl = `${siteConfig.url}/posts/${slug}`;
+  const articleSchema = generateArticleSchema({
+    title: post.title,
+    description: post.description,
+    datePublished: post.date,
+    author: post.author,
+    image: post.image,
+    url: postUrl,
+  });
+
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "홈", url: siteConfig.url },
+    { name: "포스트", url: `${siteConfig.url}/posts` },
+    { name: post.title, url: postUrl },
+  ]);
+
   return (
     <>
+      {renderJsonLd(articleSchema)}
+      {renderJsonLd(breadcrumbSchema)}
       <ReadingProgress />
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-10">
         <article className="min-w-0">

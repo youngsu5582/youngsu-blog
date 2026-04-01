@@ -1,7 +1,8 @@
 import { getAllPosts, getAllArticles, getAllLibraryItems, getAllCategories, getAllTags, getUrlSlug } from "@/lib/content";
-import { FileText, BookOpen, Library, Tag, FolderOpen, ImageOff, Languages, FileWarning, AlertTriangle, Upload } from "lucide-react";
+import { FileText, BookOpen, Library, Tag, FolderOpen, ImageOff, Languages, FileWarning, AlertTriangle, Upload, History } from "lucide-react";
 import Link from "next/link";
 import ImageUpload from "@/components/admin/image-upload";
+import RecentActivities from "@/components/admin/recent-activities";
 
 function StatCard({ icon: Icon, label, value, sub }: { icon: React.ElementType; label: string; value: number; sub?: string }) {
   return (
@@ -47,6 +48,9 @@ export default function AdminDashboard() {
         <StatCard icon={Library} label="서재" value={libraryItems.length} />
         <StatCard icon={FolderOpen} label="카테고리" value={categories.length} sub={`태그 ${tags.length}개`} />
       </div>
+
+      {/* Recent Activities */}
+      <RecentActivities />
 
       {/* Action items */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

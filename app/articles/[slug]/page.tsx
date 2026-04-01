@@ -3,6 +3,8 @@ import { getAllArticles, getArticleBySlug, getUrlSlug } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
+import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
+import { siteConfig } from "@/config/site";
 import type { Metadata } from "next";
 
 interface ArticlePageProps {
@@ -80,8 +82,28 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
   // Extract headings for TOC
   const headings = extractHeadings(article.body);
 
+  // JSON-LD structured data
+  const articleUrl = `${siteConfig.url}/articles/${slug}`;
+  const articleSchema = generateArticleSchema({
+    title: article.title,
+    description: article.description,
+    datePublished: article.date,
+    author: article.author,
+    image: article.image,
+    url: articleUrl,
+  });
+
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "홈", url: siteConfig.url },
+    { name: "아티클", url: `${siteConfig.url}/articles` },
+    { name: article.title, url: articleUrl },
+  ]);
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[1fr_250px] gap-8">
+    <>
+      {renderJsonLd(articleSchema)}
+      {renderJsonLd(breadcrumbSchema)}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_250px] gap-8">
       <article className="min-w-0">
         {/* Status badge */}
         <div className="mb-4">
@@ -124,6 +146,7 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
           <TableOfContents headings={headings} />
         </aside>
       )}
-    </div>
+      </div>
+    </>
   );
 }
