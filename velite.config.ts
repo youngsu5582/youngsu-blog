@@ -72,6 +72,7 @@ const notes = defineCollection({
   schema: s.object({
     title: s.string().optional().default(""),
     date: s.isodate(),
+    categories: s.array(s.string()).default([]),
     tags: s.array(s.string()).default([]),
     references: s.array(s.object({
       title: s.string(),

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getAllCategories, getContentByCategory, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileText } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
 import type { Metadata } from "next";
 
@@ -30,12 +30,12 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
   const decoded = decodeURIComponent(category);
   const lang = (sp.lang as "ko" | "en") || "ko";
 
-  const { posts, articles } = getContentByCategory(decoded, lang);
-  const totalCount = posts.length + articles.length;
+  const { posts, articles, notes } = getContentByCategory(decoded, lang);
+  const totalCount = posts.length + articles.length + notes.length;
 
   // Check if category exists in any language
   const allContent = getContentByCategory(decoded);
-  if (allContent.posts.length + allContent.articles.length === 0) {
+  if (allContent.posts.length + allContent.articles.length + allContent.notes.length === 0) {
     notFound();
   }
 
@@ -98,6 +98,39 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
                     <p className="text-xs text-muted-foreground mt-1">
                       {new Date(article.date).toLocaleDateString("ko-KR")}
                     </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Notes */}
+          {notes.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold text-muted-foreground mb-3">노트 ({notes.length})</h2>
+              <div className="space-y-2">
+                {notes.map((note) => (
+                  <Link
+                    key={note.slug}
+                    href={`/notes/${getUrlSlug(note.slug)}`}
+                    className="block p-3 rounded-lg border border-border/40 hover:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/8 transition-all group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground/50" />
+                      <p className="text-sm font-medium group-hover:text-primary transition-colors">{note.title}</p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(note.date).toLocaleDateString("ko-KR")}
+                      </p>
+                      {note.tags.length > 0 && (
+                        <div className="flex gap-1">
+                          {note.tags.slice(0, 2).map((tag) => (
+                            <span key={tag} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </Link>
                 ))}
               </div>

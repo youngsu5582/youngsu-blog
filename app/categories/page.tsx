@@ -1,4 +1,4 @@
-import { getAllPosts, getUrlSlug } from "@/lib/content";
+import { getAllPosts, getAllArticles, getAllNotes } from "@/lib/content";
 import Link from "next/link";
 import { ChevronRight, FolderOpen } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
@@ -50,7 +50,10 @@ export default async function CategoriesPage({ searchParams }: CategoriesPagePro
   const lang = (params.lang as "ko" | "en") || "ko";
 
   const posts = getAllPosts(lang);
-  const tree = buildCategoryTree(posts);
+  const articles = getAllArticles();
+  const notes = getAllNotes();
+  const allContent = [...posts, ...articles, ...notes];
+  const tree = buildCategoryTree(allContent);
   const totalCategories = [...tree.values()].reduce(
     (acc, node) => acc + 1 + node.children.size,
     0

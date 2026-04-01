@@ -14,6 +14,7 @@ interface NoteData {
   slug: string;
   title: string;
   date: string;
+  categories: string[];
   tags: string[];
   body: string;
   readingTime: number;
@@ -162,7 +163,10 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                       <Maximize2 className="h-3 w-3" />
                     </Link>
                   )}
-                  <div className="flex gap-1 flex-shrink-0">
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    {note.categories.slice(0, 1).map((cat) => (
+                      <span key={cat} className="text-[10px] text-primary/60 dark:text-primary/70">{cat}</span>
+                    ))}
                     {note.tags.slice(0, 2).map((t) => (
                       <span key={t} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{t}</span>
                     ))}
@@ -190,6 +194,9 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
+                {note.categories.slice(0, 1).map((cat) => (
+                  <span key={cat} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/8 text-primary border border-primary/20">{cat}</span>
+                ))}
                 {note.tags.slice(0, 2).map((t) => (
                   <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/8 text-violet-600 dark:text-violet-400 border border-violet-500/20">#{t}</span>
                 ))}
@@ -235,6 +242,9 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                     {note.title}
                   </p>
                   <div className="flex gap-1.5 mt-1">
+                    {note.categories.slice(0, 1).map((cat) => (
+                      <span key={cat} className="text-[10px] text-primary/60 dark:text-primary/70">{cat}</span>
+                    ))}
                     {note.tags.map((t) => (
                       <span key={t} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{t}</span>
                     ))}

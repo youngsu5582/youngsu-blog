@@ -52,11 +52,12 @@ export function getContentByTag(tag: string, lang?: "ko" | "en") {
   return { posts: postResults, articles: articleResults, notes: noteResults };
 }
 
-/** 카테고리로 전 컬렉션 검색 (posts + articles) */
+/** 카테고리로 전 컬렉션 검색 (posts + articles + notes) */
 export function getContentByCategory(category: string, lang?: "ko" | "en") {
   const postResults = getPostsByCategory(category, lang);
   const articleResults = getAllArticles().filter((a: Article) => a.categories.includes(category));
-  return { posts: postResults, articles: articleResults };
+  const noteResults = getAllNotes().filter((n: Note) => n.categories.includes(category));
+  return { posts: postResults, articles: articleResults, notes: noteResults };
 }
 
 export function getPostsBySeries(series: string) {
@@ -76,6 +77,12 @@ export function getAllCategories(lang?: "ko" | "en") {
   // Articles
   getAllArticles().forEach((article: Article) => {
     article.categories.forEach((cat: string) => {
+      categories.set(cat, (categories.get(cat) || 0) + 1);
+    });
+  });
+  // Notes
+  getAllNotes().forEach((note: Note) => {
+    note.categories.forEach((cat: string) => {
       categories.set(cat, (categories.get(cat) || 0) + 1);
     });
   });

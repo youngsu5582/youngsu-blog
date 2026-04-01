@@ -14,6 +14,7 @@ export default function NotesPage() {
     slug: getUrlSlug(note.slug),
     title: note.title || getUrlSlug(note.slug),
     date: note.date,
+    categories: note.categories,
     tags: note.tags,
     body: note.body,
     readingTime: note.metadata.readingTime,
