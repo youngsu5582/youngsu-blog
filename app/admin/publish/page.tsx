@@ -100,7 +100,48 @@ export default function PublishPage() {
   const [reviewContent, setReviewContent] = useState<Map<string, string>>(new Map());
   const [showReview, setShowReview] = useState(false);
 
+  // Helper functions for localStorage persistence
+  const updateGeneratedFiles = (updater: (prev: Map<string, string[]>) => Map<string, string[]>) => {
+    setGeneratedFiles((prev) => {
+      const next = updater(prev);
+      localStorage.setItem("admin-generated-files", JSON.stringify(Array.from(next.entries())));
+      return next;
+    });
+  };
+
+  const updateThumbnailPreview = (updater: (prev: Map<string, string>) => Map<string, string>) => {
+    setThumbnailPreview((prev) => {
+      const next = updater(prev);
+      localStorage.setItem("admin-thumbnail-previews", JSON.stringify(Array.from(next.entries())));
+      return next;
+    });
+  };
+
+  const clearPersistedData = () => {
+    setGeneratedFiles(new Map());
+    setThumbnailPreview(new Map());
+    localStorage.removeItem("admin-generated-files");
+    localStorage.removeItem("admin-thumbnail-previews");
+  };
+
   useEffect(() => {
+    // Load persisted data from localStorage
+    try {
+      const savedGeneratedFiles = localStorage.getItem("admin-generated-files");
+      if (savedGeneratedFiles) {
+        const entries = JSON.parse(savedGeneratedFiles);
+        setGeneratedFiles(new Map(entries));
+      }
+
+      const savedThumbnailPreviews = localStorage.getItem("admin-thumbnail-previews");
+      if (savedThumbnailPreviews) {
+        const entries = JSON.parse(savedThumbnailPreviews);
+        setThumbnailPreview(new Map(entries));
+      }
+    } catch (e) {
+      console.error("Failed to load persisted data:", e);
+    }
+
     // Fetch posts
     fetch("/api/admin/posts")
       .then((r) => r.json())
@@ -280,10 +321,10 @@ export default function PublishPage() {
         });
 
         // Store preview
-        setThumbnailPreview((prev) => new Map(prev).set(editingPost, `data:image/png;base64,${genData.base64}`));
+        updateThumbnailPreview((prev) => new Map(prev).set(editingPost, `data:image/png;base64,${genData.base64}`));
 
         // Track generated file
-        setGeneratedFiles((prev) => {
+        updateGeneratedFiles((prev) => {
           const next = new Map(prev);
           const existing = next.get(editingPost) || [];
           next.set(editingPost, [...existing, saveData.savedPath]);
@@ -359,7 +400,7 @@ export default function PublishPage() {
         });
 
         // Track generated file
-        setGeneratedFiles((prev) => {
+        updateGeneratedFiles((prev) => {
           const next = new Map(prev);
           const existing = next.get(editingPost) || [];
           next.set(editingPost, [...existing, saveData.enPath]);
@@ -444,8 +485,7 @@ export default function PublishPage() {
         setPosts((prev) => prev.filter((p) => !publishedPaths.has(p.filePath)));
         setSelectedPosts(new Map());
         setEditingPost(null);
-        setGeneratedFiles(new Map());
-        setThumbnailPreview(new Map());
+        clearPersistedData();
       } else {
         setResult({ success: false, message: data.error });
       }

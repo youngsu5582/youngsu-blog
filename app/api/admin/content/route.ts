@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { execSync } from "child_process";
 
 const CONTENT_DIR = path.join(process.cwd(), "content");
 
@@ -94,7 +95,68 @@ export async function GET(req: Request) {
         date: l.date,
       }));
 
-      const items = [...posts, ...articles, ...notes, ...library];
+      let items = [...posts, ...articles, ...notes, ...library];
+
+      // Supplement with uncommitted content files from git status
+      try {
+        const gitStatus = execSync(
+          'git -c core.quotePath=false status --porcelain content/',
+          { encoding: 'utf-8', cwd: process.cwd() }
+        );
+
+        const uncommittedFiles = gitStatus
+          .split('\n')
+          .filter(line => line.trim())
+          .map(line => {
+            // Git status format: XY filename
+            // We care about new (??), modified (M), added (A) files
+            const match = line.match(/^(?:\?\?|[AM ][M ])\s+(.+)$/);
+            return match ? match[1] : null;
+          })
+          .filter((file): file is string =>
+            file !== null &&
+            file.startsWith('content/') &&
+            (file.endsWith('.mdx') || file.endsWith('.md'))
+          );
+
+        for (const filePath of uncommittedFiles) {
+          // Extract collection from path: content/{collection}/{filename}
+          const pathParts = filePath.split('/');
+          if (pathParts.length < 3) continue;
+
+          const collection = pathParts[1]; // posts, articles, notes, library
+          const filename = pathParts[pathParts.length - 1];
+          const slug = filename.replace(/\.mdx?$/, '');
+
+          // Check if already in Velite results
+          const alreadyExists = items.some(item =>
+            item.collection === collection && item.slug.endsWith(slug)
+          );
+
+          if (!alreadyExists) {
+            // Read frontmatter from filesystem
+            try {
+              const absPath = path.join(process.cwd(), filePath);
+              const raw = fs.readFileSync(absPath, 'utf-8');
+              const { data } = matter(raw);
+
+              items.push({
+                slug,
+                title: (data.title as string) || slug,
+                collection,
+                date: (data.date as string) || new Date().toISOString(),
+                source: 'filesystem', // Mark as not yet built by Velite
+              });
+            } catch (err) {
+              console.error(`Failed to read ${filePath}:`, err);
+            }
+          }
+        }
+      } catch (gitErr) {
+        // If git command fails, just continue with Velite data only
+        console.error('Git status check failed:', gitErr);
+      }
+
       return NextResponse.json({ items });
     } catch (err) {
       return NextResponse.json({ error: String(err) }, { status: 500 });
