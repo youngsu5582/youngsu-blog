@@ -1,0 +1,57 @@
+---
+title: Claude 의 Session 관리 방법
+date: "Wed Apr 01 2026 09:00:00 GMT+0900 (한국 표준시)"
+description: 클로드는 어떻게 세션을 관리하고 있는걸까
+categories:
+  - Claude
+tags:
+  - claude
+  - claude-session
+  - claude-resume
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+---
+
+## Claude 의 Session 관리
+
+클로드는 홈 디렉토리 하위에서 세션을 전부 관리한다.
+
+`~/.claude/projects/` 에서 ls 를 하면
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/0a2eabb9c57cdc5f72521a2b5e638b55.png)
+
+  클로드를 실행한 경로가 하이픈(-) 으로 변환되어서 각 폴더로 위치한다. - 프로젝트 키
+
+`/Users/iyeongsu/Desktop/obsidian` -> `-Users-iyeongsu-Desktop-obsidian` 로 변환
+
+  폴더를 들어가보면 UUID 로 된 무언가가 나온다.
+
+> 왜 무언가? : 단순 대화라면 .jsonl 로 끝나는 파일이,
+> subagent 를 실행한 세션이라면 폴더가 있을 것이다.
+
+- JSONL : 한 줄에 하나의 JSON 객체를 기록하는 형식
+  - 한 줄이 하나의 이벤트 (사용자 메시지, AI 응답, 도구 호출 등등)
+  - append only, 계속해서 줄이 추가되는 형식
+
+### Claude 의 세션 탐색 방법
+
+claude --resume {id} 실행 시
+
+1. 현재 cwd 기준 프로젝트 키 생성
+2. ~/.claude/projects/{프로젝트 키} 에서 해당 Session ID 의 .jsonl 파일 탐색
+3. 찾으면 JSONL 을 읽어서 대화를 복원
+
+생각보다 매우 쉽고 정직한 방법으로 동작한다.
+
+### 삭제한 워크트리의 세션
+
+즉 워크트리에서 작업을 하고 삭제를 했어도?
+-> ~/.claude/projects 에는 온전히 남아있는 것이다.
+
+워크트리에서 작업을 다하고 삭제해서 디렉토리가 없어도, 다시 디렉토리를 만들면
+claude --resume {Id} 를 해주면 온전히 남아있는 Key 를 기반으로 대화를 이어나갈 수 있다.
+
+> 이정도면 해결해줄만도 한데, 아직까지는 해결해줄 생각이 없는거 같다.
