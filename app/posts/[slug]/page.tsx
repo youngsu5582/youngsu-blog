@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getAllPosts, getPostBySlug, getPostsBySeries, getUrlSlug } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
+import { MobileToc } from "@/components/post/mobile-toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
 import type { Metadata } from "next";
 import { GiscusComments } from "@/components/common/giscus-comments";
@@ -218,6 +219,12 @@ export default async function PostPage({ params }: PostPageProps) {
         </aside>
       )}
     </div>
+
+    {/* Mobile TOC */}
+    {post.toc && headings.length > 0 && (
+      <MobileToc headings={headings} />
+    )}
+
     <ScrollToTop />
     </>
   );

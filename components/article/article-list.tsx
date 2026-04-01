@@ -1,6 +1,7 @@
 "use client";
 
 import { ArticleCard } from "./article-card";
+import { AnimateIn } from "@/components/common/animate-in";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -37,20 +38,21 @@ export function ArticleList({ articles, currentPage, totalPages, basePath = "/ar
   return (
     <div className="space-y-8">
       <div className="grid gap-4">
-        {articles.map((article) => (
-          <ArticleCard
-            key={article.slug}
-            title={article.title}
-            slug={article.slug}
-            description={article.description}
-            date={article.date}
-            categories={article.categories}
-            tags={article.tags}
-            image={article.image}
-            status={article.status}
-            moc={article.moc}
-            readingTime={article.metadata?.readingTime}
-          />
+        {articles.map((article, index) => (
+          <AnimateIn key={article.slug} delay={index * 100}>
+            <ArticleCard
+              title={article.title}
+              slug={article.slug}
+              description={article.description}
+              date={article.date}
+              categories={article.categories}
+              tags={article.tags}
+              image={article.image}
+              status={article.status}
+              moc={article.moc}
+              readingTime={article.metadata?.readingTime}
+            />
+          </AnimateIn>
         ))}
       </div>
 

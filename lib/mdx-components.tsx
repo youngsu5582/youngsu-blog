@@ -3,6 +3,8 @@ import Image from "next/image";
 import { Hash } from "lucide-react";
 import { CodeCopyButton } from "@/components/mdx/code-copy-button";
 import { ImageZoom } from "@/components/mdx/image-zoom";
+import { Mermaid } from "@/components/mdx/mermaid";
+import { Callout, parseBlockquoteAlert } from "@/components/mdx/callout";
 
 // MDX에서 사용할 커스텀 컴포넌트
 export const mdxComponents = {
@@ -60,14 +62,28 @@ export const mdxComponents = {
       {children}
     </li>
   ),
-  blockquote: ({ children, ...props }: React.HTMLAttributes<HTMLQuoteElement>) => (
-    <blockquote
-      className="border-l-4 border-primary/30 pl-4 italic text-muted-foreground my-4"
-      {...props}
-    >
-      {children}
-    </blockquote>
-  ),
+  blockquote: ({ children, ...props }: React.HTMLAttributes<HTMLQuoteElement>) => {
+    // Check for GitHub-style alerts (e.g., > [!NOTE])
+    const alert = parseBlockquoteAlert(children);
+
+    if (alert) {
+      return (
+        <Callout type={alert.type} title={alert.title}>
+          {alert.content}
+        </Callout>
+      );
+    }
+
+    // Regular blockquote
+    return (
+      <blockquote
+        className="border-l-4 border-primary/30 pl-4 italic text-muted-foreground my-4"
+        {...props}
+      >
+        {children}
+      </blockquote>
+    );
+  },
   table: ({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) => (
     <div className="overflow-x-auto my-4">
       <table className="w-full border-collapse text-sm" {...props}>
@@ -101,6 +117,13 @@ export const mdxComponents = {
       return "";
     };
 
+    // Mermaid 코드 블록 감지 (rehype-pretty-code는 pre에 data-language 속성 추가)
+    const dataLanguage = (props as Record<string, unknown>)["data-language"];
+    if (dataLanguage === "mermaid") {
+      const code = extractCodeText(children);
+      return <Mermaid code={code} />;
+    }
+
     const codeText = extractCodeText(children);
 
     return (
@@ -129,6 +152,7 @@ export const mdxComponents = {
     );
   },
   hr: () => <hr className="my-8 border-border" />,
+  Callout,
   img: ({ src, alt = "" }: React.ImgHTMLAttributes<HTMLImageElement>) => {
     const sizeMatch = alt?.match(/^(\d+)$/);
     const customWidth = sizeMatch ? Number(sizeMatch[1]) : null;

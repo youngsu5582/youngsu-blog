@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { List, LayoutGrid, Clock, Search, ChevronDown, ChevronRight, ExternalLink, Maximize2 } from "lucide-react";
 import { MDXContent } from "@/components/mdx/mdx-content";
+import { AnimateIn } from "@/components/common/animate-in";
 import Link from "next/link";
 
 interface Reference {
@@ -155,10 +156,11 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
       ) : view === "list" ? (
         /* Memo list view */
         <div className="space-y-1">
-          {filtered.map((note) => {
+          {filtered.map((note, index) => {
             const isExpanded = expandedSlug === note.slug;
             return (
-              <div key={note.slug} className="rounded-lg border border-border/40 overflow-hidden">
+              <AnimateIn key={note.slug} delay={index * 100}>
+                <div className="rounded-lg border border-border/40 overflow-hidden">
                 <button
                   onClick={() => setExpandedSlug(isExpanded ? null : note.slug)}
                   className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
@@ -199,21 +201,22 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                     <ReferenceLinks references={note.references} />
                   </div>
                 )}
-              </div>
+                </div>
+              </AnimateIn>
             );
           })}
         </div>
       ) : view === "card" ? (
         /* Card grid view */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((note) => (
-            <button
-              key={note.slug}
-              onClick={() => setExpandedSlug(expandedSlug === note.slug ? null : note.slug)}
-              className={`text-left rounded-lg border p-4 transition-all hover:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/8 ${
-                expandedSlug === note.slug ? "border-primary/30 bg-primary/5 col-span-full" : "border-border/40"
-              }`}
-            >
+          {filtered.map((note, index) => (
+            <AnimateIn key={note.slug} delay={index * 100}>
+              <button
+                onClick={() => setExpandedSlug(expandedSlug === note.slug ? null : note.slug)}
+                className={`text-left rounded-lg border p-4 transition-all hover:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/8 ${
+                  expandedSlug === note.slug ? "border-primary/30 bg-primary/5 col-span-full" : "border-border/40"
+                }`}
+              >
               <div className="flex items-center gap-2 mb-2">
                 {note.categories.slice(0, 1).map((cat) => (
                   <span key={cat} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/8 text-primary border border-primary/20">{cat}</span>
@@ -241,16 +244,18 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                   </div>
                 </div>
               )}
-            </button>
+              </button>
+            </AnimateIn>
           ))}
         </div>
       ) : (
         /* Timeline view */
         <div className="border-l-2 border-border/50 ml-2 space-y-0">
-          {filtered.map((note) => {
+          {filtered.map((note, index) => {
             const isExpanded = expandedSlug === note.slug;
             return (
-              <div key={note.slug} className="relative pl-6 py-3">
+              <AnimateIn key={note.slug} delay={index * 100}>
+                <div className="relative pl-6 py-3">
                 <div className="absolute -left-[5px] top-4 h-2 w-2 rounded-full bg-primary/60" />
                 <button
                   onClick={() => setExpandedSlug(isExpanded ? null : note.slug)}
@@ -286,7 +291,8 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                     </div>
                   </div>
                 )}
-              </div>
+                </div>
+              </AnimateIn>
             );
           })}
         </div>

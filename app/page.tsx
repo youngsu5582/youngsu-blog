@@ -3,6 +3,7 @@ import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, calcReadingTimeFr
 import { PostCard } from "@/components/post/post-card";
 import { ArticleCard } from "@/components/article/article-card";
 import { NoteCard } from "@/components/note/note-card";
+import { AnimateIn } from "@/components/common/animate-in";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
@@ -45,18 +46,19 @@ export default function Home() {
           </div>
 
           <div>
-            {recentPosts.map((post) => (
-              <PostCard
-                key={post.slug}
-                title={post.title}
-                slug={getUrlSlug(post.slug)}
-                description={post.description}
-                date={post.date}
-                categories={post.categories}
-                tags={post.tags}
-                image={post.image}
-                readingTime={calcReadingTimeFromBody(post.body)}
-              />
+            {recentPosts.map((post, index) => (
+              <AnimateIn key={post.slug} delay={index * 100}>
+                <PostCard
+                  title={post.title}
+                  slug={getUrlSlug(post.slug)}
+                  description={post.description}
+                  date={post.date}
+                  categories={post.categories}
+                  tags={post.tags}
+                  image={post.image}
+                  readingTime={calcReadingTimeFromBody(post.body)}
+                />
+              </AnimateIn>
             ))}
           </div>
         </section>
@@ -88,20 +90,21 @@ export default function Home() {
           </div>
 
           <div>
-            {recentArticles.map((article: Article) => (
-              <ArticleCard
-                key={article.slug}
-                title={article.title}
-                slug={getUrlSlug(article.slug)}
-                description={article.description}
-                date={article.date}
-                categories={article.categories}
-                tags={article.tags}
-                image={article.image}
-                status={article.status}
-                moc={article.moc}
-                readingTime={calcReadingTimeFromBody(article.body)}
-              />
+            {recentArticles.map((article: Article, index) => (
+              <AnimateIn key={article.slug} delay={index * 100}>
+                <ArticleCard
+                  title={article.title}
+                  slug={getUrlSlug(article.slug)}
+                  description={article.description}
+                  date={article.date}
+                  categories={article.categories}
+                  tags={article.tags}
+                  image={article.image}
+                  status={article.status}
+                  moc={article.moc}
+                  readingTime={calcReadingTimeFromBody(article.body)}
+                />
+              </AnimateIn>
             ))}
           </div>
         </section>
@@ -124,16 +127,17 @@ export default function Home() {
           </div>
 
           <div>
-            {recentNotes.map((note: Note) => (
-              <NoteCard
-                key={note.slug}
-                title={note.title}
-                slug={getUrlSlug(note.slug)}
-                date={note.date}
-                categories={note.categories}
-                tags={note.tags}
-                readingTime={calcReadingTimeFromBody(note.body)}
-              />
+            {recentNotes.map((note: Note, index: number) => (
+              <AnimateIn key={note.slug} delay={index * 100}>
+                <NoteCard
+                  title={note.title}
+                  slug={getUrlSlug(note.slug)}
+                  date={note.date}
+                  categories={note.categories}
+                  tags={note.tags}
+                  readingTime={calcReadingTimeFromBody(note.body)}
+                />
+              </AnimateIn>
             ))}
           </div>
         </section>

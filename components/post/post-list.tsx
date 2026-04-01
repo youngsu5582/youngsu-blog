@@ -1,6 +1,7 @@
 "use client";
 
 import { PostCard } from "./post-card";
+import { AnimateIn } from "@/components/common/animate-in";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -40,18 +41,19 @@ export function PostList({ posts, currentPage, totalPages, basePath = "/posts" }
   return (
     <div className="space-y-8">
       <div className="grid gap-4">
-        {posts.map((post) => (
-          <PostCard
-            key={post.slug}
-            title={post.title}
-            slug={post.slug}
-            description={post.description}
-            date={post.date}
-            categories={post.categories}
-            tags={post.tags}
-            image={post.image}
-            readingTime={post.metadata?.readingTime}
-          />
+        {posts.map((post, index) => (
+          <AnimateIn key={post.slug} delay={index * 100}>
+            <PostCard
+              title={post.title}
+              slug={post.slug}
+              description={post.description}
+              date={post.date}
+              categories={post.categories}
+              tags={post.tags}
+              image={post.image}
+              readingTime={post.metadata?.readingTime}
+            />
+          </AnimateIn>
         ))}
       </div>
 
