@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 import { execSync } from "child_process";
+import { serializeFrontmatter } from "@/lib/frontmatter";
 
 const CONTENT_DIR = path.join(process.cwd(), "content");
 
@@ -191,34 +192,8 @@ export async function POST(req: Request) {
     const { content } = matter(raw);
 
     // Rebuild frontmatter
-    const lines = ["---"];
-    for (const [key, val] of Object.entries(frontmatter)) {
-      if (val === undefined || val === null) continue;
-      if (Array.isArray(val)) {
-        if (val.length === 0) {
-          lines.push(`${key}: []`);
-        } else {
-          lines.push(`${key}:`);
-          val.forEach((v: string) => {
-            const str = String(v);
-            if (/^\d+$/.test(str)) lines.push(`  - "${str}"`);
-            else lines.push(`  - ${str}`);
-          });
-        }
-      } else if (typeof val === "boolean" || typeof val === "number") {
-        lines.push(`${key}: ${val}`);
-      } else {
-        const str = String(val);
-        if (str.includes(":") || str.includes("#") || str.includes('"')) {
-          lines.push(`${key}: "${str.replace(/"/g, '\\"')}"`);
-        } else {
-          lines.push(`${key}: ${str}`);
-        }
-      }
-    }
-    lines.push("---");
-
-    const output = lines.join("\n") + "\n\n" + content.trim() + "\n";
+    const frontmatterYaml = serializeFrontmatter(frontmatter);
+    const output = frontmatterYaml + "\n\n" + content.trim() + "\n";
     fs.writeFileSync(absPath, output, "utf-8");
 
     return NextResponse.json({ success: true });

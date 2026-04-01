@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import matter from "gray-matter";
 import { execSync } from "child_process";
+import { updateFrontmatter } from "@/lib/frontmatter";
 
 const CONTENT_ROOT = path.join(process.cwd(), "content");
 
@@ -14,41 +14,6 @@ interface PublishPost {
   enSlug?: string;
   generatedFiles?: string[];
   gitStatus?: "new" | "modified";
-}
-
-function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const { data, content } = matter(raw);
-
-  const merged = { ...data, ...updates };
-
-  const lines = ["---"];
-  for (const [key, val] of Object.entries(merged)) {
-    if (val === undefined || val === null) continue;
-    if (Array.isArray(val)) {
-      if (val.length === 0) {
-        lines.push(`${key}: []`);
-      } else {
-        lines.push(`${key}:`);
-        val.forEach((v: string) => {
-          const str = String(v);
-          lines.push(/^\d+$/.test(str) ? `  - "${str}"` : `  - ${str}`);
-        });
-      }
-    } else if (typeof val === "boolean" || typeof val === "number") {
-      lines.push(`${key}: ${val}`);
-    } else {
-      const str = String(val);
-      if (str.includes(":") || str.includes("#") || str.includes('"') || str.includes("'")) {
-        lines.push(`${key}: "${str.replace(/"/g, '\\"')}"`);
-      } else {
-        lines.push(`${key}: ${str}`);
-      }
-    }
-  }
-  lines.push("---");
-
-  fs.writeFileSync(filePath, lines.join("\n") + "\n\n" + content.trim() + "\n", "utf-8");
 }
 
 function prepareFiles(posts: PublishPost[]): string[] {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { serializeFrontmatter } from "@/lib/frontmatter";
 
 // GET: 파일의 frontmatter + body 읽기
 export async function GET(req: Request) {
@@ -30,23 +31,8 @@ export async function POST(req: Request) {
     const absPath = path.join(cwd, file);
     if (!fs.existsSync(absPath)) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-    const lines = ["---"];
-    for (const [key, val] of Object.entries(frontmatter)) {
-      if (val === undefined || val === null) continue;
-      if (Array.isArray(val)) {
-        if (val.length === 0) lines.push(`${key}: []`);
-        else { lines.push(`${key}:`); (val as string[]).forEach((v) => { const s = String(v); lines.push(/^\d+$/.test(s) ? `  - "${s}"` : `  - ${s}`); }); }
-      } else if (typeof val === "boolean" || typeof val === "number") {
-        lines.push(`${key}: ${val}`);
-      } else {
-        const s = String(val);
-        if (s.includes(":") || s.includes("#") || s.includes('"') || s.includes("'")) lines.push(`${key}: "${s.replace(/"/g, '\\"')}"`);
-        else lines.push(`${key}: ${s}`);
-      }
-    }
-    lines.push("---");
-
-    const content = lines.join("\n") + "\n\n" + (body || "").trim() + "\n";
+    const frontmatterYaml = serializeFrontmatter(frontmatter);
+    const content = frontmatterYaml + "\n\n" + (body || "").trim() + "\n";
 
     // slug 변경 시 파일명 rename
     const currentSlug = path.basename(file, path.extname(file));

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock, ChevronDown, ChevronUp, ArrowLeft, Trash2 } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
+import { attachImageUploadHandlers } from "@/components/admin/image-upload-handler";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -68,6 +69,27 @@ export default function EditPage() {
 
   // Textarea ref for markdown toolbar
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Attach image upload handlers to textarea
+  useEffect(() => {
+    if (!selectedItem) return;
+
+    const cleanup = attachImageUploadHandlers(textareaRef.current, {
+      onUploadStart: () => {
+        setResult({ success: true, message: "이미지 업로드 중..." });
+      },
+      onUploadComplete: (imageUrl) => {
+        setResult({ success: true, message: `이미지 업로드 완료: ${imageUrl}` });
+        setTimeout(() => setResult(null), 2000);
+      },
+      onUploadError: (error) => {
+        setResult({ success: false, message: error });
+        setTimeout(() => setResult(null), 3000);
+      },
+    });
+
+    return cleanup;
+  }, [selectedItem]);
 
   // Auto-save function
   const performAutoSave = useCallback(() => {
@@ -535,7 +557,9 @@ export default function EditPage() {
                 <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30">
                     <span className="text-xs font-medium text-muted-foreground">마크다운</span>
-                    <span className="text-[10px] text-muted-foreground/50">{body.length}자</span>
+                    <span className="text-[10px] text-muted-foreground/50">
+                      {body.length.toLocaleString()}자 · 약 {Math.max(1, Math.ceil(body.length / 500))}분
+                    </span>
                   </div>
                   <MarkdownToolbar textareaRef={textareaRef} value={body} onChange={setBody} />
                   <textarea

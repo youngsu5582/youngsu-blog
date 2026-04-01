@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getAllNotes, getNoteBySlug, getUrlSlug, type Note } from "@/lib/content";
 import { MDXContent } from "@/components/mdx/mdx-content";
 import { ScrollToTop } from "@/components/common/scroll-to-top";
+import { Breadcrumbs } from "@/components/common/breadcrumbs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, Calendar, ExternalLink } from "lucide-react";
@@ -45,13 +46,12 @@ export default async function NotePage({ params }: NotePageProps) {
   return (
     <>
       <article className="max-w-2xl mx-auto">
-        <Link
-          href="/notes"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          학습 노트
-        </Link>
+        <Breadcrumbs
+          items={[
+            { label: "학습 노트", href: "/notes" },
+            { label: title, href: `/notes/${slug}`, current: true },
+          ]}
+        />
 
         <header className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>

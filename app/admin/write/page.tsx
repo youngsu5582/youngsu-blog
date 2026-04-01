@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, ChevronDown, Clock, Plus } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
+import { attachImageUploadHandlers } from "@/components/admin/image-upload-handler";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -12,6 +13,123 @@ const COLLECTIONS = [
   { id: "articles", label: "아티클", icon: BookOpen },
   { id: "notes", label: "노트", icon: StickyNote },
   { id: "library", label: "서재", icon: Library },
+];
+
+const TEMPLATES = [
+  {
+    id: "empty",
+    label: "빈 포스트",
+    collection: "posts",
+    categories: [],
+    content: "",
+  },
+  {
+    id: "learning-note",
+    label: "학습 노트",
+    collection: "notes",
+    categories: ["학습"],
+    content: `## 주제
+
+학습한 내용의 핵심 개념을 정리합니다.
+
+## 정리
+
+- 주요 포인트 1
+- 주요 포인트 2
+- 주요 포인트 3
+
+## 참고
+
+- 관련 링크나 레퍼런스
+`,
+  },
+  {
+    id: "good-code",
+    label: "Good Code",
+    collection: "posts",
+    categories: ["Good Code"],
+    content: `## 상황
+
+코드 리뷰를 진행하게 된 배경과 상황을 설명합니다.
+
+## 문제
+
+기존 코드의 문제점이나 개선이 필요한 부분을 설명합니다.
+
+\`\`\`java
+// 기존 코드 예시
+\`\`\`
+
+## 개선
+
+개선된 코드와 그 이유를 설명합니다.
+
+\`\`\`java
+// 개선된 코드
+\`\`\`
+
+## 정리
+
+- 핵심 개선 사항
+- 적용 가능한 원칙
+- 주의사항
+`,
+  },
+  {
+    id: "tech-article",
+    label: "기술 아티클",
+    collection: "articles",
+    categories: ["기술"],
+    content: `## 개요
+
+글의 주제와 배경을 간단히 소개합니다.
+
+## 배경
+
+문제 상황이나 해당 기술이 필요한 이유를 설명합니다.
+
+## 구현
+
+기술적인 세부 내용이나 구현 과정을 설명합니다.
+
+\`\`\`java
+// 코드 예시
+\`\`\`
+
+## 결론
+
+핵심 내용을 정리하고 얻은 인사이트를 공유합니다.
+`,
+  },
+  {
+    id: "book-review",
+    label: "책 리뷰",
+    collection: "library",
+    categories: ["독서"],
+    content: `## 책 정보
+
+- 저자:
+- 출판사:
+- 출판년도:
+
+## 핵심 내용
+
+책의 주요 내용과 핵심 메시지를 요약합니다.
+
+## 인상 깊었던 부분
+
+> 인용문이나 특별히 기억에 남는 내용
+
+## 나의 생각
+
+책을 읽고 느낀 점, 적용해볼 만한 내용 등을 정리합니다.
+
+## 평가
+
+- 추천 대상:
+- 별점: ⭐⭐⭐⭐⭐
+`,
+  },
 ];
 
 const DRAFTS_KEY = "admin-write-drafts";
@@ -67,8 +185,30 @@ export default function WritePage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [showDraftPicker, setShowDraftPicker] = useState(false);
 
+  // Template picker state
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+
   // Textarea ref for markdown toolbar
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Attach image upload handlers to textarea
+  useEffect(() => {
+    const cleanup = attachImageUploadHandlers(textareaRef.current, {
+      onUploadStart: () => {
+        setResult({ success: true, message: "이미지 업로드 중..." });
+      },
+      onUploadComplete: (imageUrl) => {
+        setResult({ success: true, message: `이미지 업로드 완료: ${imageUrl}` });
+        setTimeout(() => setResult(null), 2000);
+      },
+      onUploadError: (error) => {
+        setResult({ success: false, message: error });
+        setTimeout(() => setResult(null), 3000);
+      },
+    });
+
+    return cleanup;
+  }, []);
 
   // Save drafts to localStorage
   const saveDraftsToStorage = useCallback((newDrafts: Draft[]) => {
@@ -205,6 +345,36 @@ export default function WritePage() {
   const deleteDraft = (id: string) => {
     const updatedDrafts = drafts.filter(d => d.id !== id);
     saveDraftsToStorage(updatedDrafts);
+  };
+
+  // Apply a template
+  const applyTemplate = (templateId: string) => {
+    const template = TEMPLATES.find(t => t.id === templateId);
+    if (!template) return;
+
+    // Check if there's existing content
+    const hasContent = content.trim() || title.trim() || description.trim();
+    if (hasContent) {
+      if (!confirm("현재 작성 중인 내용이 있습니다. 템플릿을 적용하시겠습니까?")) {
+        setShowTemplatePicker(false);
+        return;
+      }
+    }
+
+    // Apply template
+    setCollection(template.collection);
+    setCategories(template.categories);
+    setContent(template.content);
+    setTitle("");
+    setSlug("");
+    setSlugManual(false);
+    setDescription("");
+    setTags([]);
+    setThumbnail("");
+    setRelatedSlugs([]);
+    setShowTemplatePicker(false);
+    setResult({ success: true, message: `템플릿 적용: ${template.label}` });
+    setTimeout(() => setResult(null), 2000);
   };
 
   // Get relative time string
@@ -406,6 +576,54 @@ export default function WritePage() {
         </div>
       )}
 
+      {/* Template Picker */}
+      <div className="rounded-lg border border-border/60 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-medium">템플릿 선택</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">미리 정의된 구조로 빠르게 시작하기</p>
+          </div>
+          <button
+            onClick={() => setShowTemplatePicker(!showTemplatePicker)}
+            className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+          >
+            {showTemplatePicker ? "접기" : "펼치기"}
+            <ChevronDown className={`h-3 w-3 transition-transform ${showTemplatePicker ? "rotate-180" : ""}`} />
+          </button>
+        </div>
+
+        {showTemplatePicker && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+            {TEMPLATES.map((template) => {
+              const collectionInfo = COLLECTIONS.find(c => c.id === template.collection);
+              const Icon = collectionInfo?.icon || FileText;
+              return (
+                <button
+                  key={template.id}
+                  onClick={() => applyTemplate(template.id)}
+                  className="flex flex-col items-start gap-1.5 px-3 py-2.5 rounded-lg border border-border hover:border-primary/50 hover:bg-accent transition-all text-left group"
+                >
+                  <div className="flex items-center gap-1.5 text-muted-foreground group-hover:text-foreground transition-colors">
+                    <Icon className="h-3.5 w-3.5" />
+                    <span className="text-xs font-medium">{template.label}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                      {collectionInfo?.label}
+                    </span>
+                    {template.categories.map(cat => (
+                      <span key={cat} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Metadata (collapsible) */}
       {showMeta && (
         <div className="rounded-lg border border-border/60 p-4 space-y-4">
@@ -511,7 +729,9 @@ export default function WritePage() {
         <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30">
             <span className="text-xs font-medium text-muted-foreground">마크다운</span>
-            <span className="text-[10px] text-muted-foreground/50">{content.length}자</span>
+            <span className="text-[10px] text-muted-foreground/50">
+              {content.length.toLocaleString()}자 · 약 {Math.max(1, Math.ceil(content.length / 500))}분
+            </span>
           </div>
           <MarkdownToolbar textareaRef={textareaRef} value={content} onChange={setContent} />
           <textarea

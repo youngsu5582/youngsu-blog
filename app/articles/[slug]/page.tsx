@@ -3,6 +3,7 @@ import { getAllArticles, getArticleBySlug, getUrlSlug } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
+import { Breadcrumbs } from "@/components/common/breadcrumbs";
 import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
 import { siteConfig } from "@/config/site";
 import type { Metadata } from "next";
@@ -105,6 +106,12 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       {renderJsonLd(breadcrumbSchema)}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_250px] gap-8">
       <article className="min-w-0">
+        <Breadcrumbs
+          items={[
+            { label: "아티클", href: "/articles" },
+            { label: article.title, href: `/articles/${slug}`, current: true },
+          ]}
+        />
         {/* Status badge */}
         <div className="mb-4">
           <span

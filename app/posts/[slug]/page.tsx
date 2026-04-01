@@ -6,11 +6,13 @@ import { MDXContent } from "@/components/mdx/mdx-content";
 import type { Metadata } from "next";
 import { GiscusComments } from "@/components/common/giscus-comments";
 import { ReadingProgress } from "@/components/post/reading-progress";
+import { ReadingPosition } from "@/components/post/reading-position";
 import { ShareButtons } from "@/components/post/share-buttons";
 import { PostNavigation } from "@/components/post/post-navigation";
 import { RelatedPosts } from "@/components/post/related-posts";
 import { ScrollToTop } from "@/components/common/scroll-to-top";
 import { SeriesNav } from "@/components/post/series-nav";
+import { Breadcrumbs } from "@/components/common/breadcrumbs";
 import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
 import { siteConfig } from "@/config/site";
 import fs from "fs";
@@ -162,8 +164,18 @@ export default async function PostPage({ params }: PostPageProps) {
       {renderJsonLd(articleSchema)}
       {renderJsonLd(breadcrumbSchema)}
       <ReadingProgress />
+      <ReadingPosition slug={slug} />
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-10">
         <article className="min-w-0">
+          <Breadcrumbs
+            items={[
+              { label: "포스트", href: "/posts" },
+              ...(post.categories.length > 0
+                ? [{ label: post.categories[0], href: `/categories/${post.categories[0]}` }]
+                : []),
+              { label: post.title, href: `/posts/${slug}`, current: true },
+            ]}
+          />
           <PostHeader
             title={post.title}
             date={post.date}
