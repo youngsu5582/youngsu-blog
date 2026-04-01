@@ -12,14 +12,21 @@ export async function GET() {
   // Find new/modified content files from git status
   let changedFiles: Array<{ path: string; status: string }> = [];
   try {
-    const gitStatus = execSync("git status --porcelain content/", { cwd, encoding: "utf-8" });
+    const gitStatus = execSync("git -c core.quotePath=false status --porcelain content/", { cwd, encoding: "utf-8" });
     changedFiles = gitStatus
       .split("\n")
       .filter(Boolean)
-      .map((line) => ({
-        status: line.substring(0, 2).trim(),
-        path: line.substring(3).trim(),
-      }))
+      .map((line) => {
+        let filePath = line.substring(3).trim();
+        // Strip surrounding quotes if present (safety measure)
+        if (filePath.startsWith('"') && filePath.endsWith('"')) {
+          filePath = filePath.slice(1, -1);
+        }
+        return {
+          status: line.substring(0, 2).trim(),
+          path: filePath,
+        };
+      })
       .filter((f) => f.path.endsWith(".mdx") || f.path.endsWith(".md"));
   } catch {}
 

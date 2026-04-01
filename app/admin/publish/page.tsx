@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit } from "lucide-react";
+import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit, AlertTriangle } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -66,6 +66,13 @@ interface AiProvider {
   label: string;
   available: boolean;
   type: "cli" | "api";
+}
+
+// Helper function to detect non-ASCII characters in filename
+function hasNonAsciiFilename(filePath: string): boolean {
+  const filename = filePath.split("/").pop() || "";
+  // Check if filename contains any non-ASCII characters
+  return /[^\x00-\x7F]/.test(filename);
 }
 
 export default function PublishPage() {
@@ -531,6 +538,12 @@ export default function PublishPage() {
                         {post.gitStatus === "new" ? "NEW" : "MOD"}
                       </span>
                       <span className="text-sm font-medium truncate">{post.title}</span>
+                      {hasNonAsciiFilename(post.filePath) && (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 dark:text-orange-500" title="slug에 한글이 포함되어 있습니다">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span className="font-medium">한글 slug</span>
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-1 ml-10">
                       {post.image && <ImageIcon className="h-3 w-3 text-green-500" />}
