@@ -71,11 +71,26 @@ export default async function CategoriesPage({ searchParams }: CategoriesPagePro
         <LangToggle currentLang={lang} basePath="/categories" />
       </div>
 
+      {/* 상위 카테고리 퀵 네비게이션 */}
+      <div className="flex flex-wrap gap-2">
+        {[...tree.entries()].map(([parentName, node]) => (
+          <a
+            key={parentName}
+            href={`#category-${encodeURIComponent(parentName)}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border border-border/60 bg-card hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-colors"
+          >
+            <span>{parentName}</span>
+            <span className="text-[11px] text-muted-foreground">{node.count}</span>
+          </a>
+        ))}
+      </div>
+
       <div className="space-y-4">
         {[...tree.entries()].map(([parentName, node]) => (
           <div
             key={parentName}
-            className="rounded-lg border border-border/60 overflow-hidden"
+            id={`category-${encodeURIComponent(parentName)}`}
+            className="rounded-lg border border-border/60 overflow-hidden scroll-mt-20"
           >
             <Link
               href={`/categories/${encodeURIComponent(parentName)}?lang=${lang}`}

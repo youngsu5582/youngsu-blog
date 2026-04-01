@@ -110,33 +110,6 @@ function buildCommitMessage(posts: PublishPost[]): string {
   return `docs: ${posts.length}개 포스트 ${action}\n\n${titles}`;
 }
 
-function saveFileContents(cwd: string, posts: PublishPost[], filesToCommit: string[]): Map<string, Buffer> {
-  const saved = new Map<string, Buffer>();
-  // 콘텐츠 파일 (prepareFiles가 frontmatter 수정하므로 수정 전 저장)
-  for (const { slug, collection = "posts", includeEn, enSlug } of posts) {
-    const koFile = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
-    if (fs.existsSync(koFile)) saved.set(koFile, fs.readFileSync(koFile));
-    if (includeEn && enSlug) {
-      const enFile = path.join(CONTENT_ROOT, collection, `${enSlug}.mdx`);
-      if (fs.existsSync(enFile)) saved.set(enFile, fs.readFileSync(enFile));
-    }
-  }
-  // 생성된 파일 (썸네일 등)
-  for (const f of filesToCommit) {
-    const fullPath = path.join(cwd, f);
-    if (!saved.has(fullPath) && fs.existsSync(fullPath)) {
-      saved.set(fullPath, fs.readFileSync(fullPath));
-    }
-  }
-  return saved;
-}
-
-function restoreFiles(saved: Map<string, Buffer>) {
-  for (const [filePath, content] of saved) {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, content);
-  }
-}
 
 export async function POST(req: Request) {
   try {
@@ -151,50 +124,34 @@ export async function POST(req: Request) {
     const autoPush: boolean = body.autoPush ?? false;
 
     if (mode === "pr") {
-      // PR 모드: 원본 저장 → 수정 → 브랜치 → 커밋 → 푸시 → PR → 원본 복원
-      // 1. 콘텐츠 파일 원본 저장 (prepareFiles가 frontmatter를 수정하기 전)
-      const preSaveContents = new Map<string, Buffer>();
-      for (const { slug, collection = "posts", includeEn, enSlug } of posts) {
-        const koFile = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
-        if (fs.existsSync(koFile)) preSaveContents.set(koFile, fs.readFileSync(koFile));
-        if (includeEn && enSlug) {
-          const enFile = path.join(CONTENT_ROOT, collection, `${enSlug}.mdx`);
-          if (fs.existsSync(enFile)) preSaveContents.set(enFile, fs.readFileSync(enFile));
-        }
-      }
-
-      // 2. frontmatter 수정 + 커밋 대상 파일 목록
+      // PR 모드: 수정 → 브랜치 → 커밋 → 푸시 → PR → main 복귀
       const filesToCommit = prepareFiles(posts);
       if (filesToCommit.length === 0) {
-        restoreFiles(preSaveContents);
         return NextResponse.json({ error: "발행할 파일이 없습니다" }, { status: 400 });
       }
 
-      // 3. 생성된 파일(썸네일 등)도 저장
-      for (const f of filesToCommit) {
-        const fullPath = path.join(cwd, f);
-        if (!preSaveContents.has(fullPath) && fs.existsSync(fullPath)) {
-          preSaveContents.set(fullPath, fs.readFileSync(fullPath));
-        }
-      }
-
       const commitMsg = buildCommitMessage(posts);
-      const tmpFile = "/tmp/admin-publish-msg.txt";
+      const tmpFile = path.join(require("os").tmpdir(), `admin-publish-${Date.now()}.txt`);
       const now = new Date();
       const date = now.toISOString().slice(0, 10);
       const time = now.toTimeString().slice(0, 8).replace(/:/g, "");
       const branchName = `publish/${date}-${posts.length === 1 ? posts[0].slug : `${posts.length}-posts`}-${time}`;
 
+      // 변경된 파일을 stash → 브랜치에서 커밋 → main 복귀 후 stash pop
+      // 이렇게 하면 로컬에도 draft: false 상태가 유지됨
+      execSync(`git stash push -- ${filesToCommit.map(f => `"${f}"`).join(" ")}`, { cwd });
       execSync(`git checkout -b "${branchName}"`, { cwd });
 
       try {
+        execSync("git stash pop", { cwd });
+
         for (const f of filesToCommit) {
           execSync(`git add "${f}"`, { cwd });
         }
 
         fs.writeFileSync(tmpFile, commitMsg, "utf-8");
-        execSync(`git commit -F ${tmpFile}`, { cwd, encoding: "utf-8" });
-        fs.unlinkSync(tmpFile);
+        execSync(`git commit -F "${tmpFile}"`, { cwd, encoding: "utf-8" });
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
 
         const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
 
@@ -212,6 +169,24 @@ export async function POST(req: Request) {
           { cwd, encoding: "utf-8" },
         ).trim();
 
+        // main 복귀 (로컬 파일은 수정된 상태 유지)
+        execSync("git checkout main", { cwd });
+        try { execSync(`git branch -D "${branchName}"`, { cwd }); } catch {}
+
+        // main에서도 변경사항 적용 (unstaged 상태로)
+        for (const { slug, collection = "posts", frontmatter, includeEn, enSlug } of posts) {
+          const koFile = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
+          if (fs.existsSync(koFile)) {
+            updateFrontmatter(koFile, { ...frontmatter, draft: false });
+          }
+          if (includeEn && enSlug) {
+            const enFile = path.join(CONTENT_ROOT, collection, `${enSlug}.mdx`);
+            if (fs.existsSync(enFile)) {
+              updateFrontmatter(enFile, { categories: frontmatter.categories, tags: frontmatter.tags, image: frontmatter.image, draft: false });
+            }
+          }
+        }
+
         return NextResponse.json({
           success: true,
           mode: "pr",
@@ -220,11 +195,12 @@ export async function POST(req: Request) {
           branch: branchName,
           prUrl,
         });
-      } finally {
-        // main 복귀 후 원본 파일 복원 + 로컬 브랜치 정리
-        execSync("git checkout main", { cwd });
+      } catch (e) {
+        // 실패 시 main 복귀
+        try { execSync("git checkout main", { cwd }); } catch {}
         try { execSync(`git branch -D "${branchName}"`, { cwd }); } catch {}
-        restoreFiles(preSaveContents);
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+        throw e;
       }
     }
 
@@ -235,20 +211,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "발행할 파일이 없습니다" }, { status: 400 });
     }
 
-    const allModified = posts.every((p) => p.gitStatus === "modified");
     const commitMsg = buildCommitMessage(posts);
-    const tmpFile = "/tmp/admin-publish-msg.txt";
+    const tmpFile = path.join(require("os").tmpdir(), `admin-publish-${Date.now()}.txt`);
 
     for (const f of filesToCommit) {
       execSync(`git add "${f}"`, { cwd });
     }
 
     fs.writeFileSync(tmpFile, commitMsg, "utf-8");
-    if (allModified) {
-      execSync(`git commit --amend -F ${tmpFile}`, { cwd, encoding: "utf-8" });
-    } else {
-      execSync(`git commit -F ${tmpFile}`, { cwd, encoding: "utf-8" });
-    }
+    execSync(`git commit -F "${tmpFile}"`, { cwd, encoding: "utf-8" });
     fs.unlinkSync(tmpFile);
 
     const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
@@ -257,8 +228,7 @@ export async function POST(req: Request) {
     let pushError: string | undefined;
     if (autoPush) {
       try {
-        const pushCmd = allModified ? "git push --force-with-lease origin main" : "git push origin main";
-        execSync(pushCmd, { cwd, encoding: "utf-8" });
+        execSync("git push origin main", { cwd, encoding: "utf-8" });
         pushed = true;
       } catch (e) {
         pushError = String(e);

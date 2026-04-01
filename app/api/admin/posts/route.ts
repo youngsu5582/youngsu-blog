@@ -28,7 +28,9 @@ export async function GET() {
         };
       })
       .filter((f) => f.path.endsWith(".mdx") || f.path.endsWith(".md"));
-  } catch {}
+  } catch (e) {
+    return NextResponse.json({ posts: [], categories: [], tags: [], error: `git status 실패: ${e}` });
+  }
 
   // Parse each file's frontmatter
   const posts = changedFiles.map((file) => {
@@ -37,7 +39,9 @@ export async function GET() {
     try {
       const raw = fs.readFileSync(absPath, "utf-8");
       frontmatter = matter(raw).data;
-    } catch {}
+    } catch (e) {
+      console.warn(`frontmatter 파싱 실패: ${file.path}`, e);
+    }
 
     // Detect collection from path
     let collection = "posts";
