@@ -125,7 +125,7 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
                       </p>
                       {note.tags.length > 0 && (
                         <div className="flex gap-1">
-                          {note.tags.slice(0, 2).map((tag) => (
+                          {note.tags.slice(0, 2).map((tag: string) => (
                             <span key={tag} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{tag}</span>
                           ))}
                         </div>
