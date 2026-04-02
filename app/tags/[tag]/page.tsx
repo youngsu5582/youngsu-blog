@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAllTags, getContentByTag, getUrlSlug } from "@/lib/content";
+import { getAllTags, getContentByTag, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -77,7 +77,7 @@ export default async function TagPage({ params, searchParams }: TagPageProps) {
                     categories={post.categories}
                     tags={post.tags}
                     image={post.image}
-                    readingTime={post.metadata.readingTime}
+                    readingTime={calcReadingTimeFromBody(post.body)}
                   />
                 ))}
               </div>

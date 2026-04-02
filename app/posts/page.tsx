@@ -1,4 +1,4 @@
-import { getAllPosts, getUrlSlug } from "@/lib/content";
+import { getAllPosts, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
 import { PostList } from "@/components/post/post-list";
 import { LangToggle } from "@/components/common/lang-toggle";
 
@@ -40,7 +40,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       </div>
 
       <PostList
-        posts={posts.map((p) => ({ ...p, slug: getUrlSlug(p.slug) }))}
+        posts={posts.map((p) => ({ ...p, slug: getUrlSlug(p.slug), metadata: { readingTime: calcReadingTimeFromBody(p.body) } }))}
         currentPage={currentPage}
         totalPages={totalPages}
         basePath={lang === "en" ? "/posts?lang=en" : "/posts"}

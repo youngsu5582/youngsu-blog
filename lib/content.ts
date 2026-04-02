@@ -4,14 +4,11 @@ import { notes, type Note } from "#site/content";
 
 export type { Post, Article, LibraryItem, Note };
 
-/** 읽기 시간 계산 — 컴파일된 MDX body에서 추정 (한글+영문) */
+/** 읽기 시간 계산 — 컴파일된 MDX body에서 한글 문자 수 기반 추정 */
 export function calcReadingTimeFromBody(body: string): number {
-  // Extract string literals from compiled MDX (actual content)
-  const strings = body.match(/"[^"]{2,}"/g) || [];
-  const text = strings.join(" ");
-  const koreanChars = (text.match(/[가-힣]/g) || []).length;
-  const englishWords = (text.match(/[a-zA-Z]+/g) || []).length;
-  const minutes = Math.ceil(koreanChars / 500 + englishWords / 200);
+  // 컴파일된 body에서 한글만 카운트 (JSX/JS 코드에는 한글 없음)
+  const koreanChars = (body.match(/[가-힣]/g) || []).length;
+  const minutes = Math.ceil(koreanChars / 500);
   return Math.max(1, minutes);
 }
 
