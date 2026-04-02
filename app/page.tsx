@@ -1,6 +1,7 @@
 import { siteConfig } from "@/config/site";
 import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, calcReadingTimeFromBody, type Note, type Article } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
+import { FeaturedPostCard } from "@/components/post/featured-post-card";
 import { ArticleCard } from "@/components/article/article-card";
 import { NoteCard } from "@/components/note/note-card";
 import { AnimateIn } from "@/components/common/animate-in";
@@ -64,16 +65,29 @@ export default function Home() {
           <div>
             {recentPosts.map((post, index) => (
               <AnimateIn key={post.slug} delay={index * 100}>
-                <PostCard
-                  title={post.title}
-                  slug={getUrlSlug(post.slug)}
-                  description={post.description}
-                  date={post.date}
-                  categories={post.categories}
-                  tags={post.tags}
-                  image={post.image}
-                  readingTime={calcReadingTimeFromBody(post.body)}
-                />
+                {index === 0 ? (
+                  <FeaturedPostCard
+                    title={post.title}
+                    slug={getUrlSlug(post.slug)}
+                    description={post.description}
+                    date={post.date}
+                    categories={post.categories}
+                    tags={post.tags}
+                    image={post.image}
+                    readingTime={calcReadingTimeFromBody(post.body)}
+                  />
+                ) : (
+                  <PostCard
+                    title={post.title}
+                    slug={getUrlSlug(post.slug)}
+                    description={post.description}
+                    date={post.date}
+                    categories={post.categories}
+                    tags={post.tags}
+                    image={post.image}
+                    readingTime={calcReadingTimeFromBody(post.body)}
+                  />
+                )}
               </AnimateIn>
             ))}
           </div>

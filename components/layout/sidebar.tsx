@@ -19,7 +19,7 @@ export function Sidebar() {
       <div className="flex flex-col h-full px-5 py-8">
         {/* Profile */}
         <div className="flex flex-col items-center text-center mb-8">
-          <div className="theme-avatar-ring mb-4">
+          <div className="theme-avatar-ring mb-4 group cursor-pointer transition-transform duration-300 hover:scale-105">
             <Avatar
               src="/assets/img/avatar.jpg"
               alt={siteConfig.author.name}
@@ -51,13 +51,13 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 text-sm transition-all duration-200 rounded-md",
+                  "flex items-center gap-3 px-3 py-2 text-sm transition-all duration-200 rounded-md group",
                   isActive
                     ? "theme-nav-active font-medium"
                     : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
                 )}
               >
-                <Icon className="h-4 w-4 flex-shrink-0" />
+                <Icon className="h-4 w-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
                 <span>{item.name}</span>
                 {item.description && !isActive && (
                   <span className="ml-auto text-[10px] text-muted-foreground/60 hidden xl:inline">
@@ -81,13 +81,13 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 text-sm transition-all duration-200 rounded-md",
+                  "flex items-center gap-3 px-3 py-2 text-sm transition-all duration-200 rounded-md group",
                   isActive
                     ? "theme-nav-active font-medium"
                     : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
                 )}
               >
-                <Icon className="h-4 w-4 flex-shrink-0" />
+                <Icon className="h-4 w-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
                 <span>{item.name}</span>
               </Link>
             );
@@ -99,9 +99,9 @@ export function Sidebar() {
           <div className="mt-4">
             <Link
               href="/admin"
-              className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 rounded-md transition-colors"
+              className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 rounded-md transition-all group"
             >
-              <Settings className="h-3.5 w-3.5" />
+              <Settings className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110" />
               Admin
             </Link>
           </div>
@@ -116,19 +116,19 @@ export function Sidebar() {
                 href={siteConfig.author.github}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-muted-foreground/60 hover:text-primary transition-colors duration-200"
+                className="text-muted-foreground/60 hover:text-primary transition-all duration-200 hover:scale-110"
               >
                 <Github className="h-3.5 w-3.5" />
               </a>
               <a
                 href={`mailto:${siteConfig.author.email}`}
-                className="text-muted-foreground/60 hover:text-primary transition-colors duration-200"
+                className="text-muted-foreground/60 hover:text-primary transition-all duration-200 hover:scale-110"
               >
                 <Mail className="h-3.5 w-3.5" />
               </a>
               <a
                 href="/feed.xml"
-                className="text-muted-foreground/60 hover:text-primary transition-colors duration-200"
+                className="text-muted-foreground/60 hover:text-primary transition-all duration-200 hover:scale-110"
               >
                 <Rss className="h-3.5 w-3.5" />
               </a>

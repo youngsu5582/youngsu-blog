@@ -101,6 +101,21 @@
     animation-fill-mode: both;
   }
 
+  /* Avatar ring rotation on hover */
+  @keyframes rotate-ring {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .theme-avatar-ring.group:hover::before,
+  .theme-avatar-ring.group:hover::after {
+    animation: rotate-ring 3s linear infinite;
+  }
+
 
   /* ===== Enhanced Prose Styles (Blockquote & Table) ===== */
 
