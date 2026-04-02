@@ -31,7 +31,7 @@ export function FeaturedPostCard({
 
       {/* Glass card */}
       <div className="relative m-[1px] rounded-2xl bg-[var(--theme-glass)] backdrop-blur-md border border-[var(--theme-glass-border)]">
-        <div className="p-6 md:p-8">
+        <div className="p-5 md:p-6">
           {/* Featured badge */}
           <div className="flex items-center gap-2 mb-4">
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-[var(--color-posts)]/10 to-primary/10 border border-[var(--color-posts)]/20">
@@ -58,7 +58,7 @@ export function FeaturedPostCard({
             {/* Text content */}
             <div className="flex-1 min-w-0 space-y-4">
               {/* Title */}
-              <h2 className="text-2xl md:text-3xl font-bold tracking-tight leading-tight">
+              <h2 className="text-xl md:text-2xl font-bold tracking-tight leading-tight">
                 <Link
                   href={`/posts/${slug}`}
                   className="group-hover:text-primary transition-colors duration-200 inline-flex items-center gap-2"
@@ -70,7 +70,7 @@ export function FeaturedPostCard({
 
               {/* Description - full visible */}
               {description && (
-                <p className="text-base text-muted-foreground leading-relaxed">
+                <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
                   {description}
                 </p>
               )}
@@ -122,7 +122,7 @@ export function FeaturedPostCard({
             {/* Thumbnail - larger and prominent */}
             {image && (
               <Link href={`/posts/${slug}`} className="flex-shrink-0">
-                <div className="w-full md:w-80 h-56 md:h-64 rounded-xl overflow-hidden bg-muted ring-1 ring-border/50 group-hover:ring-primary/30 transition-all duration-300">
+                <div className="w-full md:w-64 h-44 md:h-48 rounded-xl overflow-hidden bg-muted ring-1 ring-border/50 group-hover:ring-primary/30 transition-all duration-300">
                   <Image
                     src={image}
                     alt={title}

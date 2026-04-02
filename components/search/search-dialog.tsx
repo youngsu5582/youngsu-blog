@@ -184,11 +184,12 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
   };
 
   const highlightMatch = (text: string, q: string) => {
-    if (!q.trim()) return text;
-    const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+    if (!q.trim() || q.trim().length < 2) return text;
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escaped})`, "gi");
     const parts = text.split(regex);
     return parts.map((part, i) =>
-      regex.test(part) ? (
+      part.toLowerCase() === q.toLowerCase() ? (
         <mark key={i} className="bg-yellow-200 dark:bg-yellow-900/50 text-foreground rounded-sm px-0.5">{part}</mark>
       ) : part
     );
