@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { getTagColorClass } from "@/lib/category-colors";
 
 interface TagData {
   name: string;
@@ -35,21 +36,28 @@ export function TagBubbles({ tags }: { tags: TagData[] }) {
 
   return (
     <div className="flex flex-wrap gap-2.5 items-center justify-center py-4">
-      {shuffledTags.map((tag) => (
-        <Link
-          key={tag.name}
-          href={`/tags/${encodeURIComponent(tag.name)}`}
-          className={`
-            theme-tag rounded-full inline-flex items-center gap-1.5
-            hover:scale-105 active:scale-95
-            transition-all duration-200
-            ${getSize(tag.count)}
-          `}
-        >
-          <span>#{tag.name}</span>
-          <span className="opacity-50 text-[0.8em]">{tag.count}</span>
-        </Link>
-      ))}
+      {shuffledTags.map((tag) => {
+        const colorClass = getTagColorClass(tag.name);
+        const baseClass = colorClass || "theme-tag";
+
+        return (
+          <Link
+            key={tag.name}
+            href={`/tags/${encodeURIComponent(tag.name)}`}
+            className={`
+              ${baseClass}
+              rounded-full inline-flex items-center gap-1.5
+              hover:scale-105 active:scale-95
+              transition-all duration-200
+              ${colorClass ? "border backdrop-filter backdrop-blur-sm" : ""}
+              ${getSize(tag.count)}
+            `}
+          >
+            <span>#{tag.name}</span>
+            <span className="opacity-50 text-[0.8em]">{tag.count}</span>
+          </Link>
+        );
+      })}
     </div>
   );
 }

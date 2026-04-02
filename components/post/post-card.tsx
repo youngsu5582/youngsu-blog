@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Calendar, Clock, ArrowUpRight } from "lucide-react";
+import { getTagColorClass } from "@/lib/category-colors";
 
 interface PostCardProps {
   title: string;
@@ -24,7 +25,7 @@ export function PostCard({
   readingTime,
 }: PostCardProps) {
   return (
-    <article className="group theme-card py-6 first:pt-0">
+    <article className="group theme-card py-6 first:pt-0 relative before:absolute before:left-0 before:top-6 before:bottom-6 before:w-0.5 before:bg-[var(--color-posts)] before:opacity-0 before:transition-opacity before:duration-200 hover:before:opacity-100">
       <div className="flex gap-5">
         {/* Content */}
         <div className="flex-1 min-w-0 space-y-2.5">
@@ -82,13 +83,16 @@ export function PostCard({
               <>
                 <span className="text-border">|</span>
                 <div className="flex flex-wrap gap-1.5">
-                  {tags.slice(0, 3).map((tag) => (
-                    <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`}>
-                      <span className="theme-tag text-[11px] px-2 py-0.5 rounded-full">
-                        {tag}
-                      </span>
-                    </Link>
-                  ))}
+                  {tags.slice(0, 3).map((tag) => {
+                    const colorClass = getTagColorClass(tag);
+                    return (
+                      <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`}>
+                        <span className={`${colorClass || "theme-tag"} text-[11px] px-2 py-0.5 rounded-full ${colorClass ? "border backdrop-filter backdrop-blur-sm" : ""}`}>
+                          {tag}
+                        </span>
+                      </Link>
+                    );
+                  })}
                   {tags.length > 3 && (
                     <span className="text-xs text-muted-foreground/50">
                       +{tags.length - 3}

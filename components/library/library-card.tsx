@@ -23,7 +23,7 @@ export function LibraryCard({
 }: LibraryCardProps) {
   return (
     <Link href={`/library/${slug}`}>
-      <article className="group border border-border rounded-lg overflow-hidden hover:shadow-lg transition-all duration-300 h-full flex flex-col">
+      <article className="group border border-border rounded-lg overflow-hidden hover:shadow-lg transition-all duration-300 h-full flex flex-col relative before:absolute before:top-0 before:left-0 before:right-0 before:h-1 before:bg-[var(--color-library)] before:opacity-0 before:transition-opacity before:duration-200 hover:before:opacity-100">
         {/* Cover Image */}
         <div className="aspect-[3/4] relative overflow-hidden bg-muted">
           {image ? (

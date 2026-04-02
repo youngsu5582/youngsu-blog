@@ -53,6 +53,12 @@
   --theme-glass-border: oklch(0.90 0.02 218 / 0.4);
   --theme-shadow: 0 4px 24px -4px oklch(0.60 0.18 222 / 0.08), 0 1px 3px oklch(0.60 0.18 222 / 0.04);
   --theme-shadow-hover: 0 8px 32px -4px oklch(0.60 0.18 222 / 0.14), 0 2px 6px oklch(0.60 0.18 222 / 0.06);
+
+  /* Content type accent colors */
+  --color-posts: oklch(0.60 0.18 222);      /* blue - timely posts */
+  --color-articles: oklch(0.55 0.14 155);    /* teal/green - evergreen content */
+  --color-notes: oklch(0.65 0.14 75);        /* warm amber - quick notes */
+  --color-library: oklch(0.58 0.12 310);     /* soft purple - books/media */
 }
 
 /* ===== Dark: 黄昏 (tasogare) — 황혼 + 노을빛 ===== */
@@ -101,6 +107,12 @@
   --theme-glass-border: oklch(0.30 0.025 250 / 0.3);
   --theme-shadow: 0 4px 24px -4px oklch(0 0 0 / 0.3), 0 1px 3px oklch(0 0 0 / 0.2);
   --theme-shadow-hover: 0 8px 32px -4px oklch(0.73 0.12 215 / 0.15), 0 2px 6px oklch(0 0 0 / 0.2);
+
+  /* Content type accent colors — dark mode */
+  --color-posts: oklch(0.73 0.12 215);       /* brighter blue */
+  --color-articles: oklch(0.68 0.12 165);     /* bright teal */
+  --color-notes: oklch(0.72 0.12 80);         /* warm amber */
+  --color-library: oklch(0.70 0.10 310);      /* soft purple */
 }
 
 /* ===== Atmospheric Background ===== */

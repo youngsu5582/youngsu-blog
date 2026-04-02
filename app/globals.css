@@ -100,4 +100,14 @@
     animation: fadeInUp 0.5s ease-out forwards;
     animation-fill-mode: both;
   }
+
+  /* Drop cap for article first paragraph */
+  .drop-cap::first-letter {
+    float: left;
+    font-size: 3.5em;
+    line-height: 0.8;
+    padding-right: 0.1em;
+    font-weight: 700;
+    color: hsl(var(--primary));
+  }
 }

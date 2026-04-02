@@ -4,6 +4,7 @@ import { PostCard } from "@/components/post/post-card";
 import { ArticleCard } from "@/components/article/article-card";
 import { NoteCard } from "@/components/note/note-card";
 import { AnimateIn } from "@/components/common/animate-in";
+import { SectionDivider } from "@/components/common/section-divider";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
@@ -15,7 +16,13 @@ export default function Home() {
   return (
     <div className="space-y-12">
       {/* Hero */}
-      <section className="pt-4 pb-2">
+      <section className="relative pt-4 pb-2">
+        {/* Gradient glow background */}
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-br from-primary/5 via-[oklch(0.65_0.12_195)/0.05] to-transparent rounded-full blur-3xl" />
+          <div className="absolute -top-20 right-1/4 w-80 h-80 bg-gradient-to-bl from-[oklch(0.70_0.10_185)/0.04] to-transparent rounded-full blur-3xl" />
+        </div>
+
         <p className="text-sm text-muted-foreground mb-2 tracking-wide">
           Welcome
         </p>
@@ -26,7 +33,16 @@ export default function Home() {
         <p className="text-muted-foreground mt-3 text-base leading-relaxed max-w-lg">
           {siteConfig.description}
         </p>
-        <div className="mt-4 w-16 h-0.5 rounded-full bg-gradient-to-r from-primary to-transparent" />
+
+        {/* Decorative dots */}
+        <div className="mt-4 flex items-center gap-2">
+          <div className="w-16 h-0.5 rounded-full bg-gradient-to-r from-primary to-transparent" />
+          <div className="flex gap-1">
+            <div className="w-1 h-1 rounded-full bg-primary/40" />
+            <div className="w-1 h-1 rounded-full bg-primary/25" />
+            <div className="w-1 h-1 rounded-full bg-primary/15" />
+          </div>
+        </div>
       </section>
 
       {/* Recent Posts */}
@@ -73,6 +89,8 @@ export default function Home() {
         </section>
       )}
 
+      <SectionDivider variant="ornament" />
+
       {/* Recent Articles */}
       {recentArticles.length > 0 && (
         <section>
@@ -109,6 +127,8 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      <SectionDivider variant="ornament" />
 
       {/* Recent Notes */}
       {recentNotes.length > 0 && (
