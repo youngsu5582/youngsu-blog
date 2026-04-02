@@ -1,5 +1,5 @@
 import { siteConfig } from "@/config/site";
-import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, calcReadingTimeFromBody, type Note, type Article } from "@/lib/content";
+import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, type Note, type Article } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import { FeaturedPostCard } from "@/components/post/featured-post-card";
 import { ArticleCard } from "@/components/article/article-card";
@@ -74,7 +74,7 @@ export default function Home() {
                     categories={post.categories}
                     tags={post.tags}
                     image={post.image}
-                    readingTime={calcReadingTimeFromBody(post.body)}
+                    readingTime={post.metadata.readingTime}
                   />
                 ) : (
                   <PostCard
@@ -85,7 +85,7 @@ export default function Home() {
                     categories={post.categories}
                     tags={post.tags}
                     image={post.image}
-                    readingTime={calcReadingTimeFromBody(post.body)}
+                    readingTime={post.metadata.readingTime}
                   />
                 )}
               </AnimateIn>
@@ -134,7 +134,7 @@ export default function Home() {
                   image={article.image}
                   status={article.status}
                   moc={article.moc}
-                  readingTime={calcReadingTimeFromBody(article.body)}
+                  readingTime={article.metadata.readingTime}
                 />
               </AnimateIn>
             ))}
@@ -169,7 +169,7 @@ export default function Home() {
                   date={note.date}
                   categories={note.categories}
                   tags={note.tags}
-                  readingTime={calcReadingTimeFromBody(note.body)}
+                  readingTime={note.metadata.readingTime}
                 />
               </AnimateIn>
             ))}

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAllCategories, getContentByCategory, getUrlSlug, calcReadingTimeFromBody, type Note } from "@/lib/content";
+import { getAllCategories, getContentByCategory, getUrlSlug, type Note } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
@@ -90,7 +90,7 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
                     categories={post.categories}
                     tags={post.tags}
                     image={post.image}
-                    readingTime={calcReadingTimeFromBody(post.body)}
+                    readingTime={post.metadata.readingTime}
                   />
                 ))}
               </div>

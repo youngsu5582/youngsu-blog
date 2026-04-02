@@ -5,7 +5,7 @@ import { Home, Search, TrendingUp } from "lucide-react";
 import { useState, useEffect } from "react";
 import { SearchDialog } from "@/components/search/search-dialog";
 import { buildSearchIndex, type SearchItem } from "@/lib/search";
-import { getAllPosts, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
+import { getAllPosts, getUrlSlug } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 
 export default function NotFound() {
@@ -98,7 +98,7 @@ export default function NotFound() {
                   categories={post.categories}
                   tags={post.tags}
                   image={post.image}
-                  readingTime={calcReadingTimeFromBody(post.body)}
+                  readingTime={post.metadata.readingTime}
                 />
               ))}
             </div>
