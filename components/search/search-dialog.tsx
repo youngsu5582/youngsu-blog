@@ -7,12 +7,12 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import { searchConfig } from "@/config/search";
 import type { SearchItem } from "@/lib/search";
-import { Search, Hash, Folder } from "lucide-react";
+import { Search, Hash, Folder, Clock, X } from "lucide-react";
 import { trackSearch } from "@/lib/analytics";
+import { getAllTags } from "@/lib/content";
 
 interface SearchDialogProps {
   searchIndex: SearchItem[];
@@ -34,15 +34,51 @@ const TYPE_BADGE: Record<string, { label: string; className: string }> = {
   note: { label: "노트", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
 };
 
+const RECENT_SEARCHES_KEY = "recent-searches";
+const MAX_RECENT_SEARCHES = 5;
+
+function getRecentSearches(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = localStorage.getItem(RECENT_SEARCHES_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentSearch(query: string) {
+  if (typeof window === "undefined" || !query.trim()) return;
+  try {
+    const recent = getRecentSearches();
+    const updated = [query, ...recent.filter((q) => q !== query)].slice(0, MAX_RECENT_SEARCHES);
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function removeRecentSearch(query: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const recent = getRecentSearches();
+    const updated = recent.filter((q) => q !== query);
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
   const filteredIndex = useMemo(() => {
     const lang = getCurrentLang();
     return searchIndex.filter((item) => !item.lang || item.lang === lang);
-  }, [searchIndex, open]);
+  }, [searchIndex]);
 
   const fuse = useMemo(() => {
     return new Fuse(filteredIndex, {
@@ -61,10 +97,17 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
-    const items = fuse.search(query).slice(0, searchConfig.maxResults).map((r) => r.item);
+    const searchResults = fuse.search(query);
+    const items = searchResults.slice(0, searchConfig.maxResults).map((r) => r.item);
     if (items.length > 0) trackSearch(query, items.length);
     return items;
   }, [query, fuse]);
+
+  const popularTags = useMemo(() => {
+    const lang = getCurrentLang();
+    const allTags = getAllTags(lang);
+    return allTags.slice(0, 6).map((t) => t.name);
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
@@ -80,11 +123,31 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
   };
 
   useEffect(() => {
-    if (!open) { setQuery(""); setSelectedIndex(0); }
+    if (open) {
+      // Load recent searches asynchronously
+      const timer = setTimeout(() => {
+        setRecentSearches(getRecentSearches());
+      }, 0);
+      return () => clearTimeout(timer);
+    }
   }, [open]);
 
   useEffect(() => {
-    if (selectedIndex >= results.length && results.length > 0) setSelectedIndex(0);
+    if (!open) {
+      // Reset state when dialog closes
+      const timer = setTimeout(() => {
+        setQuery("");
+        setSelectedIndex(0);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (selectedIndex >= results.length && results.length > 0) {
+      const timer = setTimeout(() => setSelectedIndex(0), 0);
+      return () => clearTimeout(timer);
+    }
   }, [results.length, selectedIndex]);
 
   const handleSelect = (item: SearchItem) => {
@@ -94,12 +157,30 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
       item.type === "note" ? "/notes" :
       "/posts";
 
+    if (query.trim()) {
+      saveRecentSearch(query.trim());
+    }
+
     if (item.type === "note") {
       router.push("/notes");
     } else {
       router.push(`${basePath}/${item.slug}`);
     }
     onOpenChange(false);
+  };
+
+  const handleRecentSearchClick = (searchTerm: string) => {
+    setQuery(searchTerm);
+  };
+
+  const handleRemoveRecentSearch = (searchTerm: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    removeRecentSearch(searchTerm);
+    setRecentSearches(getRecentSearches());
+  };
+
+  const handleTagClick = (tag: string) => {
+    setQuery(tag);
   };
 
   const highlightMatch = (text: string, q: string) => {
@@ -134,15 +215,56 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
 
         <div className="overflow-y-auto max-h-[65vh] p-2">
           {query.trim() === "" ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-              <Search className="h-12 w-12 mb-4 opacity-20" />
-              <p className="text-sm">검색어를 입력하면 콘텐츠를 찾을 수 있습니다</p>
-              <p className="text-xs mt-2">↑↓ 이동 · Enter 선택 · ESC 닫기</p>
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              {recentSearches.length > 0 ? (
+                <div className="w-full px-2">
+                  <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>최근 검색</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {recentSearches.map((term) => (
+                      <button
+                        key={term}
+                        onClick={() => handleRecentSearchClick(term)}
+                        className="group flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-sm transition-colors"
+                      >
+                        <span>{term}</span>
+                        <X
+                          className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => handleRemoveRecentSearch(term, e)}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <Search className="h-12 w-12 mb-4 opacity-20 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">검색어를 입력하면 콘텐츠를 찾을 수 있습니다</p>
+              <p className="text-xs mt-2 text-muted-foreground">↑↓ 이동 · Enter 선택 · ESC 닫기</p>
             </div>
           ) : results.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-              <Search className="h-12 w-12 mb-4 opacity-20" />
-              <p className="text-sm">검색 결과가 없습니다</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Search className="h-12 w-12 mb-4 opacity-20 text-muted-foreground" />
+              <p className="text-sm font-medium mb-2">검색 결과가 없습니다</p>
+              <p className="text-xs text-muted-foreground mb-4">다른 키워드로 검색해보세요</p>
+              {popularTags.length > 0 && (
+                <div className="w-full px-2">
+                  <p className="text-xs text-muted-foreground mb-2">인기 태그로 검색</p>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {popularTags.map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => handleTagClick(tag)}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-muted hover:bg-muted/80 rounded-md text-xs transition-colors"
+                      >
+                        <Hash className="h-3 w-3" />
+                        <span>{tag}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-1">
