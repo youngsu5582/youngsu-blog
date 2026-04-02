@@ -103,6 +103,25 @@ export default defineConfig({
         {
           theme: { dark: "github-dark", light: "github-light" },
           keepBackground: false,
+          defaultLang: "plaintext",
+          onVisitLine(node: any) {
+            // Prevent lines from collapsing in `display: grid` mode, and allow empty
+            // lines to be copy/pasted
+            if (node.children.length === 0) {
+              node.children = [{ type: "text", value: " " }];
+            }
+          },
+          onVisitHighlightedLine(node: any) {
+            node.properties.className?.push("line--highlighted");
+          },
+          onVisitHighlightedChars(node: any) {
+            node.properties.className = ["word--highlighted"];
+          },
+          filterMetaString: (meta: string) => {
+            // Parse meta string to extract title and other options
+            // This ensures meta attributes are properly processed
+            return meta;
+          },
         },
       ],
       [

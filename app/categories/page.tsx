@@ -2,6 +2,7 @@ import { getAllPosts, getAllArticles, getAllNotes } from "@/lib/content";
 import Link from "next/link";
 import { ChevronRight, FolderOpen } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
+import { FadeOnScroll } from "@/components/common/fade-on-scroll";
 
 export const metadata = {
   title: "카테고리",
@@ -86,12 +87,12 @@ export default async function CategoriesPage({ searchParams }: CategoriesPagePro
       </div>
 
       <div className="space-y-4">
-        {[...tree.entries()].map(([parentName, node]) => (
-          <div
-            key={parentName}
-            id={`category-${encodeURIComponent(parentName)}`}
-            className="rounded-lg border border-border/60 overflow-hidden scroll-mt-20"
-          >
+        {[...tree.entries()].map(([parentName, node], index) => (
+          <FadeOnScroll key={parentName} delay={index * 50}>
+            <div
+              id={`category-${encodeURIComponent(parentName)}`}
+              className="rounded-lg border border-border/60 overflow-hidden scroll-mt-20"
+            >
             <Link
               href={`/categories/${encodeURIComponent(parentName)}?lang=${lang}`}
               className="flex items-center justify-between px-5 py-3.5 bg-card hover:bg-primary/5 dark:hover:bg-primary/8 transition-colors group"
@@ -130,7 +131,8 @@ export default async function CategoriesPage({ searchParams }: CategoriesPagePro
                   ))}
               </div>
             )}
-          </div>
+            </div>
+          </FadeOnScroll>
         ))}
       </div>
     </div>

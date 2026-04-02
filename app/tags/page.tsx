@@ -1,6 +1,7 @@
 import { getAllTags } from "@/lib/content";
 import { TagBubbles } from "@/components/tags/tag-bubbles";
 import { LangToggle } from "@/components/common/lang-toggle";
+import { FadeOnScroll } from "@/components/common/fade-on-scroll";
 
 export const metadata = {
   title: "태그",
@@ -28,7 +29,9 @@ export default async function TagsPage({ searchParams }: TagsPageProps) {
         <LangToggle currentLang={lang} basePath="/tags" />
       </div>
 
-      <TagBubbles tags={tags} />
+      <FadeOnScroll>
+        <TagBubbles tags={tags} />
+      </FadeOnScroll>
     </div>
   );
 }

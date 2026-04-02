@@ -313,12 +313,44 @@ body {
   padding: 0;
   font-size: inherit;
   color: inherit;
+  display: block;
+  counter-reset: line;
+}
+/* Enable line numbers for all code blocks */
+[data-rehype-pretty-code-figure] code > [data-line]::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  width: 2rem;
+  margin-right: 1.5rem;
+  text-align: right;
+  color: var(--muted-foreground);
+  opacity: 0.35;
+  user-select: none;
+}
+[data-rehype-pretty-code-figure] code > [data-line] {
+  display: block;
+  padding-left: 0.5rem;
+  padding-right: 1rem;
 }
 [data-rehype-pretty-code-figure] code span {
   color: var(--shiki-light) !important;
 }
 .dark [data-rehype-pretty-code-figure] code span {
   color: var(--shiki-dark) !important;
+}
+/* Highlighted lines */
+[data-rehype-pretty-code-figure] code .line--highlighted {
+  background: var(--theme-glass);
+  border-left: 2px solid var(--theme-accent);
+  margin-left: -0.5rem;
+  padding-left: calc(0.5rem - 2px);
+}
+/* Highlighted words */
+[data-rehype-pretty-code-figure] code .word--highlighted {
+  background: var(--theme-accent-soft);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.2rem;
 }
 /* 언어 미지정 코드 블록 — 텍스트 가독성 보장 */
 [data-rehype-pretty-code-figure] pre:not([data-language]) code span {
@@ -335,8 +367,23 @@ body {
   font-size: 0.875em;
   border: 1px solid var(--theme-glass-border);
 }
-/* Language label — pre only (not code) */
-[data-rehype-pretty-code-figure] pre[data-language]::before {
+/* Title/filename header — tab-like design */
+[data-rehype-pretty-code-figure] figcaption {
+  background: var(--muted);
+  border: 1px solid var(--theme-glass-border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+}
+[data-rehype-pretty-code-figure]:has(figcaption) pre {
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+/* Language label — pre only (not code), only when no title */
+[data-rehype-pretty-code-figure]:not(:has(figcaption)) pre[data-language]::before {
   content: attr(data-language);
   display: block;
   margin-bottom: 0.5rem;

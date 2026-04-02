@@ -1,6 +1,7 @@
 import { siteConfig } from "@/config/site";
 import Link from "next/link";
 import { Github, Rss } from "lucide-react";
+import { FadeOnScroll } from "@/components/common/fade-on-scroll";
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -41,18 +42,21 @@ export function Footer() {
         {/* Main Footer Content */}
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4 mb-8">
           {/* Site Info */}
-          <div className="col-span-2 md:col-span-1">
-            <h3 className="font-semibold text-sm mb-3 text-foreground">
-              {siteConfig.name}
-            </h3>
-            <p className="text-xs text-muted-foreground/70 leading-relaxed">
-              {siteConfig.description}
-            </p>
-          </div>
+          <FadeOnScroll delay={0}>
+            <div className="col-span-2 md:col-span-1">
+              <h3 className="font-semibold text-sm mb-3 text-foreground">
+                {siteConfig.name}
+              </h3>
+              <p className="text-xs text-muted-foreground/70 leading-relaxed">
+                {siteConfig.description}
+              </p>
+            </div>
+          </FadeOnScroll>
 
           {/* Footer Navigation Sections */}
-          {footerSections.map((section) => (
-            <div key={section.title}>
+          {footerSections.map((section, index) => (
+            <FadeOnScroll key={section.title} delay={(index + 1) * 100}>
+              <div>
               <h4 className="font-medium text-xs uppercase tracking-wider text-muted-foreground/50 mb-3">
                 {section.title}
               </h4>
@@ -81,7 +85,8 @@ export function Footer() {
                   </li>
                 ))}
               </ul>
-            </div>
+              </div>
+            </FadeOnScroll>
           ))}
         </div>
 

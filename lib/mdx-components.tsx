@@ -144,12 +144,45 @@ export const mdxComponents = {
         </code>
       );
     }
-    // 코드 블록 (pre 안의 code)
+    // 코드 블록 (pre 안의 code) - rehype-pretty-code handles this
     return (
       <code className={className} {...props}>
         {children}
       </code>
     );
+  },
+  figure: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => {
+    // rehype-pretty-code wraps code blocks in <figure data-rehype-pretty-code-figure>
+    const isFigureCodeBlock = "data-rehype-pretty-code-figure" in props;
+
+    if (isFigureCodeBlock) {
+      // Extract code text for copy button
+      const extractCodeText = (node: React.ReactNode): string => {
+        if (typeof node === "string") return node;
+        if (React.isValidElement(node)) {
+          const element = node as React.ReactElement<{ children?: React.ReactNode }>;
+          if (element.props.children) {
+            return extractCodeText(element.props.children);
+          }
+        }
+        if (Array.isArray(node)) {
+          return node.map(extractCodeText).join("");
+        }
+        return "";
+      };
+
+      const codeText = extractCodeText(children);
+
+      return (
+        <div className="relative group my-4">
+          <figure {...props}>{children}</figure>
+          {codeText && <CodeCopyButton code={codeText} />}
+        </div>
+      );
+    }
+
+    // Regular figure (images, etc.)
+    return <figure {...props}>{children}</figure>;
   },
   hr: () => <hr className="my-8 border-border" />,
   Callout,
