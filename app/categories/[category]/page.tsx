@@ -8,7 +8,7 @@ import type { Metadata } from "next";
 
 interface CategoryPageProps {
   params: Promise<{ category: string }>;
-  searchParams: Promise<{ lang?: string }>;
+  searchParams: Promise<{ lang?: string; parent?: string }>;
 }
 
 export async function generateStaticParams() {
@@ -29,8 +29,17 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
   const sp = await searchParams;
   const decoded = decodeURIComponent(category);
   const lang = (sp.lang as "ko" | "en") || "ko";
+  const parentCategory = sp.parent ? decodeURIComponent(sp.parent) : undefined;
 
-  const { posts, articles, notes } = getContentByCategory(decoded, lang);
+  let { posts, articles, notes } = getContentByCategory(decoded, lang);
+
+  // 부모 카테고리가 지정되면, 해당 부모도 포함하는 콘텐츠만 필터링
+  if (parentCategory) {
+    posts = posts.filter((p: any) => p.categories.includes(parentCategory));
+    articles = articles.filter((a: any) => a.categories.includes(parentCategory));
+    notes = notes.filter((n: any) => n.categories.includes(parentCategory));
+  }
+
   const totalCount = posts.length + articles.length + notes.length;
 
   // Check if category exists in any language
@@ -47,7 +56,12 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
             <ArrowLeft className="h-3.5 w-3.5" />
             전체 카테고리
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight theme-heading">{decoded}</h1>
+          <h1 className="text-3xl font-bold tracking-tight theme-heading">
+            {parentCategory && (
+              <span className="text-muted-foreground/50 font-normal">{parentCategory} / </span>
+            )}
+            {decoded}
+          </h1>
           <p className="text-muted-foreground mt-3 text-sm">{totalCount}개의 콘텐츠</p>
         </div>
         <LangToggle currentLang={lang} basePath={`/categories/${encodeURIComponent(decoded)}`} />

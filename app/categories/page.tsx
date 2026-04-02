@@ -115,7 +115,7 @@ export default async function CategoriesPage({ searchParams }: CategoriesPagePro
                   .map(([childName, childNode]) => (
                     <Link
                       key={childName}
-                      href={`/categories/${encodeURIComponent(childName)}?lang=${lang}`}
+                      href={`/categories/${encodeURIComponent(childName)}?lang=${lang}&parent=${encodeURIComponent(parentName)}`}
                       className="flex items-center justify-between px-5 py-2.5 pl-12 hover:bg-primary/4 dark:hover:bg-primary/6 transition-colors group border-b border-border/20 last:border-b-0"
                     >
                       <div className="flex items-center gap-2">
