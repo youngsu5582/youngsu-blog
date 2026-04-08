@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
 import { updateFrontmatter } from "@/lib/frontmatter";
+import { validateMdx } from "@/lib/mdx-validator";
 
 const CONTENT_ROOT = path.join(process.cwd(), "content");
 
@@ -91,6 +92,26 @@ export async function POST(req: Request) {
     ];
     const mode: "direct" | "pr" = body.mode ?? "direct";
     const autoPush: boolean = body.autoPush ?? false;
+
+    // MDX 파싱 검증 — 커밋 전에 빌드 에러를 잡는다
+    const validationErrors: Array<{ slug: string; errors: Array<{ line?: number; column?: number; message: string }> }> = [];
+    for (const { slug, collection = "posts" } of posts) {
+      const filePath = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
+      if (!fs.existsSync(filePath)) continue;
+      const raw = fs.readFileSync(filePath, "utf-8");
+      const bodyMatch = raw.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+      const mdxBody = bodyMatch ? bodyMatch[1] : raw;
+      const result = await validateMdx(mdxBody);
+      if (!result.valid) {
+        validationErrors.push({ slug, errors: result.errors });
+      }
+    }
+    if (validationErrors.length > 0) {
+      const detail = validationErrors.map(v =>
+        `${v.slug}: ${v.errors.map(e => `${e.line ? `L${e.line}` : ""} ${e.message}`).join(", ")}`
+      ).join("\n");
+      return NextResponse.json({ error: `MDX 파싱 에러가 있어 발행할 수 없습니다:\n${detail}`, validationErrors }, { status: 400 });
+    }
 
     if (mode === "pr") {
       // PR 모드: 수정 → 브랜치 → 커밋 → 푸시 → PR → main 복귀
