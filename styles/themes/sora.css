@@ -308,7 +308,7 @@ body {
   box-shadow: var(--theme-shadow);
   backdrop-filter: blur(4px);
 }
-[data-rehype-pretty-code-figure] code {
+[data-rehype-pretty-code-figure] pre code {
   background: transparent !important;
   padding: 0;
   font-size: inherit;
@@ -317,7 +317,7 @@ body {
   counter-reset: line;
 }
 /* Enable line numbers for all code blocks */
-[data-rehype-pretty-code-figure] code > [data-line]::before {
+[data-rehype-pretty-code-figure] pre code > [data-line]::before {
   counter-increment: line;
   content: counter(line);
   display: inline-block;
@@ -328,7 +328,7 @@ body {
   opacity: 0.35;
   user-select: none;
 }
-[data-rehype-pretty-code-figure] code > [data-line] {
+[data-rehype-pretty-code-figure] pre code > [data-line] {
   display: block;
   padding-left: 0.5rem;
   padding-right: 1rem;

@@ -23,19 +23,23 @@ function prepareFiles(posts: PublishPost[]): string[] {
     const contentDir = path.join(CONTENT_ROOT, collection);
     const koFile = path.join(contentDir, `${slug}.mdx`);
     if (fs.existsSync(koFile)) {
-      updateFrontmatter(koFile, { ...frontmatter, draft: false });
+      const koUpdate = collection === "posts"
+        ? { ...frontmatter, draft: false }
+        : { ...frontmatter };
+      updateFrontmatter(koFile, koUpdate);
       filesToCommit.push(`content/${collection}/${slug}.mdx`);
     }
 
     if (includeEn && enSlug) {
       const enFile = path.join(contentDir, `${enSlug}.mdx`);
       if (fs.existsSync(enFile)) {
-        updateFrontmatter(enFile, {
+        const enUpdate: Record<string, unknown> = {
           categories: frontmatter.categories,
           tags: frontmatter.tags,
           image: frontmatter.image,
-          draft: false,
-        });
+        };
+        if (collection === "posts") enUpdate.draft = false;
+        updateFrontmatter(enFile, enUpdate);
         filesToCommit.push(`content/${collection}/${enSlug}.mdx`);
       }
     }
@@ -142,12 +146,21 @@ export async function POST(req: Request) {
         for (const { slug, collection = "posts", frontmatter, includeEn, enSlug } of posts) {
           const koFile = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
           if (fs.existsSync(koFile)) {
-            updateFrontmatter(koFile, { ...frontmatter, draft: false });
+            const koUpdate = collection === "posts"
+              ? { ...frontmatter, draft: false }
+              : { ...frontmatter };
+            updateFrontmatter(koFile, koUpdate);
           }
           if (includeEn && enSlug) {
             const enFile = path.join(CONTENT_ROOT, collection, `${enSlug}.mdx`);
             if (fs.existsSync(enFile)) {
-              updateFrontmatter(enFile, { categories: frontmatter.categories, tags: frontmatter.tags, image: frontmatter.image, draft: false });
+              const enUpdate: Record<string, unknown> = {
+                categories: frontmatter.categories,
+                tags: frontmatter.tags,
+                image: frontmatter.image,
+              };
+              if (collection === "posts") enUpdate.draft = false;
+              updateFrontmatter(enFile, enUpdate);
             }
           }
         }
