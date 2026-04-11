@@ -3,6 +3,16 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
+function detectImageFormat(buffer: Buffer): { ext: string; mime: string } {
+  if (buffer.length >= 4) {
+    if (buffer[0] === 0xff && buffer[1] === 0xd8) return { ext: "jpg", mime: "image/jpeg" };
+    if (buffer[0] === 0x89 && buffer[1] === 0x50) return { ext: "png", mime: "image/png" };
+    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46)
+      return { ext: "webp", mime: "image/webp" };
+  }
+  return { ext: "png", mime: "image/png" };
+}
+
 export async function POST(req: Request) {
   try {
     const { base64, filename, originalPath } = await req.json();
@@ -20,12 +30,13 @@ export async function POST(req: Request) {
       fs.mkdirSync(thumbnailDir, { recursive: true });
     }
 
-    // Save image
-    const imagePath = path.join(thumbnailDir, `${filename}.png`);
+    // Save image with detected format
     const imageBuffer = Buffer.from(base64, "base64");
+    const { ext } = detectImageFormat(imageBuffer);
+    const imagePath = path.join(thumbnailDir, `${filename}.${ext}`);
     fs.writeFileSync(imagePath, imageBuffer);
 
-    const publicUrl = `/assets/img/thumbnail/${filename}.png`;
+    const publicUrl = `/assets/img/thumbnail/${filename}.${ext}`;
 
     // Auto-update frontmatter if originalPath is provided
     const updatedFiles: string[] = [];
