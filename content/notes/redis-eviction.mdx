@@ -1,0 +1,95 @@
+---
+title: Redis 의 Eviction
+date: "Sat Apr 11 2026 09:00:00 GMT+0900 (한국 표준시)"
+description: 레디스는 메모리를 어떻게 정리할까
+categories:
+  - Redis
+tags:
+  - redis
+  - redis-eviction
+  - redis-lru
+---
+
+### Redis 의 메모리 관리
+
+Redis 는 C로 작성되었고, 메모리 할당은 성능 오픈 소스 범용 메모리 할당기인 jemalloc 을 쓴다고 한다.
+즉, OS 레벨에서 명시적인 메모리 관리를 한다.
+
+OS Kernel 의 Virtual Memory Manager 은
+
+1. 물리 메모리 할당
+2. 물리 메모리 부족 시, LRU 기반 안쓰는 메모리를 스왑 영역에 기록`
+3. 물리 메모리에 빈 공간 확보 및 
+
+의 흐름으로 동작한다.
+
+> Redis 에 한정된게 아닌, OS 커널이 동작하는 동일한 방식
+
+스왑 영역에 기록하는건 Redis 에 치명적인 접근방식이다.
+결국, Redis 가 빠른건 메모리 영역의 연산 때문인데 디스크에 저장되므로 Page Fault 로 싱글 스레드가 블로킹된다.
+(수천, 수만개의 대기 중인 요청이 모두 지연)
+
+=> 그렇기에, 최대 메모리를 설정하는게 좋다.
+
+```
+maxmemory 1gb
+```
+`redis.conf` 에 와 같이 설정하자.
+
+> "The default behavior when maxmemory is set to 0 is: no memory limit on 64 bit systems, 3GB implicit memory limit on 32 bit systems."
+
+32bit 기준 3GB, 64bit 기준 제한이 없다.
+
+## Cache Eviction Policy
+
+maxmemory 를 지정했으면, Redis 는 메모리가 초과하려고 할 때 사용자가 지정한 정책에 따라 처리를 한다.
+
+> `allkeys-*` 은 모든 키를(TTL 지정 안된키도 포함) 처리한다.
+> `volatile-*` 은 ttl 이 설정된 키만 처리한다.
+
+- noeviction : 클라이언트가 새로운 데이터를 저장하려고 하면, 기존 캐시 데이터를 지우지 않고 에러 발생
+- allkeys-random, volatile-random : 무작위로 데이터 삭제
+- volatile-ttl : ttl 이 짧은 데이터부터 삭제
+- allkeys-lru, volatile-lru : 사용한지 가장 오래된 데이터부터 삭제 알고리즘, 근사치를 계산해서 제거
+- allkeys-lfu, volatile-lfu : 사용 빈도수가 가장 적은 데이터부터 삭제, 최근 사용해도 자주 사용되지 않으면 제거 대상
+
+```
+maxmemory-policy allkeys-lru
+```
+
+`redis.conf` 에 와 같이 설정하자.
+
+### Approximate LRU
+
+Redis 는 정확한 LRU 를 구현하지 않는다.
+완벽한 LRU 를 구현하려면
+
+- 모든 키를 접근 시간순 연결 리스트에 유지
+- 키 접근마다 리스트에서 빼서 맨 앞으로 이동
+- 제거 시 리스트 맨뒤 제거
+
+키마다 포인터를 가져야한다. (16KB, 100만개 = 16MB)
+그리고, 리스트 재배치 연산을 해야한다.
+-> 메모리가 최우선적인 In-Memory DB 이므로, 오버헤드를 감수하지 않는다.
+
+제거가 필요하면
+
+1. 전체 키 중 N개를 랜덤 샘플링 - 기본 N=5
+2. 샘플 중 가장 오래 접근 안한 키 제거
+
+각 키 객체에 24비트 타임스탬프만 저장한다.
+
+```
+maxmemory-samples 5
+```
+
+5가 기본값, 10으로도 정확한 LRU 와 거의 동일하다고 한다.
+
+---
+
+정책은 무조건 정해진 Best Practice 가 아니라
+각 애플리케이션의 특성과 데이터 액세스 패턴에 따라 선택해야 한다.
+
+데이터가 절대 유실되면 안되는 서비스이면 noeviction 을 사용.
+DB 를 통해 데이터 정합을 맞출 수 있고, 설정 및 TTL 을 무조건 세팅한다면?
+volatile 도 괜찮지 않을까
