@@ -1,0 +1,134 @@
+---
+title: OpenClaw Slack Bot 권한 정리
+date: "Wed Apr 30 2026 19:15:00 GMT+0900 (한국 표준시)"
+description: OpenClaw를 Slack에 연결하기 위해 필요한 Bot Token Scopes 정리
+categories:
+  - DevOps
+tags:
+  - openclaw
+  - slack
+  - bot-permissions
+  - slack-scopes
+author: 이영수
+lang: ko
+draft: false
+toc: true
+---
+
+## 개요
+
+OpenClaw를 Slack 워크스페이스에 연결하려면 Slack App에 적절한 Bot Token Scopes(OAuth 권한)를 부여해야 한다.
+최소 권한 원칙을 지키면서도 OpenClaw가 정상적으로 동작하기 위해 필요한 스코프들을 정리한다.
+
+## 필수 권한 (Bot Token Scopes)
+
+### 메시지 읽기/쓰기
+
+| Scope | 설명 |
+|-------|------|
+| `chat:write` | 채널/DM에 메시지 전송 |
+| `chat:write.public` | 봇이 초대되지 않은 퍼블릭 채널에도 메시지 전송 |
+| `chat:write.customize` | 메시지 작성자 이름/아이콘 커스터마이징 (선택) |
+| `chat:read` | 메시지 읽기 (Events API 사용 시) |
+
+### 채널/그룹 접근
+
+| Scope | 설명 |
+|-------|------|
+| `channels:read` | 퍼블릭 채널 목록 및 정보 조회 |
+| `channels:history` | 퍼블릭 채널 메시지 히스토리 조회 |
+| `groups:read` | 프라이빗 채널(그룹) 목록 및 정보 조회 |
+| `groups:history` | 프라이빗 채널 메시지 히스토리 조회 |
+
+### DM 및 멀티파티 DM
+
+| Scope | 설명 |
+|-------|------|
+| `im:read` | DM 목록 및 정보 조회 |
+| `im:history` | DM 메시지 히스토리 조회 |
+| `im:write` | DM 열기 및 메시지 전송 |
+| `mpim:read` | 멀티파티 DM 정보 조회 |
+| `mpim:history` | 멀티파티 DM 메시지 히스토리 조회 |
+
+### 사용자 정보
+
+| Scope | 설명 |
+|-------|------|
+| `users:read` | 워크스페이스 멤버 정보 조회 |
+| `users:read.email` | 이메일 주소 포함 조회 (선택) |
+
+### 파일 (선택)
+
+| Scope | 설명 |
+|-------|------|
+| `files:read` | 업로드된 파일 읽기 |
+| `files:write` | 파일 업로드 |
+
+### 리액션 (선택)
+
+| Scope | 설명 |
+|-------|------|
+| `reactions:read` | 이모지 리액션 조회 |
+| `reactions:write` | 이모지 리액션 추가/제거 |
+
+### 스레드 (선택 - `chat:write`로 커버되지만 명시 권장)
+
+| Scope | 설명 |
+|-------|------|
+| `chat:write` | 스레드 답글, 브로드캐스트 등 (스레드 접근은 `channels:history` / `groups:history`로 커버) |
+
+### 핀 / 북마크 (선택)
+
+| Scope | 설명 |
+|-------|------|
+| `pins:read` | 핀된 메시지 조회 |
+| `pins:write` | 메시지 핀/핀 해제 |
+
+## Events API 구독 (Bot Events)
+
+메시지를 실시간으로 수신하려면 아래 이벤트를 구독해야 한다:
+
+| Event | 설명 |
+|-------|------|
+| `message.channels` | 퍼블릭 채널 메시지 |
+| `message.groups` | 프라이빗 채널 메시지 |
+| `message.im` | DM 메시지 |
+| `message.mpim` | 멀티파티 DM 메시지 |
+| `app_mention` | `@봇명` 멘션 이벤트 |
+
+## 실제 연동 중 겪은 문제
+
+### `missing_scope` 에러
+
+Slack에 메시지를 전송하려다 `chat:write` 권한이 없어서 에러가 발생했다.
+Slack App 설정 → OAuth & Permissions → Bot Token Scopes에서 `chat:write`를 추가한 뒤,
+**앱을 워크스페이스에 재인치(reinstall)** 해야 권한이 실제 토큰에 반영된다.
+
+> ⚠️ 스코프를 추가만 하고 재인치하지 않으면 토큰에 반영되지 않는다. 꼭 재인치!
+
+### GitHub 인증과의 차이
+
+GitHub는 `gh auth login`으로 브라우저 인증 한 번이면 장기간 유지되지만,
+Slack은 Bot Token이 앱 인치 시점에 발급되므로 권한 변경 시마다 재인치가 필요하다.
+
+## 최소 권한 세트 추천
+
+처음 시작할 때는 아래 권한만으로 충분하다:
+
+**필수:**
+- `chat:write`, `chat:write.public`
+- `channels:read`, `channels:history`
+- `groups:read`, `groups:history`
+- `im:read`, `im:history`, `im:write`
+- `users:read`
+- `app_mention` (Event)
+
+**필요시 추가:**
+- `files:read`, `files:write`
+- `reactions:write`
+- `pins:read`, `pins:write`
+
+## 참고
+
+- [Slack Bot Token Scopes 공식 문서](https://api.slack.com/scopes)
+- [OpenClaw Slack 설정 가이드](https://docs.openclaw.ai)
