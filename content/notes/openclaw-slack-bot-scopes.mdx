@@ -13,6 +13,7 @@ author: 이영수
 lang: ko
 draft: false
 toc: true
+comments: true
 ---
 
 ## 개요
@@ -29,7 +30,7 @@ OpenClaw를 Slack 워크스페이스에 연결하려면 Slack App에 적절한 B
 | `chat:write` | 채널/DM에 메시지 전송 |
 | `chat:write.public` | 봇이 초대되지 않은 퍼블릭 채널에도 메시지 전송 |
 | `chat:write.customize` | 메시지 작성자 이름/아이콘 커스터마이징 (선택) |
-| `chat:read` | 메시지 읽기 (Events API 사용 시) |
+| `chat:read` | Web API로 메시지를 직접 조회할 때 필요 (Events/Socket Mode로 수신하는 경우 불필요) |
 
 ### 채널/그룹 접근
 
@@ -70,12 +71,6 @@ OpenClaw를 Slack 워크스페이스에 연결하려면 Slack App에 적절한 B
 |-------|------|
 | `reactions:read` | 이모지 리액션 조회 |
 | `reactions:write` | 이모지 리액션 추가/제거 |
-
-### 스레드 (선택 - `chat:write`로 커버되지만 명시 권장)
-
-| Scope | 설명 |
-|-------|------|
-| `chat:write` | 스레드 답글, 브로드캐스트 등 (스레드 접근은 `channels:history` / `groups:history`로 커버) |
 
 ### 핀 / 북마크 (선택)
 
@@ -131,4 +126,4 @@ Slack은 Bot Token이 앱 인치 시점에 발급되므로 권한 변경 시마�
 ## 참고
 
 - [Slack Bot Token Scopes 공식 문서](https://api.slack.com/scopes)
-- [OpenClaw Slack 설정 가이드](https://docs.openclaw.ai)
+- [OpenClaw Slack 설정 가이드](https://docs.openclaw.ai/gateway/config-slack)
