@@ -1,5 +1,6 @@
 import { getAllPosts, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
 import { PostList } from "@/components/post/post-list";
+import { BrowserLanguageHint } from "@/components/post/browser-language-hint";
 import { LangToggle } from "@/components/common/lang-toggle";
 
 const POSTS_PER_PAGE = 10;
@@ -20,6 +21,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
 
   const allPosts = getAllPosts(lang);
   const totalPages = Math.ceil(allPosts.length / POSTS_PER_PAGE);
+  const isEnglish = lang === "en";
 
   const posts = allPosts.slice(
     (currentPage - 1) * POSTS_PER_PAGE,
@@ -30,20 +32,27 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight theme-heading">포스트</h1>
+          <h1 className="text-3xl font-bold tracking-tight theme-heading">
+            {isEnglish ? "Posts" : "포스트"}
+          </h1>
           <p className="text-muted-foreground mt-3 text-sm">
-            총 {allPosts.length}개의 포스트
+            {isEnglish ? `${allPosts.length} English posts` : `총 ${allPosts.length}개의 포스트`}
           </p>
         </div>
 
         <LangToggle currentLang={lang} />
       </div>
 
+      <BrowserLanguageHint currentLang={lang} />
+
       <PostList
         posts={posts.map((p) => ({ ...p, slug: getUrlSlug(p.slug), metadata: { readingTime: calcReadingTimeFromBody(p.body) } }))}
         currentPage={currentPage}
         totalPages={totalPages}
         basePath={lang === "en" ? "/posts?lang=en" : "/posts"}
+        emptyLabel={isEnglish ? "No posts found." : "포스트가 없습니다."}
+        previousLabel={isEnglish ? "Previous" : "이전"}
+        nextLabel={isEnglish ? "Next" : "다음"}
       />
     </div>
   );

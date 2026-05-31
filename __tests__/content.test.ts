@@ -11,6 +11,9 @@ import {
   getAllArticles,
   getAllLibraryItems,
   getAllNotes,
+  getBasePostSlug,
+  getPostSlugForLang,
+  getAlternatePost,
 } from "@/lib/content";
 
 describe("getUrlSlug", () => {
@@ -83,6 +86,35 @@ describe("getPostBySlug", () => {
   it("없는 slug는 undefined를 반환한다", () => {
     const found = getPostBySlug("non-existent-post-12345");
     expect(found).toBeUndefined();
+  });
+});
+
+describe("translation slug helpers", () => {
+  it("영문 suffix를 제거해 기준 slug를 반환한다", () => {
+    expect(getBasePostSlug("blog-migration-to-custom-blog-en")).toBe("blog-migration-to-custom-blog");
+    expect(getBasePostSlug("posts/blog-migration-to-custom-blog-en")).toBe("blog-migration-to-custom-blog");
+    expect(getBasePostSlug("order-data-handling")).toBe("order-data-handling");
+  });
+
+  it("언어별 URL slug를 생성한다", () => {
+    expect(getPostSlugForLang("blog-migration-to-custom-blog", "ko")).toBe("blog-migration-to-custom-blog");
+    expect(getPostSlugForLang("blog-migration-to-custom-blog", "en")).toBe("blog-migration-to-custom-blog-en");
+    expect(getPostSlugForLang("blog-migration-to-custom-blog-en", "en")).toBe("blog-migration-to-custom-blog-en");
+  });
+
+  it("현재 글의 반대 언어 번역본을 찾고 없으면 undefined를 반환한다", () => {
+    const koPost = getPostBySlug("blog-migration-to-custom-blog");
+    const enPost = getPostBySlug("blog-migration-to-custom-blog-en");
+
+    expect(koPost).toBeDefined();
+    expect(enPost).toBeDefined();
+    expect(getAlternatePost(koPost!)?.slug).toBe(enPost!.slug);
+    expect(getAlternatePost(enPost!)?.slug).toBe(koPost!.slug);
+
+    const untranslated = getPostBySlug("order-data-handling");
+    if (untranslated) {
+      expect(getAlternatePost(untranslated)).toBeUndefined();
+    }
   });
 });
 

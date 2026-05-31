@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { getAllPosts, getPostBySlug, getPostsBySeries, getUrlSlug } from "@/lib/content";
+import { getAllPosts, getAlternatePost, getPostBySlug, getPostsBySeries, getUrlSlug } from "@/lib/content";
+import type { Post } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
 import { MobileToc } from "@/components/post/mobile-toc";
@@ -13,6 +14,7 @@ import { PostNavigation } from "@/components/post/post-navigation";
 import { RelatedPosts } from "@/components/post/related-posts";
 import { ScrollToTop } from "@/components/common/scroll-to-top";
 import { SeriesNav } from "@/components/post/series-nav";
+import { TranslationNotice } from "@/components/post/translation-notice";
 import { Breadcrumbs } from "@/components/common/breadcrumbs";
 import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
 import { siteConfig } from "@/config/site";
@@ -42,9 +44,22 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
     };
   }
 
+  const alternatePost = getAlternatePost(post);
+  const postUrl = `${siteConfig.url}/posts/${slug}`;
+  const languageAlternates = alternatePost
+    ? {
+        [post.lang]: postUrl,
+        [alternatePost.lang]: `${siteConfig.url}/posts/${getUrlSlug(alternatePost.slug)}`,
+      }
+    : undefined;
+
   return {
     title: post.title,
     description: post.description,
+    alternates: {
+      canonical: postUrl,
+      ...(languageAlternates ? { languages: languageAlternates } : {}),
+    },
     openGraph: {
       title: post.title,
       description: post.description,
@@ -118,6 +133,7 @@ export default async function PostPage({ params }: PostPageProps) {
   const rawContent = getRawContent(slug);
   const headings = post.toc ? extractHeadings(rawContent) : [];
   const readingTime = calcReadingTime(rawContent);
+  const alternatePost = getAlternatePost(post);
 
   // Prev/Next navigation
   const allPosts = getAllPosts(post.lang as "ko" | "en");
@@ -126,16 +142,19 @@ export default async function PostPage({ params }: PostPageProps) {
   const nextPost = currentIdx > 0 ? allPosts[currentIdx - 1] : undefined;
 
   // Related posts — manual (frontmatter) first, then auto (same category)
-  const manualRelated = ((post as any).related || [])
+  const relatedSlugs = ("related" in post && Array.isArray(post.related))
+    ? (post.related as string[])
+    : [];
+  const manualRelated = relatedSlugs
     .map((relSlug: string) => {
       // Try language-matched version first
       const langSuffix = post.lang === "en" ? "-en" : "";
       return getPostBySlug(relSlug + langSuffix) || getPostBySlug(relSlug);
     })
-    .filter(Boolean);
+    .filter((p): p is Post => Boolean(p));
 
   const autoRelated = manualRelated.length >= 4 ? [] : allPosts
-    .filter((p) => p.slug !== post.slug && !manualRelated.some((m: any) => m?.slug === p.slug) && p.categories.some((c) => post.categories.includes(c)))
+    .filter((p) => p.slug !== post.slug && !manualRelated.some((m) => m.slug === p.slug) && p.categories.some((c) => post.categories.includes(c)))
     .slice(0, 4 - manualRelated.length);
 
   const related = [...manualRelated, ...autoRelated].slice(0, 4);
@@ -185,6 +204,17 @@ export default async function PostPage({ params }: PostPageProps) {
             tags={post.tags}
             readingTime={readingTime}
           />
+
+          {alternatePost && (
+            <TranslationNotice
+              currentLang={post.lang as "ko" | "en"}
+              alternate={{
+                title: alternatePost.title,
+                slug: getUrlSlug(alternatePost.slug),
+                lang: alternatePost.lang as "ko" | "en",
+              }}
+            />
+          )}
 
           {/* Series Navigation */}
           {post.series && seriesPosts.length > 1 && (

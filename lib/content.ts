@@ -33,6 +33,20 @@ export function getPostBySlug(slug: string) {
   );
 }
 
+export function getBasePostSlug(slug: string) {
+  return getUrlSlug(slug).replace(/-en$/, "");
+}
+
+export function getPostSlugForLang(slug: string, lang: "ko" | "en") {
+  const baseSlug = getBasePostSlug(slug);
+  return lang === "en" ? `${baseSlug}-en` : baseSlug;
+}
+
+export function getAlternatePost(post: Post) {
+  const targetLang = post.lang === "en" ? "ko" : "en";
+  return getPostBySlug(getPostSlugForLang(post.slug, targetLang));
+}
+
 export function getPostsByCategory(category: string, lang?: "ko" | "en") {
   return getAllPosts(lang).filter((post: Post) => post.categories.includes(category));
 }

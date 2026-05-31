@@ -22,6 +22,9 @@ interface PostListProps {
   currentPage: number;
   totalPages: number;
   basePath?: string;
+  emptyLabel?: string;
+  previousLabel?: string;
+  nextLabel?: string;
 }
 
 function pageHref(basePath: string, page: number): string {
@@ -29,11 +32,19 @@ function pageHref(basePath: string, page: number): string {
   return `${basePath}${sep}page=${page}`;
 }
 
-export function PostList({ posts, currentPage, totalPages, basePath = "/posts" }: PostListProps) {
+export function PostList({
+  posts,
+  currentPage,
+  totalPages,
+  basePath = "/posts",
+  emptyLabel = "포스트가 없습니다.",
+  previousLabel = "이전",
+  nextLabel = "다음",
+}: PostListProps) {
   if (posts.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground">포스트가 없습니다.</p>
+        <p className="text-muted-foreground">{emptyLabel}</p>
       </div>
     );
   }
@@ -63,12 +74,12 @@ export function PostList({ posts, currentPage, totalPages, basePath = "/posts" }
           {currentPage > 1 ? (
             <Button variant="outline" size="sm" nativeButton={false} render={<Link href={pageHref(basePath, currentPage - 1)} />}>
               <ChevronLeft className="h-4 w-4 mr-1" />
-              이전
+              {previousLabel}
             </Button>
           ) : (
             <Button variant="outline" size="sm" disabled>
               <ChevronLeft className="h-4 w-4 mr-1" />
-              이전
+              {previousLabel}
             </Button>
           )}
 
@@ -78,12 +89,12 @@ export function PostList({ posts, currentPage, totalPages, basePath = "/posts" }
 
           {currentPage < totalPages ? (
             <Button variant="outline" size="sm" nativeButton={false} render={<Link href={pageHref(basePath, currentPage + 1)} />}>
-              다음
+              {nextLabel}
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (
             <Button variant="outline" size="sm" disabled>
-              다음
+              {nextLabel}
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           )}
