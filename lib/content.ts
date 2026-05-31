@@ -71,8 +71,8 @@ export function getContentByCategory(category: string, lang?: "ko" | "en") {
   return { posts: postResults, articles: articleResults, notes: noteResults };
 }
 
-export function getPostsBySeries(series: string) {
-  return getAllPosts()
+export function getPostsBySeries(series: string, lang?: "ko" | "en") {
+  return getAllPosts(lang)
     .filter((post: Post) => post.series === series)
     .sort((a: Post, b: Post) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
