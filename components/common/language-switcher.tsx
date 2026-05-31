@@ -48,10 +48,13 @@ export function LanguageSwitcher() {
       className="h-8 w-8"
       onClick={toggleLocale}
       disabled={isPending}
+      aria-busy={isPending}
       title={locale === "ko" ? "Switch to English" : "한국어로 전환"}
     >
-      <Languages className="h-4 w-4" />
-      <span className="sr-only">{getLocaleLabel(locale)}</span>
+      <Languages className={`h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
+      <span className="sr-only" role={isPending ? "status" : undefined}>
+        {isPending ? "언어 전환 중" : getLocaleLabel(locale)}
+      </span>
     </Button>
   );
 }
