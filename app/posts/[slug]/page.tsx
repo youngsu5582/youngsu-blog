@@ -159,8 +159,9 @@ export default async function PostPage({ params }: PostPageProps) {
 
   const related = [...manualRelated, ...autoRelated].slice(0, 4);
 
-  // Series navigation
-  const seriesPosts = post.series ? getPostsBySeries(post.series) : [];
+  // Series navigation — keep language variants separate so ko/en translations
+  // of the same article do not appear as two different steps in one series.
+  const seriesPosts = post.series ? getPostsBySeries(post.series, post.lang as "ko" | "en") : [];
 
   // JSON-LD structured data
   const postUrl = `${siteConfig.url}/posts/${slug}`;
