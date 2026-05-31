@@ -127,9 +127,20 @@ export async function POST(req: Request) {
       const time = now.toTimeString().slice(0, 8).replace(/:/g, "");
       const branchName = `publish/${date}-${posts.length === 1 ? posts[0].slug : `${posts.length}-posts`}-${time}`;
 
+      // PR 생성 후 main으로 돌아와도 로컬 Admin에서 계속 보이도록 현재 파일 내용을 보관한다.
+      // 신규 포스트/썸네일은 main에 없는 untracked 파일이라 checkout main 과정에서 사라질 수 있다.
+      const localRestoreFiles = new Map<string, Buffer>();
+      for (const f of filesToCommit) {
+        const absPath = path.join(cwd, f);
+        if (fs.existsSync(absPath)) {
+          localRestoreFiles.set(f, fs.readFileSync(absPath));
+        }
+      }
+
       // 변경된 파일을 stash → 브랜치에서 커밋 → main 복귀 후 stash pop
       // 이렇게 하면 로컬에도 draft: false 상태가 유지됨
-      execSync(`git stash push -- ${filesToCommit.map(f => `"${f}"`).join(" ")}`, { cwd });
+      // 신규 글/썸네일은 아직 git이 추적하지 않는 untracked 파일일 수 있으므로 -u가 필요함.
+      execSync(`git stash push -u -- ${filesToCommit.map(f => `"${f}"`).join(" ")}`, { cwd });
       execSync(`git checkout -b "${branchName}"`, { cwd });
 
       try {
@@ -162,6 +173,14 @@ export async function POST(req: Request) {
         // main 복귀 (로컬 파일은 수정된 상태 유지)
         execSync("git checkout main", { cwd });
         try { execSync(`git branch -D "${branchName}"`, { cwd }); } catch {}
+
+        // main에서도 PR에 넣은 파일을 로컬 작업트리에 복원한다.
+        // 특히 신규 글/신규 썸네일은 main에 아직 없어서 checkout main 이후 사라진다.
+        for (const [relPath, content] of localRestoreFiles.entries()) {
+          const absPath = path.join(cwd, relPath);
+          fs.mkdirSync(path.dirname(absPath), { recursive: true });
+          fs.writeFileSync(absPath, content);
+        }
 
         // main에서도 변경사항 적용 (unstaged 상태로)
         for (const { slug, collection = "posts", frontmatter, includeEn, enSlug } of posts) {
