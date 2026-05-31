@@ -1,0 +1,527 @@
+---
+title: Why I Built a Home Server and How I Prepared It
+date: "2026-05-30T00:00:00.000Z"
+description: A record of how I started my personal home server, from choosing a mini PC to installing Ubuntu Server, doing the initial setup, and connecting through SSH.
+categories:
+  - Homeserver
+tags:
+  - homeserver
+  - ubuntu-server
+  - ssh
+  - mini-pc
+image: /assets/img/thumbnail/2026-05-31-homeserver-setup.png
+author: Lee Youngsu
+lang: en
+draft: false
+toc: true
+comments: true
+series: AI-assisted Homelab
+---
+
+> This post was translated by Hermes Agent.
+
+### Three-line summary
+
+1. A home server is not just a hobby for running services. It is personal infrastructure for operating my own data and automation.
+2. When choosing the first machine, power usage, noise, stability, and RAM/SSD expandability mattered more than peak performance.
+3. My recommended starting point is a low-power mini PC, 16GB of RAM, a 1TB NVMe SSD, wired LAN, Ubuntu Server, and a basic structure that can later expand with Docker.
+
+# Why I Built a Home Server and How I Prepared It
+
+The reason I first wanted to build a home server was not grand.
+
+My photos kept increasing and my iCloud storage was getting full. As a developer, I also thought it would be nice to have a mini PC that I could use like a small toy or lab machine.
+
+Running tools like OpenClaw or Hermes continuously on my personal laptop felt awkward. If I keep services running on the laptop, I start worrying about battery cycles, and it also becomes unclear what to do whenever I take the laptop outside.
+
+At first, the thought was simple.
+
+> It would be nice to have a small server at home that can stay on all the time.
+
+But as I configured the mini PC and started building services one by one, the purpose became clearer.
+
+I did not want to stop at simply storing files or running services. I wanted to record the flow of my daily life based on data from those services and view it through dashboards.
+
+For example:
+
+- how many memos I wrote in a day
+- how much I ran
+- how many movies or books I consumed
+- which automation jobs succeeded or failed
+- whether the services I use often are still alive
+
+I also wanted to build small features and services quickly, expose them externally when needed, and restrict access when they should stay private.
+
+What started as a simple mini PC gradually became a small piece of personal infrastructure for operating my own data.
+
+In this post, I want to summarize why I built a home server, what criteria I used to choose the machine, and how I prepared the initial setup.
+
+## What I looked for when choosing the first home server machine
+
+The first thing I had to decide was what kind of mini PC to buy.
+
+A home server has different priorities from a normal desktop PC. It is less about short bursts of high performance and more about whether it can stay on reliably for a long time.
+
+These were the criteria I looked at:
+
+- low enough power usage to keep it running 24/7
+- not too much fan noise or heat
+- enough memory to run multiple services
+- an SSD that can safely store the OS and service data
+- easy recovery when something goes wrong
+- smooth Linux installation and remote SSH management
+
+At first, I thought CPU performance would matter the most. But after researching and running the server, I realized that power usage, noise, memory, storage, and recoverability mattered more.
+
+A home server is not a machine that I use for an hour or two and then turn off. It stays on all day. So a configuration that is easy to keep running is more realistic than a slightly faster machine.
+
+## The specs of my home server
+
+The mini PC I currently use is fairly low-end.
+
+Starting with an overly powerful machine would have increased the cost, and it did not feel necessary for the services I wanted to run. I also thought that starting too grandly might make the whole thing less fun.
+
+The specs are roughly as follows.
+
+| Item | Current spec | Judgment |
+|---|---:|---|
+| CPU | Intel Celeron N5095A, 4 cores / 4 threads | Enough for basic Docker services, but limited for heavy DB/indexing workloads |
+| Memory | 16GB | A practical minimum for running multiple services at the same time |
+| SSD | 1TB | Reasonable for OS, documents, and service data |
+| Network | Wired LAN | More stable than Wi-Fi |
+
+With this setup, I was able to run several personal Docker-based services such as Memos, Homepage, Uptime Kuma, and an HTML sharing service.
+
+It is not a high-performance server. But it was enough as an entry-level personal home server, and the advantages of a low-power mini PC felt more important.
+
+### What I learned about CPU requirements
+
+When I first started building the home server, I thought the CPU would be the most important part. After actually running it, I found that the CPU only needs to be “good enough.”
+
+Typical web services such as Memos, Uptime Kuma, Homepage, and Filebrowser do not constantly use a lot of CPU. Most of the time they are close to idle, and the CPU is used only when a user connects or when a batch job runs.
+
+For an entry-level home server, low-power CPUs such as Intel N100, N200, or N305 can be good choices.
+
+That said, there are still things to check when looking at the CPU.
+
+- Power usage: a home server runs all day, so high idle power usage becomes a long-term burden.
+- Heat and noise: if the fan is loud or heat is high, it becomes annoying and you may end up turning it off.
+- Instruction set and compatibility: with low-end or older CPUs, you need to check whether the software you want to run requires specific CPU instructions.
+
+For example, older CPUs may not support AVX. Official MongoDB 5.0+ Docker images require AVX, so they may fail to run on those CPUs.
+
+This kind of compatibility issue is easy to miss if you only look at the spec sheet. Before buying a mini PC, it is useful to search the CPU model together with keywords such as Linux, Docker, Proxmox, and MongoDB.
+
+```text
+CPU model Linux
+CPU model Docker
+CPU model Proxmox
+CPU model MongoDB AVX
+```
+
+A home server is a machine you buy once and keep running for a long time, so this kind of compatibility check can matter more than benchmark scores.
+
+### 16GB as the minimum amount of memory
+
+For a home server, memory matters more than CPU and is easier to feel in practice.
+
+Each service may look light on its own, but memory usage grows quickly as Docker containers increase.
+
+The types of services also become diverse:
+
+- photo/media services
+- memo services
+- document or knowledge management tools
+- file browsers
+- monitoring tools
+- batch and automation tools
+- DB, Redis, search indexes
+- AI agents or browser automation tasks
+
+At first, I only planned to run a few services. But once you start operating a home server, you keep thinking, “Maybe I should run this too.”
+
+My home server already uses around 8.3GB to 9GB of memory constantly.
+
+| RAM | Recommendation | Notes |
+|---:|---|---|
+| 8GB | Possible | Can feel tight once services increase |
+| 16GB | Recommended default | A practical starting point for stable personal home server operation |
+| 32GB | Comfortable | Better if you plan to run media, automation, and AI-related workloads |
+
+For me, 16GB was a choice I did not regret.
+
+You can start with 8GB, but once you add a few services, you will probably start thinking about memory. If you plan to run a home server for a while, I would treat 16GB as the default starting point.
+
+### SSD
+
+Once you run services, data keeps accumulating.
+
+At first, it may look like you only need space for the OS and Docker images. But over time, logs, DB data, uploaded files, backups, photos, and documents all keep growing.
+
+In my case, storing photos and personal data was one of the reasons for building the home server, so I chose a slightly larger SSD.
+
+| SSD | Recommendation | Notes |
+|---:|---|---|
+| 256GB | Not recommended | Enough for OS and experiments, but runs out quickly |
+| 512GB | Minimum starting point | Possible for lightweight services |
+| 1TB | Recommended default | Good for OS, Docker, and personal service data together |
+| 2TB+ | Long-term operation | Worth considering if you plan to store many photos/videos |
+
+For now, 1TB felt sufficient.
+
+If you plan to store many large photos or videos, it is better to consider 2TB or more from the beginning, or prepare an external disk, NAS, or backup disk separately.
+
+### Other checklist items
+
+When choosing a mini PC, CPU, RAM, and SSD are not the only things to check. You should also consider what might become inconvenient later.
+
+#### RAM and SSD replaceability
+
+Some mini PCs have soldered RAM or limited SSD expansion.
+
+If possible, it is better to choose a model where the RAM can be expanded and the SSD can be replaced or added.
+
+A home server may start small, but services and data tend to grow. A model with some expandability gives you more options later.
+
+#### Wired LAN
+
+For a home server, I think wired LAN should be the default.
+
+Wi-Fi can work, but a server needs stability. If the network is unstable, service access, file transfers, SSH connections, and external access are all affected.
+
+I would use at least 1GbE as the baseline, and 2.5GbE is also nice if the price is reasonable.
+
+#### BIOS auto power recovery
+
+It is useful if the machine can turn itself back on when power returns after an outage.
+
+In BIOS, this feature is usually named something like:
+
+1. Restore AC Power Loss
+2. Auto Power On
+3. Power On after Power Failure
+
+A home server is often operated without a monitor or keyboard. If you have to press the power button manually after a power outage, it becomes surprisingly inconvenient.
+
+So it is worth checking this option before buying or during the initial setup.
+
+#### Linux installation reports
+
+Even if the specs look good, operating the machine becomes painful if Linux has unstable networking or power management issues.
+
+Before buying, I recommend searching the model name with keywords like:
+
+```text
+model name Linux
+model name Ubuntu Server
+model name Proxmox
+model name Docker homelab
+```
+
+Network cards, Wi-Fi, sleep mode, and boot issues are often mentioned in user reports.
+
+A practical approach is to choose the mini PC brand or CPU line first, then compare how much the price changes depending on RAM and SSD capacity.
+
+## Things I prepared before installing the home server
+
+Installing a home server requires more preparation than I first expected.
+
+After installation, I can manage it through SSH. But during BIOS setup and OS installation, I often still need a keyboard and a screen.
+
+This is especially true when the mini PC comes with Windows and I want to wipe it and install Linux.
+
+| Item | Recommendation | Why it is needed |
+|---|---|---|
+| USB flash drive | 16GB or more | Needed to create an Ubuntu Server installer |
+| Keyboard | USB wired keyboard | Needed for BIOS and installation. Bluetooth keyboards may not work during installation |
+| Monitor / HDMI cable | For initial setup and BIOS checks | After installation, the server can run headless through SSH |
+| LAN cable | Cat5e or better | Wired connection is more stable |
+| Laptop | SSH client | Used for server management and writing documents after installation |
+
+After installation, the monitor and keyboard do not need to stay connected.
+
+It is much more convenient to keep the home server in one place and manage it from a laptop through SSH.
+
+## Home server setup
+
+### OS
+
+The mini PC I bought came with Windows installed. Since I planned to use it as a home server, I wiped it and installed Linux.
+
+I did not need a GUI, and I did not need a Windows environment.
+
+There are several OS choices for home servers:
+
+- Ubuntu Server
+- Debian
+- Proxmox
+- TrueNAS
+- Unraid
+
+Home server or NAS-focused operating systems such as Proxmox and Unraid are attractive, but they felt a bit too much for my immediate purpose.
+
+Instead of starting with virtual machines, LXC, and storage design, I wanted to begin with a familiar Linux environment and add services one by one.
+
+So I chose Ubuntu Server among Linux distributions.
+
+The reasons were:
+
+- Ubuntu feels stable and familiar
+- it is widely used, so there is plenty of documentation
+- it is easy to search for solutions when problems happen
+- LTS versions have a long maintenance period
+- unlike Ubuntu Desktop, it can run lightly without a GUI
+
+Ubuntu Server is a server-oriented OS managed mainly through the terminal and SSH, rather than a desktop OS used with a graphical interface.
+
+A GUI-less environment may feel awkward at first, but a home server is not a machine that you keep connected to a monitor. In that sense, this style actually fits well.
+
+> I will not cover how to create the OS installer USB or configure BIOS in detail here, because those steps vary by PC and there are already many resources online.
+
+### Basic setup after installation
+
+I did not start running services immediately after installing Ubuntu Server.
+
+First, I checked the basic settings needed to keep using it as a server.
+
+#### 1. Update packages
+
+Right after installation, I updated the packages.
+
+```bash
+sudo apt update
+sudo apt upgrade -y
+```
+
+A server is installed once and kept running for a long time, so it is good to start with up-to-date packages.
+
+#### 2. Install basic tools
+
+I also installed tools that I use often while operating the server.
+
+```bash
+sudo apt install -y curl git vim htop ca-certificates
+```
+
+Roughly speaking:
+
+- `curl`: checking HTTP requests or running install scripts
+- `git`: managing configuration files or projects
+- `vim`: editing simple files directly on the server
+- `htop`: checking CPU and memory usage in the terminal
+- `ca-certificates`: certificate bundle for trusting HTTPS sites
+
+`ca-certificates` is something I rarely think about directly, but if it is missing or outdated, errors like `certificate verify failed` can happen.
+
+It is needed when safely connecting to `https://` URLs such as Docker install scripts, GitHub, or external APIs.
+
+#### 3. Set the timezone
+
+I set the timezone to Korea time.
+
+```bash
+sudo timedatectl set-timezone Asia/Seoul
+```
+
+If the timezone is wrong, logs become confusing.
+
+This becomes especially annoying later when cron jobs, batch jobs, or monitoring tools are involved. So it is better to set the timezone during the initial setup.
+
+#### 4. Reserve an IP address on the router
+
+If the internal IP address of the server changes, annoying problems can happen.
+
+For example, I might have to check the IP again every time I connect through SSH, internal service URLs may change, or external access settings may break later.
+
+So I recommend setting a DHCP reservation on the router.
+
+A DHCP reservation maps the server’s MAC address to a fixed internal IP, so the server receives the same IP even after rebooting.
+
+You can check the server’s IP address with:
+
+```bash
+ip addr
+```
+
+Then, in the router admin page, find the server’s MAC address and assign the internal IP you want.
+
+This makes future SSH connections and internal service access much easier.
+
+## SSH connection
+
+Once the server installation and basic setup are done, the next step is preparing SSH access from a laptop.
+
+A monitor and keyboard are needed during installation, but after that I do not want to keep touching the server directly.
+
+I manage it from a laptop through SSH.
+
+### 1. Connect by IP
+
+The most basic method is connecting to the server’s internal IP.
+
+```bash
+ssh username@serverIP
+```
+
+For example, if the username is `yeongsu` and the server IP is `192.168.0.10`, I can connect like this:
+
+```bash
+ssh yeongsu@192.168.0.10
+```
+
+At first, I can log in with the password I set during installation.
+
+This method is simple, but it has drawbacks:
+
+- it only works on the internal network
+- I have to remember the IP
+- I have to type the password every time
+
+So I first verify that this works, then move on to SSH key-based access.
+
+### 2. Connect with an SSH key
+
+SSH key-based access uses a private key on the laptop and a public key registered on the server instead of typing the password every time.
+
+The structure is simple.
+
+```text
+My laptop: keeps the private key
+Home server: registers the public key
+```
+
+The important rule is that the private key must never be shared, while the public key can be registered on the server.
+
+If there is no SSH key on the laptop, it can be generated with:
+
+```bash
+ssh-keygen -t ed25519 -C "homeserver"
+```
+
+Using the default path usually creates these two files:
+
+```text
+~/.ssh/id_ed25519
+~/.ssh/id_ed25519.pub
+```
+
+`id_ed25519` is the private key, and `id_ed25519.pub` is the public key.
+
+The public key can be registered on the home server with `ssh-copy-id`.
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519.pub username@serverIP
+```
+
+This command adds the public key to this file on the server:
+
+```bash
+~/.ssh/authorized_keys
+```
+
+After that, I can connect with the SSH key without typing the server password every time.
+
+If I set a passphrase on the private key, I may still need to enter that passphrase. That is not the server password; it is the password used to unlock my private key.
+
+If SSH refuses to connect because of permissions, file permissions should be checked.
+
+On the laptop:
+
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519
+chmod 644 ~/.ssh/id_ed25519.pub
+chmod 600 ~/.ssh/config
+```
+
+On the home server:
+
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+```
+
+SSH may reject key files if their permissions are too open.
+
+### 3. Set an SSH alias
+
+Typing this every time is annoying:
+
+```bash
+ssh yeongsu@192.168.0.10
+```
+
+So I can register an alias in the SSH config file on my laptop.
+
+The file is:
+
+```bash
+~/.ssh/config
+```
+
+For example:
+
+```sshconfig
+Host homeserver
+    HostName 192.168.0.10
+    User yeongsu
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+After this, I can connect with only:
+
+```bash
+ssh homeserver
+```
+
+At this point, the home server starts to feel less like a small PC with a monitor and more like a server managed remotely from my laptop.
+
+### 4. SSH access from outside the home network
+
+There is one important thing to note.
+
+Connecting to an internal IP such as `192.168.x.x` basically only works inside the same local network.
+
+At home, this works:
+
+```bash
+ssh yeongsu@192.168.0.10
+```
+
+But from a company office or a cafe, this IP cannot be used directly. `192.168.x.x` is a private IP address.
+
+To access the home server from outside, a separate route is needed.
+
+Common options are:
+
+- port forwarding the SSH port on the router
+- using a VPN such as Tailscale or WireGuard
+- using Cloudflare Tunnel and Cloudflare Access
+
+Later, I used Cloudflare Tunnel and Cloudflare Access so that I could connect to the home server externally without opening the SSH port directly on the router.
+
+With that setup, I connect through a domain, pass Cloudflare Access authentication, and then reach the SSH service on the home server.
+
+This belongs to external access and security, so I plan to cover it separately in a Cloudflare-focused post.
+
+## Closing
+
+At this point, the most basic preparation for running a home server is done.
+
+I prepared a mini PC, replaced Windows with Ubuntu Server, installed basic packages, set the timezone, reserved a stable internal IP on the router, and made it possible to connect remotely through SSH and SSH keys.
+
+After this stage, the home server is no longer just a small PC that I touch with a monitor and keyboard. It is closer to a server that I manage remotely from my laptop.
+
+Of course, no real service is running yet.
+
+To operate services such as Memos, Uptime Kuma, Homepage, and Filebrowser, I still need Docker and Docker Compose.
+
+External access also requires a separate structure involving domains, Cloudflare Tunnel, and Cloudflare Access.
+
+At first, I simply thought I would buy a mini PC and run a few services. But while setting it up, I realized that a home server is also a small piece of infrastructure.
+
+Choosing the machine, installing the OS, connecting remotely, running services, controlling external access, and monitoring status are all connected.
+
+So in this first post, I focused only on the starting point: choosing the machine, installing the OS, doing the basic setup, and connecting through SSH.
+
+In the next post, I will install Docker and Docker Compose on this server, organize service directories, and start running my first personal services one by one.
