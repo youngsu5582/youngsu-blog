@@ -1,4 +1,4 @@
-import { getAllPosts, getUrlSlug, calcReadingTimeFromBody } from "@/lib/content";
+import { getAllPosts, getUrlSlug, calcReadingTimeFromBody, getAlternatePost } from "@/lib/content";
 import { PostList } from "@/components/post/post-list";
 import { BrowserLanguageHint } from "@/components/post/browser-language-hint";
 import { LangToggle } from "@/components/common/lang-toggle";
@@ -46,7 +46,17 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
       <BrowserLanguageHint currentLang={lang} />
 
       <PostList
-        posts={posts.map((p) => ({ ...p, slug: getUrlSlug(p.slug), metadata: { readingTime: calcReadingTimeFromBody(p.body) } }))}
+        posts={posts.map((p) => {
+          const alternatePost = getAlternatePost(p);
+          return {
+            ...p,
+            slug: getUrlSlug(p.slug),
+            metadata: { readingTime: calcReadingTimeFromBody(p.body) },
+            alternatePost: alternatePost
+              ? { slug: getUrlSlug(alternatePost.slug), lang: alternatePost.lang as "ko" | "en" }
+              : undefined,
+          };
+        })}
         currentPage={currentPage}
         totalPages={totalPages}
         basePath={lang === "en" ? "/posts?lang=en" : "/posts"}

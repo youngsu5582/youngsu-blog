@@ -15,6 +15,7 @@ interface Post {
   tags: string[];
   image?: string;
   metadata?: { readingTime: number };
+  alternatePost?: { slug: string; lang: "ko" | "en" };
 }
 
 interface PostListProps {
@@ -63,6 +64,7 @@ export function PostList({
               tags={post.tags}
               image={post.image}
               readingTime={post.metadata?.readingTime}
+              alternatePost={post.alternatePost}
             />
           </AnimateIn>
         ))}

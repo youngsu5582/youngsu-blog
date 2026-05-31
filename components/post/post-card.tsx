@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Calendar, Clock, ArrowUpRight } from "lucide-react";
 import { getTagColorClass } from "@/lib/category-colors";
+import { TranslationBadge } from "./translation-badge";
 
 interface PostCardProps {
   title: string;
@@ -12,6 +13,7 @@ interface PostCardProps {
   tags: string[];
   image?: string;
   readingTime?: number;
+  alternatePost?: { slug: string; lang: "ko" | "en" };
 }
 
 export function PostCard({
@@ -23,6 +25,7 @@ export function PostCard({
   tags,
   image,
   readingTime,
+  alternatePost,
 }: PostCardProps) {
   return (
     <article className="group theme-card py-6 first:pt-0 relative before:absolute before:left-0 before:top-6 before:bottom-6 before:w-0.5 before:bg-[var(--color-posts)] before:opacity-0 before:transition-opacity before:duration-200 hover:before:opacity-100">
@@ -30,17 +33,19 @@ export function PostCard({
         {/* Content */}
         <div className="flex-1 min-w-0 space-y-2.5">
           {/* Categories */}
-          {categories.length > 0 && (
-            <div className="flex gap-2">
-              {categories.map((cat) => (
-                <Link key={cat} href={`/categories/${encodeURIComponent(cat)}`}>
-                  <span className="theme-category text-xs hover:opacity-70 transition-opacity">
-                    {cat}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {categories.map((cat) => (
+              <Link key={cat} href={`/categories/${encodeURIComponent(cat)}`}>
+                <span className="theme-category text-xs hover:opacity-70 transition-opacity">
+                  {cat}
+                </span>
+              </Link>
+            ))}
+            <TranslationBadge
+              lang={alternatePost?.lang}
+              slug={alternatePost?.slug}
+            />
+          </div>
 
           {/* Title */}
           <h2 className="text-lg font-semibold tracking-tight leading-snug">

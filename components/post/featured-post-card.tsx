@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Calendar, Clock, ArrowUpRight, Star } from "lucide-react";
 import { getTagColorClass } from "@/lib/category-colors";
+import { TranslationBadge } from "./translation-badge";
 
 interface FeaturedPostCardProps {
   title: string;
@@ -12,6 +13,7 @@ interface FeaturedPostCardProps {
   tags: string[];
   image?: string;
   readingTime?: number;
+  alternatePost?: { slug: string; lang: "ko" | "en" };
 }
 
 export function FeaturedPostCard({
@@ -23,6 +25,7 @@ export function FeaturedPostCard({
   tags,
   image,
   readingTime,
+  alternatePost,
 }: FeaturedPostCardProps) {
   return (
     <article className="group relative mb-8 overflow-hidden rounded-2xl">
@@ -51,6 +54,12 @@ export function FeaturedPostCard({
                 ))}
               </div>
             )}
+
+            <TranslationBadge
+              lang={alternatePost?.lang}
+              slug={alternatePost?.slug}
+              size="md"
+            />
           </div>
 
           {/* Content layout: responsive flex */}

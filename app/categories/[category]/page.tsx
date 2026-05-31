@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAllCategories, getContentByCategory, getUrlSlug, calcReadingTimeFromBody, type Note } from "@/lib/content";
+import { getAllCategories, getContentByCategory, getUrlSlug, calcReadingTimeFromBody, getAlternatePost, type Note } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
@@ -80,19 +80,25 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
                 <h2 className="text-sm font-semibold text-muted-foreground mb-3">포스트 ({posts.length})</h2>
               )}
               <div>
-                {posts.map((post) => (
-                  <PostCard
-                    key={post.slug}
-                    title={post.title}
-                    slug={getUrlSlug(post.slug)}
-                    description={post.description}
-                    date={post.date}
-                    categories={post.categories}
-                    tags={post.tags}
-                    image={post.image}
-                    readingTime={calcReadingTimeFromBody(post.body)}
-                  />
-                ))}
+                {posts.map((post) => {
+                  const alternatePost = getAlternatePost(post);
+                  return (
+                    <PostCard
+                      key={post.slug}
+                      title={post.title}
+                      slug={getUrlSlug(post.slug)}
+                      description={post.description}
+                      date={post.date}
+                      categories={post.categories}
+                      tags={post.tags}
+                      image={post.image}
+                      readingTime={calcReadingTimeFromBody(post.body)}
+                      alternatePost={alternatePost
+                        ? { slug: getUrlSlug(alternatePost.slug), lang: alternatePost.lang as "ko" | "en" }
+                        : undefined}
+                    />
+                  );
+                })}
               </div>
             </section>
           )}

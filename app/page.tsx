@@ -1,5 +1,5 @@
 import { siteConfig } from "@/config/site";
-import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, calcReadingTimeFromBody, type Note, type Article } from "@/lib/content";
+import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, calcReadingTimeFromBody, getAlternatePost, type Note, type Article } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import { FeaturedPostCard } from "@/components/post/featured-post-card";
 import { ArticleCard } from "@/components/article/article-card";
@@ -63,33 +63,42 @@ export default function Home() {
           </div>
 
           <div>
-            {recentPosts.map((post, index) => (
-              <AnimateIn key={post.slug} delay={index * 100}>
-                {index === 0 ? (
-                  <FeaturedPostCard
-                    title={post.title}
-                    slug={getUrlSlug(post.slug)}
-                    description={post.description}
-                    date={post.date}
-                    categories={post.categories}
-                    tags={post.tags}
-                    image={post.image}
-                    readingTime={calcReadingTimeFromBody(post.body)}
-                  />
-                ) : (
-                  <PostCard
-                    title={post.title}
-                    slug={getUrlSlug(post.slug)}
-                    description={post.description}
-                    date={post.date}
-                    categories={post.categories}
-                    tags={post.tags}
-                    image={post.image}
-                    readingTime={calcReadingTimeFromBody(post.body)}
-                  />
-                )}
-              </AnimateIn>
-            ))}
+            {recentPosts.map((post, index) => {
+              const alternatePost = getAlternatePost(post);
+              const alternate = alternatePost
+                ? { slug: getUrlSlug(alternatePost.slug), lang: alternatePost.lang as "ko" | "en" }
+                : undefined;
+
+              return (
+                <AnimateIn key={post.slug} delay={index * 100}>
+                  {index === 0 ? (
+                    <FeaturedPostCard
+                      title={post.title}
+                      slug={getUrlSlug(post.slug)}
+                      description={post.description}
+                      date={post.date}
+                      categories={post.categories}
+                      tags={post.tags}
+                      image={post.image}
+                      readingTime={calcReadingTimeFromBody(post.body)}
+                      alternatePost={alternate}
+                    />
+                  ) : (
+                    <PostCard
+                      title={post.title}
+                      slug={getUrlSlug(post.slug)}
+                      description={post.description}
+                      date={post.date}
+                      categories={post.categories}
+                      tags={post.tags}
+                      image={post.image}
+                      readingTime={calcReadingTimeFromBody(post.body)}
+                      alternatePost={alternate}
+                    />
+                  )}
+                </AnimateIn>
+              );
+            })}
           </div>
         </section>
       ) : (
