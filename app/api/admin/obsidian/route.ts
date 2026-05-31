@@ -11,7 +11,7 @@ interface FileInfo {
 
 function generateSlug(title: string): string {
   // Try to convert Korean to English (simple version - could be enhanced with translation API)
-  let slug = title
+  const slug = title
     .toLowerCase()
     .replace(/[^a-z0-9가-힣\s-]/g, "")
     .replace(/\s+/g, "-")
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
 
         // Parse existing frontmatter if it exists
         let body = content;
-        let existingFrontmatter: Record<string, any> = {};
+        const existingFrontmatter: Record<string, any> = {};
         const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
         if (frontmatterMatch) {

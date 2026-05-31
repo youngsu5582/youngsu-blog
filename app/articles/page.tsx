@@ -1,5 +1,6 @@
 import { getAllArticles, getUrlSlug } from "@/lib/content";
 import { ArticleList } from "@/components/article/article-list";
+import Link from "next/link";
 
 const ARTICLES_PER_PAGE = 10;
 
@@ -47,7 +48,7 @@ export default async function ArticlesPage({ searchParams }: ArticlesPageProps) 
       {/* MOC 필터 */}
       {mocs.length > 0 && (
         <div className="flex gap-2 flex-wrap">
-          <a
+          <Link
             href="/articles"
             className={`text-sm px-3 py-1.5 rounded-md transition-colors ${
               !mocFilter
@@ -56,9 +57,9 @@ export default async function ArticlesPage({ searchParams }: ArticlesPageProps) 
             }`}
           >
             전체
-          </a>
+          </Link>
           {mocs.map((moc) => (
-            <a
+            <Link
               key={moc}
               href={`/articles?moc=${encodeURIComponent(moc)}`}
               className={`text-sm px-3 py-1.5 rounded-md transition-colors ${
@@ -68,7 +69,7 @@ export default async function ArticlesPage({ searchParams }: ArticlesPageProps) 
               }`}
             >
               {moc}
-            </a>
+            </Link>
           ))}
         </div>
       )}

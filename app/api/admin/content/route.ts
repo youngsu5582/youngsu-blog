@@ -96,7 +96,7 @@ export async function GET(req: Request) {
         date: l.date,
       }));
 
-      let items = [...posts, ...articles, ...notes, ...library];
+      const items = [...posts, ...articles, ...notes, ...library];
 
       // Supplement with uncommitted content files from git status
       try {
