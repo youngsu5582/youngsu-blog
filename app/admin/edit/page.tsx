@@ -17,6 +17,13 @@ interface ContentItem {
   date: string;
 }
 
+interface EditDraft {
+  frontmatter: Record<string, any>;
+  body: string;
+  editSlug: string;
+  savedAt: string;
+}
+
 const COLLECTIONS = [
   { id: "posts", label: "포스트", icon: FileText },
   { id: "articles", label: "아티클", icon: BookOpen },
@@ -79,6 +86,7 @@ export default function EditPage() {
   const [showMeta, setShowMeta] = useState(true);
   const [outlineSearch, setOutlineSearch] = useState("");
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
+  const [pendingEditDraft, setPendingEditDraft] = useState<EditDraft | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
 
@@ -211,36 +219,40 @@ export default function EditPage() {
       const autoSaveKey = `admin-edit-draft-${item.collection}-${item.slug}`;
       const autoSaveData = localStorage.getItem(autoSaveKey);
 
+      setPendingEditDraft(null);
+      setFrontmatter(serverFrontmatter);
+      setBody(serverBody);
+
       if (autoSaveData) {
         try {
-          const saved = JSON.parse(autoSaveData);
-          const serverTime = data.frontmatter?.date ? new Date(data.frontmatter.date).getTime() : 0;
-          const savedTime = new Date(saved.savedAt).getTime();
-
-          // If auto-save is newer, restore it
-          if (savedTime > serverTime) {
-            setFrontmatter(saved.frontmatter);
-            setBody(saved.body);
-            setEditSlug(saved.editSlug);
-            setResult({ success: true, message: "자동 저장된 내용을 불러왔습니다" });
-            setTimeout(() => setResult(null), 3000);
-          } else {
-            // Use server data
-            setFrontmatter(serverFrontmatter);
-            setBody(serverBody);
+          const saved = JSON.parse(autoSaveData) as EditDraft;
+          if (saved?.body !== undefined && saved?.frontmatter && saved?.savedAt) {
+            setPendingEditDraft(saved);
           }
         } catch {
-          // Fallback to server data
-          setFrontmatter(serverFrontmatter);
-          setBody(serverBody);
+          // Ignore malformed draft and keep server data.
         }
-      } else {
-        // No auto-save, use server data
-        setFrontmatter(serverFrontmatter);
-        setBody(serverBody);
       }
     } catch {}
     setLoadingContent(false);
+  };
+
+  const restorePendingEditDraft = () => {
+    if (!pendingEditDraft) return;
+    setFrontmatter(pendingEditDraft.frontmatter);
+    setBody(pendingEditDraft.body);
+    setEditSlug(pendingEditDraft.editSlug);
+    setAutoSaveTime(new Date(pendingEditDraft.savedAt).toLocaleTimeString("ko-KR", { hour12: false }));
+    setPendingEditDraft(null);
+    setResult({ success: true, message: "자동저장 초안을 복원했습니다" });
+    setTimeout(() => setResult(null), 2000);
+  };
+
+  const discardPendingEditDraft = () => {
+    if (selectedItem) {
+      localStorage.removeItem(`admin-edit-draft-${selectedItem.collection}-${selectedItem.slug}`);
+    }
+    setPendingEditDraft(null);
   };
 
   const handleSave = async () => {
@@ -519,6 +531,35 @@ export default function EditPage() {
                 <ArrowLeft className="h-3.5 w-3.5" />
                 목록으로
               </button>
+
+              {pendingEditDraft && (
+                <section
+                  role="region"
+                  aria-label="편집 자동저장 복원 안내"
+                  className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-sm text-blue-700 dark:text-blue-300 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    자동저장 초안이 있어요. 현재 파일을 바로 덮어쓰지 않고 필요할 때만 복원할 수 있어요.
+                    <span className="ml-2 text-xs opacity-80">{new Date(pendingEditDraft.savedAt).toLocaleString("ko-KR")}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={restorePendingEditDraft}
+                      className="px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      자동저장 복원
+                    </button>
+                    <button
+                      type="button"
+                      onClick={discardPendingEditDraft}
+                      className="px-3 py-1.5 rounded-md border border-blue-500/30 hover:bg-blue-500/10"
+                    >
+                      초안 삭제
+                    </button>
+                  </div>
+                </section>
+              )}
 
               <section
                 aria-label="편집 작업 바"

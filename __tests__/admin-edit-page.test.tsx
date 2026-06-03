@@ -116,6 +116,30 @@ describe("Admin edit page", () => {
     expect(editor.selectionStart).toBe("## 시작\n\n본문\n\n### 구현\n\n내용\n\n".length);
   });
 
+  it("자동저장 초안은 원본을 바로 덮어쓰지 않고 배너에서 선택 복원한다", async () => {
+    localStorage.setItem("admin-edit-draft-posts-long-post", JSON.stringify({
+      frontmatter: { ...content.frontmatter, title: "자동저장 제목" },
+      body: "자동저장 본문",
+      editSlug: "auto-saved-slug",
+      savedAt: "2026-12-31T00:00:00.000Z",
+    }));
+
+    render(<EditPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /긴 글 테스트/ }));
+
+    expect(await screen.findByRole("region", { name: "편집 자동저장 복원 안내" })).toBeTruthy();
+    expect(screen.getByText(/자동저장 초안/)).toBeTruthy();
+    expect(screen.queryByDisplayValue("자동저장 본문")).toBeNull();
+    await waitFor(() => expect(screen.getByPlaceholderText("마크다운으로 작성하세요...")).toHaveProperty("value", content.body));
+
+    fireEvent.click(screen.getByRole("button", { name: "자동저장 복원" }));
+
+    await waitFor(() => expect(screen.getByPlaceholderText("마크다운으로 작성하세요...")).toHaveProperty("value", "자동저장 본문"));
+    expect(screen.getByDisplayValue("자동저장 제목")).toBeTruthy();
+    expect(screen.getByDisplayValue("auto-saved-slug")).toBeTruthy();
+  });
+
   it("미저장 변경이 있으면 목록으로 돌아가기 전에 확인한다", async () => {
     const confirm = vi.fn(() => false);
     vi.stubGlobal("confirm", confirm);
