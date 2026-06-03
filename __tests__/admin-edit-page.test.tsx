@@ -27,7 +27,7 @@ const content = {
     tags: ["admin"],
     date: "2026-01-01",
   },
-  body: "## 시작\n\n본문".repeat(20),
+  body: "## 시작\n\n본문\n\n### 구현\n\n내용\n\n## 마무리",
 };
 
 describe("Admin edit page", () => {
@@ -97,6 +97,23 @@ describe("Admin edit page", () => {
     expect(editorRegion.className).toContain("max-h-[calc(100vh-20rem)]");
     expect(previewRegion.className).toContain("max-h-[calc(100vh-20rem)]");
     expect(screen.getByPlaceholderText("마크다운으로 작성하세요...").className).toContain("overflow-y-auto");
+  });
+
+  it("긴 글 아웃라인에서 제목을 검색하고 본문 위치로 이동할 수 있다", async () => {
+    render(<EditPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /긴 글 테스트/ }));
+    const editor = await screen.findByPlaceholderText("마크다운으로 작성하세요...") as HTMLTextAreaElement;
+
+    expect(await screen.findByRole("region", { name: "긴 글 아웃라인" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "시작" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "구현" })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("아웃라인 검색"), { target: { value: "마무" } });
+    expect(screen.queryByRole("button", { name: "시작" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "마무리" }));
+
+    expect(editor.selectionStart).toBe("## 시작\n\n본문\n\n### 구현\n\n내용\n\n".length);
   });
 
   it("미저장 변경이 있으면 목록으로 돌아가기 전에 확인한다", async () => {

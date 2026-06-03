@@ -101,4 +101,21 @@ describe("Admin write page", () => {
     await waitFor(() => expect(screen.getByDisplayValue(/## 주제/)).toBeTruthy());
     expect(screen.queryByRole("region", { name: "템플릿 적용 diff" })).toBeNull();
   });
+
+  it("긴 글 아웃라인에서 제목을 검색하고 해당 위치로 이동할 수 있다", async () => {
+    render(<WritePage />);
+
+    const editor = screen.getByPlaceholderText(/마크다운으로 작성하세요/) as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "## 시작\n본문\n### 구현\n내용\n## 마무리" } });
+
+    expect(await screen.findByRole("region", { name: "긴 글 아웃라인" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "시작" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "구현" })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("아웃라인 검색"), { target: { value: "마무" } });
+    expect(screen.queryByRole("button", { name: "시작" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "마무리" }));
+
+    expect(editor.selectionStart).toBe("## 시작\n본문\n### 구현\n내용\n".length);
+  });
 });

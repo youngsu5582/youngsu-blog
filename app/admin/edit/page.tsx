@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock, ChevronDown, ChevronUp, ArrowLeft, Trash2 } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
@@ -38,6 +38,14 @@ function createEditSnapshot(frontmatter: Record<string, unknown>, body: string, 
   return JSON.stringify({ frontmatter, body, slug });
 }
 
+function extractMarkdownHeadings(markdown: string) {
+  return markdown.split("\n").flatMap((line, index) => {
+    const match = /^(#{2,4})\s+(.+)$/.exec(line.trim());
+    if (!match) return [];
+    return [{ level: match[1].length, text: match[2].replace(/#+$/, "").trim(), line: index }];
+  });
+}
+
 export default function EditPage() {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +77,7 @@ export default function EditPage() {
   // Preview and auto-save state
   const [showPreview, setShowPreview] = useState(true);
   const [showMeta, setShowMeta] = useState(true);
+  const [outlineSearch, setOutlineSearch] = useState("");
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
@@ -386,6 +395,20 @@ export default function EditPage() {
     setSaving(false);
   };
 
+  const headings = useMemo(() => extractMarkdownHeadings(body), [body]);
+  const filteredHeadings = useMemo(() => {
+    const q = outlineSearch.trim().toLowerCase();
+    if (!q) return headings;
+    return headings.filter((heading) => heading.text.toLowerCase().includes(q));
+  }, [headings, outlineSearch]);
+  const jumpToHeading = (line: number) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = body.split("\n").slice(0, line).join("\n").length + (line > 0 ? 1 : 0);
+    textarea.focus();
+    textarea.setSelectionRange(start, start);
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   }
@@ -624,7 +647,42 @@ export default function EditPage() {
               </div>
 
               {/* Body editor + Preview */}
-              <div className={`grid gap-4 ${showPreview ? "grid-cols-1 lg:grid-cols-[1.2fr_1fr]" : "grid-cols-1"}`}>
+              <div className={`grid gap-4 ${showPreview ? "grid-cols-1 xl:grid-cols-[220px_1.2fr_1fr]" : "grid-cols-1 xl:grid-cols-[220px_1fr]"}`}>
+                <section
+                  role="region"
+                  aria-label="긴 글 아웃라인"
+                  className="max-h-[calc(100vh-20rem)] min-h-[50vh] overflow-hidden rounded-xl border border-border/60 bg-background p-3 text-xs space-y-3"
+                >
+                  <div>
+                    <h3 className="font-medium">아웃라인</h3>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">heading jump / search</p>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-2 top-2 h-3 w-3 text-muted-foreground" />
+                    <input
+                      value={outlineSearch}
+                      onChange={(e) => setOutlineSearch(e.target.value)}
+                      aria-label="아웃라인 검색"
+                      placeholder="제목 검색..."
+                      className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+                  <div className="max-h-[calc(100vh-26rem)] overflow-y-auto space-y-1">
+                    {filteredHeadings.length > 0 ? filteredHeadings.map((heading) => (
+                      <button
+                        key={`${heading.line}-${heading.text}`}
+                        type="button"
+                        onClick={() => jumpToHeading(heading.line)}
+                        className="block w-full rounded-md px-2 py-1 text-left hover:bg-muted"
+                        style={{ paddingLeft: `${(heading.level - 2) * 12 + 8}px` }}
+                      >
+                        {heading.text}
+                      </button>
+                    )) : (
+                      <p className="py-4 text-center text-muted-foreground">표시할 제목이 없습니다</p>
+                    )}
+                  </div>
+                </section>
                 {/* Editor */}
                 <section aria-label="마크다운 본문 편집" className="flex max-h-[calc(100vh-20rem)] min-h-[50vh] flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md">
                   <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-muted/30 px-3 py-2">

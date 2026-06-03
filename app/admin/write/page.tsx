@@ -145,6 +145,14 @@ function validateSlug(value: string) {
   return null;
 }
 
+function extractMarkdownHeadings(markdown: string) {
+  return markdown.split("\n").flatMap((line, index) => {
+    const match = /^(#{2,4})\s+(.+)$/.exec(line.trim());
+    if (!match) return [];
+    return [{ level: match[1].length, text: match[2].replace(/#+$/, "").trim(), line: index }];
+  });
+}
+
 interface PostItem { slug: string; title: string; collection: string; }
 
 interface Draft {
@@ -182,6 +190,7 @@ export default function WritePage() {
   const [allPosts, setAllPosts] = useState<PostItem[]>([]);
   const [relatedSearch, setRelatedSearch] = useState("");
   const [showRelatedPicker, setShowRelatedPicker] = useState(false);
+  const [outlineSearch, setOutlineSearch] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -496,6 +505,19 @@ export default function WritePage() {
     return trimmed.length > 80 ? `${trimmed.slice(0, 80)}...` : trimmed;
   };
   const summarizeList = (values: string[]) => values.length > 0 ? values.join(", ") : "(비어 있음)";
+  const headings = useMemo(() => extractMarkdownHeadings(content), [content]);
+  const filteredHeadings = useMemo(() => {
+    const q = outlineSearch.trim().toLowerCase();
+    if (!q) return headings;
+    return headings.filter((heading) => heading.text.toLowerCase().includes(q));
+  }, [headings, outlineSearch]);
+  const jumpToHeading = (line: number) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = content.split("\n").slice(0, line).join("\n").length + (line > 0 ? 1 : 0);
+    textarea.focus();
+    textarea.setSelectionRange(start, start);
+  };
 
   return (
     <div className="space-y-4">
@@ -824,7 +846,42 @@ export default function WritePage() {
       )}
 
       {/* Editor + Preview */}
-      <div className={`grid gap-4 ${showPreview ? "grid-cols-1 lg:grid-cols-[1.2fr_1fr]" : "grid-cols-1"}`} style={{ minHeight: "60vh" }}>
+      <div className={`grid gap-4 ${showPreview ? "grid-cols-1 xl:grid-cols-[220px_1.2fr_1fr]" : "grid-cols-1 xl:grid-cols-[220px_1fr]"}`} style={{ minHeight: "60vh" }}>
+        <section
+          role="region"
+          aria-label="긴 글 아웃라인"
+          className="rounded-xl border border-border/60 bg-background p-3 text-xs space-y-3 max-h-[60vh] overflow-hidden"
+        >
+          <div>
+            <h3 className="font-medium">아웃라인</h3>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">heading jump / search</p>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2 top-2 h-3 w-3 text-muted-foreground" />
+            <input
+              value={outlineSearch}
+              onChange={(e) => setOutlineSearch(e.target.value)}
+              aria-label="아웃라인 검색"
+              placeholder="제목 검색..."
+              className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </div>
+          <div className="max-h-[48vh] overflow-y-auto space-y-1">
+            {filteredHeadings.length > 0 ? filteredHeadings.map((heading) => (
+              <button
+                key={`${heading.line}-${heading.text}`}
+                type="button"
+                onClick={() => jumpToHeading(heading.line)}
+                className="block w-full rounded-md px-2 py-1 text-left hover:bg-muted"
+                style={{ paddingLeft: `${(heading.level - 2) * 12 + 8}px` }}
+              >
+                {heading.text}
+              </button>
+            )) : (
+              <p className="py-4 text-center text-muted-foreground">표시할 제목이 없습니다</p>
+            )}
+          </div>
+        </section>
         <div className="flex flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md">
           <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-muted/30 px-3 py-2">
             <div>
