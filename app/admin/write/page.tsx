@@ -135,6 +135,15 @@ const TEMPLATES = [
 const DRAFTS_KEY = "admin-write-drafts";
 const MAX_DRAFTS = 10;
 const AUTOSAVE_DELAY = 5000; // 5 seconds
+const NEW_POST_CONFIRM_MESSAGE = "작성 중인 내용이 있습니다. 새 글로 초기화할까요?";
+const SLUG_VALIDATION_MESSAGE = "Slug는 한글/영문 소문자/숫자/하이픈만 사용할 수 있고, / 또는 ..은 사용할 수 없어요.";
+
+function validateSlug(value: string) {
+  if (!value) return null;
+  if (value.includes("/") || value.includes("..") || /\s/.test(value)) return SLUG_VALIDATION_MESSAGE;
+  if (!/^[a-z0-9가-힣]+(?:-[a-z0-9가-힣]+)*$/.test(value)) return SLUG_VALIDATION_MESSAGE;
+  return null;
+}
 
 interface PostItem { slug: string; title: string; collection: string; }
 
@@ -184,6 +193,7 @@ export default function WritePage() {
   // Multi-draft state
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [showDraftPicker, setShowDraftPicker] = useState(false);
+  const slugError = validateSlug(slug);
 
   // Template picker state
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -429,8 +439,34 @@ export default function WritePage() {
       .slice(0, 8);
   }, [allPosts, relatedSearch, relatedSlugs]);
 
+  const hasDraftContent = useCallback(() => (
+    Boolean(content.trim()) ||
+    Boolean(title.trim()) ||
+    Boolean(description.trim()) ||
+    categories.length > 0 ||
+    tags.length > 0 ||
+    Boolean(thumbnail.trim()) ||
+    relatedSlugs.length > 0
+  ), [content, title, description, categories, tags, thumbnail, relatedSlugs]);
+
+  const resetDraft = useCallback(() => {
+    setCollection("posts");
+    setTitle("");
+    setSlug("");
+    setSlugManual(false);
+    setDescription("");
+    setCategories([]);
+    setTags([]);
+    setThumbnail("");
+    setRelatedSlugs([]);
+    setContent("");
+    setAutoSaveTime(null);
+    setResult(null);
+  }, []);
+
   const handleSave = async () => {
     if (!title.trim()) { setResult({ success: false, message: "제목을 입력하세요" }); return; }
+    if (slugError) { setResult({ success: false, message: slugError }); return; }
     setSaving(true); setResult(null);
     try {
       const res = await fetch("/api/admin/write", {
@@ -467,18 +503,8 @@ export default function WritePage() {
           {/* 새 글 작성 */}
           <button
             onClick={() => {
-              setCollection("posts");
-              setTitle("");
-              setSlug("");
-              setSlugManual(false);
-              setDescription("");
-              setCategories([]);
-              setTags([]);
-              setThumbnail("");
-              setRelatedSlugs([]);
-              setContent("");
-              setAutoSaveTime(null);
-              setResult(null);
+              if (hasDraftContent() && !confirm(NEW_POST_CONFIRM_MESSAGE)) return;
+              resetDraft();
             }}
             className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center gap-1.5"
           >
@@ -651,9 +677,15 @@ export default function WritePage() {
               <label className="text-xs font-medium text-muted-foreground">Slug (파일명)</label>
               <input value={slug}
                 onChange={(e) => { setSlug(e.target.value); setSlugManual(true); }}
+                aria-invalid={!!slugError}
+                aria-describedby={slugError ? "write-slug-error" : "write-slug-preview"}
                 placeholder="영문-kebab-case (자동 생성)"
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50" />
-              <p className="text-[10px] text-muted-foreground/50">파일: content/{collection}/{slug || "..."}.mdx</p>
+                className={`w-full rounded-md border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 ${slugError ? "border-red-500/60 focus:ring-red-500/40" : "border-border focus:ring-primary/50"}`} />
+              {slugError ? (
+                <p id="write-slug-error" className="text-[10px] text-red-600 dark:text-red-400">{slugError}</p>
+              ) : (
+                <p id="write-slug-preview" className="text-[10px] text-muted-foreground/50">파일: content/{collection}/{slug || "..."}.mdx</p>
+              )}
             </div>
           </div>
 
@@ -768,7 +800,7 @@ export default function WritePage() {
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목을 입력하세요 *"
             className="flex-1 rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" />
         )}
-        <button onClick={handleSave} disabled={saving || !title.trim()}
+        <button onClick={handleSave} disabled={saving || !title.trim() || !!slugError}
           className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           저장하기
