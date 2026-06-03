@@ -2,73 +2,98 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { detectImageMimeFromBuffer, extensionForMime, validateImageBuffer } from "@/lib/admin-upload-validation";
 
-function detectImageFormat(buffer: Buffer): { ext: string; mime: string } {
-  if (buffer.length >= 4) {
-    if (buffer[0] === 0xff && buffer[1] === 0xd8) return { ext: "jpg", mime: "image/jpeg" };
-    if (buffer[0] === 0x89 && buffer[1] === 0x50) return { ext: "png", mime: "image/png" };
-    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46)
-      return { ext: "webp", mime: "image/webp" };
+const ALLOWED_THUMBNAIL_CONTENT_PREFIXES = [
+  "content/posts/",
+  "content/articles/",
+  "content/notes/",
+  "content/library/",
+];
+const THUMBNAIL_DIR = path.join(process.cwd(), "public/assets/img/thumbnail");
+
+function validateThumbnailFilename(filename: unknown): { valid: boolean; value?: string; error?: string } {
+  if (typeof filename !== "string" || !filename.trim()) {
+    return { valid: false, error: "filename이 필요합니다" };
   }
-  return { ext: "png", mime: "image/png" };
+
+  const normalized = filename.trim();
+  if (!/^[a-zA-Z0-9가-힣_-]+$/.test(normalized)) {
+    return { valid: false, error: "썸네일 파일명은 문자, 숫자, 하이픈, 언더스코어만 사용할 수 있습니다" };
+  }
+
+  return { valid: true, value: normalized };
+}
+
+function decodeBase64Image(base64: unknown): { buffer?: Buffer; mimeType?: string; ext?: string; error?: string } {
+  if (typeof base64 !== "string" || !base64.trim()) return { error: "base64가 필요합니다" };
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(base64)) return { error: "base64 형식이 올바르지 않습니다" };
+
+  const buffer = Buffer.from(base64, "base64");
+  const mimeType = detectImageMimeFromBuffer(buffer);
+  if (!mimeType) return { error: "이미지 파일 내용이 올바르지 않습니다" };
+
+  const validation = validateImageBuffer(buffer, mimeType);
+  if (!validation.valid) return { error: validation.error };
+
+  const ext = extensionForMime(mimeType)?.replace(/^\./, "");
+  if (!ext || ext === "gif") return { error: "썸네일은 jpg, png, webp 형식만 저장할 수 있습니다" };
+
+  return { buffer, mimeType, ext };
+}
+
+function resolveEnglishContentPath(originalRepoPath: string) {
+  const enRepoPath = originalRepoPath.replace(/\.mdx?$/, "-en.mdx");
+  if (enRepoPath === originalRepoPath) return null;
+  return resolveRepoFilePath(enRepoPath, ALLOWED_THUMBNAIL_CONTENT_PREFIXES);
 }
 
 export async function POST(req: Request) {
   try {
     const { base64, filename, originalPath } = await req.json();
+    const safeFilename = validateThumbnailFilename(filename);
+    const image = decodeBase64Image(base64);
 
-    if (!base64 || !filename) {
-      return NextResponse.json(
-        { error: "base64와 filename이 필요합니다" },
-        { status: 400 }
-      );
+    if (!safeFilename.valid) {
+      return NextResponse.json({ error: safeFilename.error }, { status: 400 });
     }
 
-    // Create directory if it doesn't exist
-    const thumbnailDir = path.join(process.cwd(), "public/assets/img/thumbnail");
-    if (!fs.existsSync(thumbnailDir)) {
-      fs.mkdirSync(thumbnailDir, { recursive: true });
+    if (image.error || !image.buffer || !image.ext) {
+      return NextResponse.json({ error: image.error || "이미지 데이터가 올바르지 않습니다" }, { status: 400 });
     }
 
-    // Save image with detected format
-    const imageBuffer = Buffer.from(base64, "base64");
-    const { ext } = detectImageFormat(imageBuffer);
-    const imagePath = path.join(thumbnailDir, `${filename}.${ext}`);
-    fs.writeFileSync(imagePath, imageBuffer);
+    if (!fs.existsSync(THUMBNAIL_DIR)) {
+      fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
+    }
 
-    const publicUrl = `/assets/img/thumbnail/${filename}.${ext}`;
+    const imagePath = path.join(THUMBNAIL_DIR, `${safeFilename.value}.${image.ext}`);
+    fs.writeFileSync(imagePath, image.buffer);
 
-    // Auto-update frontmatter if originalPath is provided
+    const publicUrl = `/assets/img/thumbnail/${safeFilename.value}.${image.ext}`;
+
     const updatedFiles: string[] = [];
-    if (originalPath) {
+    if (typeof originalPath === "string" && originalPath.trim()) {
       try {
-        const absPath = originalPath.startsWith("/")
-          ? originalPath
-          : path.join(process.cwd(), originalPath);
-
-        if (fs.existsSync(absPath)) {
-          // Update original file
-          const raw = fs.readFileSync(absPath, "utf-8");
+        const originalFile = resolveRepoFilePath(originalPath, ALLOWED_THUMBNAIL_CONTENT_PREFIXES);
+        if (originalFile && fs.existsSync(originalFile.absPath)) {
+          const raw = fs.readFileSync(originalFile.absPath, "utf-8");
           const { data, content } = matter(raw);
           data.image = publicUrl;
-          const updated = matter.stringify(content, data);
-          fs.writeFileSync(absPath, updated, "utf-8");
-          updatedFiles.push(absPath);
+          fs.writeFileSync(originalFile.absPath, matter.stringify(content, data), "utf-8");
+          updatedFiles.push(originalFile.repoPath);
 
-          // Update English version if exists
-          const enPath = absPath.replace(/\.mdx?$/, "-en.mdx");
-          if (fs.existsSync(enPath)) {
-            const enRaw = fs.readFileSync(enPath, "utf-8");
+          const enFile = resolveEnglishContentPath(originalFile.repoPath);
+          if (enFile && fs.existsSync(enFile.absPath)) {
+            const enRaw = fs.readFileSync(enFile.absPath, "utf-8");
             const enParsed = matter(enRaw);
             enParsed.data.image = publicUrl;
-            const enUpdated = matter.stringify(enParsed.content, enParsed.data);
-            fs.writeFileSync(enPath, enUpdated, "utf-8");
-            updatedFiles.push(enPath);
+            fs.writeFileSync(enFile.absPath, matter.stringify(enParsed.content, enParsed.data), "utf-8");
+            updatedFiles.push(enFile.repoPath);
           }
         }
-      } catch (fmErr: any) {
+      } catch (fmErr: unknown) {
         console.error("Frontmatter update error:", fmErr);
-        // Don't fail the whole operation if frontmatter update fails
       }
     }
 
@@ -79,10 +104,11 @@ export async function POST(req: Request) {
       frontmatterUpdated: updatedFiles.length > 0,
       updatedFiles,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Thumbnail save error:", err);
+    const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: `이미지 저장 실패: ${err.message || String(err)}` },
+      { error: `이미지 저장 실패: ${message}` },
       { status: 500 }
     );
   }
