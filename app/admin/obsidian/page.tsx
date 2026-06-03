@@ -48,7 +48,8 @@ export default function ObsidianPage() {
 
       if (data.success) {
         setFiles(data.files);
-        localStorage.setItem("obsidian_vault_path", vaultPath);
+        if (data.vaultPath) setVaultPath(data.vaultPath);
+        localStorage.setItem("obsidian_vault_path", data.vaultPath || vaultPath);
       } else {
         alert(data.error || "파일 목록을 불러오는데 실패했습니다");
       }
@@ -92,6 +93,7 @@ export default function ObsidianPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          vaultPath,
           files: Array.from(selectedFiles),
           targetCollection,
         }),
@@ -113,6 +115,8 @@ export default function ObsidianPage() {
       setImporting(false);
     }
   };
+
+  const collectionOptions = ["posts", "articles", "notes", "library"] as const;
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes}B`;
@@ -176,7 +180,10 @@ export default function ObsidianPage() {
             <div className="flex items-center gap-3">
               <select
                 value={targetCollection}
-                onChange={(e) => setTargetCollection(e.target.value as any)}
+                onChange={(e) => {
+                  const nextCollection = collectionOptions.find((option) => option === e.target.value);
+                  if (nextCollection) setTargetCollection(nextCollection);
+                }}
                 className="px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="posts">Posts</option>
