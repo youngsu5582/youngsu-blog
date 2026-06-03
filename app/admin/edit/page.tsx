@@ -386,7 +386,10 @@ export default function EditPage() {
 
           {/* Preview toggle */}
           {selectedItem && (
-            <button onClick={() => setShowPreview(!showPreview)}
+            <button
+              type="button"
+              aria-label={showPreview ? "헤더에서 미리보기 숨기기" : "헤더에서 미리보기 보이기"}
+              onClick={() => setShowPreview(!showPreview)}
               className="p-1.5 rounded-md text-muted-foreground hover:text-foreground border border-border transition-colors">
               {showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -463,6 +466,45 @@ export default function EditPage() {
                 <ArrowLeft className="h-3.5 w-3.5" />
                 목록으로
               </button>
+
+              <section
+                aria-label="편집 작업 바"
+                className="sticky top-4 z-20 rounded-xl border border-border/70 bg-background/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">편집 중: {frontmatter.title || selectedItem.title}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className={`px-1.5 py-0.5 rounded font-medium ${COLLECTION_BADGE[selectedItem.collection]}`}>
+                        {selectedItem.collection}
+                      </span>
+                      <span className="font-mono">content/{selectedItem.collection}/{editSlug || selectedItem.slug}.mdx</span>
+                      {autoSaveTime ? <span>자동 저장됨 {autoSaveTime}</span> : <span>수동 저장 전</span>}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      aria-label={showPreview ? "미리보기 숨기기" : "미리보기 보이기"}
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {showPreview ? "미리보기 숨김" : "미리보기 표시"}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="상단에서 저장하기"
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      저장
+                    </button>
+                  </div>
+                </div>
+              </section>
 
               {/* Frontmatter */}
               <div className="rounded-lg border border-border/60 p-4">
@@ -552,9 +594,9 @@ export default function EditPage() {
               </div>
 
               {/* Body editor + Preview */}
-              <div className={`grid gap-4 ${showPreview ? "grid-cols-1 lg:grid-cols-[1.2fr_1fr]" : "grid-cols-1"}`} style={{ minHeight: "50vh" }}>
+              <div className={`grid gap-4 ${showPreview ? "grid-cols-1 lg:grid-cols-[1.2fr_1fr]" : "grid-cols-1"}`}>
                 {/* Editor */}
-                <div className="flex flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md">
+                <section aria-label="마크다운 본문 편집" className="flex max-h-[calc(100vh-20rem)] min-h-[50vh] flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md">
                   <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-muted/30 px-3 py-2">
                     <div>
                       <span className="text-xs font-medium text-muted-foreground">마크다운</span>
@@ -571,13 +613,13 @@ export default function EditPage() {
                     onChange={(e) => setBody(e.target.value)}
                     spellCheck={false}
                     placeholder="마크다운으로 작성하세요..."
-                    className="min-h-[46vh] flex-1 w-full bg-background px-4 py-4 text-sm font-mono leading-relaxed resize-none focus:outline-none"
+                    className="min-h-0 flex-1 w-full overflow-y-auto bg-background px-4 py-4 text-sm font-mono leading-relaxed resize-none focus:outline-none"
                   />
-                </div>
+                </section>
 
                 {/* Preview */}
                 {showPreview && (
-                  <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden">
+                  <section aria-label="마크다운 미리보기" className="flex max-h-[calc(100vh-20rem)] min-h-[50vh] flex-col overflow-hidden rounded-lg border border-border/60">
                     <div className="px-3 py-2 border-b border-border/40 bg-muted/30">
                       <span className="text-xs font-medium text-muted-foreground">미리보기</span>
                     </div>
@@ -588,7 +630,7 @@ export default function EditPage() {
                         <p className="text-muted-foreground text-sm">내용을 입력하면 미리보기가 표시됩니다.</p>
                       )}
                     </div>
-                  </div>
+                  </section>
                 )}
               </div>
 
