@@ -50,4 +50,35 @@ describe("TagInput", () => {
     expect(handleChange).not.toHaveBeenCalled();
     expect(screen.getByText("homeserver")).toBeTruthy();
   });
+
+  it("태그를 드래그해서 순서를 바꿀 수 있다", () => {
+    const handleChange = vi.fn();
+
+    render(
+      <TagInput
+        label="태그"
+        values={["homeserver", "docker-compose", "self-hosting", "uptime-kuma"]}
+        suggestions={[]}
+        onChange={handleChange}
+      />
+    );
+
+    const draggedTag = screen.getByText("uptime-kuma").closest("span");
+    const targetTag = screen.getByText("docker-compose").closest("span");
+
+    expect(draggedTag).toBeTruthy();
+    expect(targetTag).toBeTruthy();
+
+    fireEvent.dragStart(draggedTag!);
+    fireEvent.dragEnter(targetTag!);
+    fireEvent.dragOver(targetTag!);
+    fireEvent.drop(targetTag!);
+
+    expect(handleChange).toHaveBeenCalledWith([
+      "homeserver",
+      "uptime-kuma",
+      "docker-compose",
+      "self-hosting",
+    ]);
+  });
 });

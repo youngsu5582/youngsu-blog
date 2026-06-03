@@ -15,6 +15,7 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +92,31 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
     }
   };
 
+  const reorderTag = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    const nextValues = [...values];
+    const [movedTag] = nextValues.splice(fromIndex, 1);
+    nextValues.splice(toIndex, 0, movedTag);
+    onChange(nextValues);
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", values[index]);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex !== null) {
+      reorderTag(draggedIndex, targetIndex);
+    }
+    setDraggedIndex(null);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && input.trim()) {
       e.preventDefault();
@@ -120,7 +146,15 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
             ) : (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20"
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragEnd={() => setDraggedIndex(null)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => handleDrop(e, index)}
+                aria-label={`${tag} 태그`}
+                className={`inline-flex cursor-grab items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 ${
+                  draggedIndex === index ? "opacity-50" : ""
+                }`}
               >
                 <button
                   type="button"
