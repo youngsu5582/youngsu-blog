@@ -82,4 +82,23 @@ describe("Admin write page", () => {
 
     await waitFor(() => expect(screen.getByDisplayValue("복원할 본문")).toBeTruthy());
   });
+
+  it("작성 중 템플릿 적용은 diff 확인 후에만 현재 글을 덮어쓴다", async () => {
+    render(<WritePage />);
+
+    fireEvent.change(screen.getByPlaceholderText(/마크다운으로 작성하세요/), { target: { value: "기존 본문" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "펼치기" }).at(-1)!);
+    fireEvent.click(screen.getByRole("button", { name: /학습 노트/ }));
+
+    expect(await screen.findByRole("region", { name: "템플릿 적용 diff" })).toBeTruthy();
+    expect(screen.getByText("컬렉션: posts → notes")).toBeTruthy();
+    expect(screen.getByText("카테고리: (비어 있음) → 학습")).toBeTruthy();
+    expect(screen.getByText(/본문: 기존 본문 → ## 주제/)).toBeTruthy();
+    expect(screen.getByDisplayValue("기존 본문")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "템플릿 적용" }));
+
+    await waitFor(() => expect(screen.getByDisplayValue(/## 주제/)).toBeTruthy());
+    expect(screen.queryByRole("region", { name: "템플릿 적용 diff" })).toBeNull();
+  });
 });

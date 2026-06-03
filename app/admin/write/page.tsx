@@ -198,6 +198,7 @@ export default function WritePage() {
 
   // Template picker state
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
 
   // Textarea ref for markdown toolbar
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -350,21 +351,20 @@ export default function WritePage() {
     saveDraftsToStorage(updatedDrafts);
   };
 
-  // Apply a template
-  const applyTemplate = (templateId: string) => {
+  const hasDraftContent = useCallback(() => (
+    Boolean(content.trim()) ||
+    Boolean(title.trim()) ||
+    Boolean(description.trim()) ||
+    categories.length > 0 ||
+    tags.length > 0 ||
+    Boolean(thumbnail.trim()) ||
+    relatedSlugs.length > 0
+  ), [content, title, description, categories, tags, thumbnail, relatedSlugs]);
+
+  const commitTemplate = (templateId: string) => {
     const template = TEMPLATES.find(t => t.id === templateId);
     if (!template) return;
 
-    // Check if there's existing content
-    const hasContent = content.trim() || title.trim() || description.trim();
-    if (hasContent) {
-      if (!confirm("현재 작성 중인 내용이 있습니다. 템플릿을 적용하시겠습니까?")) {
-        setShowTemplatePicker(false);
-        return;
-      }
-    }
-
-    // Apply template
     setCollection(template.collection);
     setCategories(template.categories);
     setContent(template.content);
@@ -375,9 +375,23 @@ export default function WritePage() {
     setTags([]);
     setThumbnail("");
     setRelatedSlugs([]);
+    setPendingTemplateId(null);
     setShowTemplatePicker(false);
     setResult({ success: true, message: `템플릿 적용: ${template.label}` });
     setTimeout(() => setResult(null), 2000);
+  };
+
+  // Apply a template
+  const applyTemplate = (templateId: string) => {
+    const template = TEMPLATES.find(t => t.id === templateId);
+    if (!template) return;
+
+    if (hasDraftContent()) {
+      setPendingTemplateId(templateId);
+      return;
+    }
+
+    commitTemplate(templateId);
   };
 
   // Get relative time string
@@ -432,16 +446,6 @@ export default function WritePage() {
       .slice(0, 8);
   }, [allPosts, relatedSearch, relatedSlugs]);
 
-  const hasDraftContent = useCallback(() => (
-    Boolean(content.trim()) ||
-    Boolean(title.trim()) ||
-    Boolean(description.trim()) ||
-    categories.length > 0 ||
-    tags.length > 0 ||
-    Boolean(thumbnail.trim()) ||
-    relatedSlugs.length > 0
-  ), [content, title, description, categories, tags, thumbnail, relatedSlugs]);
-
   const resetDraft = useCallback(() => {
     setCollection("posts");
     setTitle("");
@@ -484,6 +488,14 @@ export default function WritePage() {
     } catch { setResult({ success: false, message: "저장 실패" }); }
     setSaving(false);
   };
+
+  const pendingTemplate = pendingTemplateId ? TEMPLATES.find(t => t.id === pendingTemplateId) : null;
+  const summarizeText = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "(비어 있음)";
+    return trimmed.length > 80 ? `${trimmed.slice(0, 80)}...` : trimmed;
+  };
+  const summarizeList = (values: string[]) => values.length > 0 ? values.join(", ") : "(비어 있음)";
 
   return (
     <div className="space-y-4">
@@ -621,6 +633,40 @@ export default function WritePage() {
         <div className={`rounded-lg p-3 text-sm ${result.success ? "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"}`}>
           {result.message}
         </div>
+      )}
+
+      {pendingTemplate && (
+        <section
+          role="region"
+          aria-label="템플릿 적용 diff"
+          className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200 space-y-3"
+        >
+          <div>
+            <h3 className="font-medium">템플릿 적용 전 확인</h3>
+            <p className="text-xs opacity-80 mt-1">현재 작성 중인 내용을 바로 덮어쓰지 않고 변경될 항목을 먼저 보여줘요.</p>
+          </div>
+          <div className="space-y-1 text-xs font-mono">
+            <p>컬렉션: {collection} → {pendingTemplate.collection}</p>
+            <p>카테고리: {summarizeList(categories)} → {summarizeList(pendingTemplate.categories)}</p>
+            <p>본문: {summarizeText(content)} → {summarizeText(pendingTemplate.content)}</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => commitTemplate(pendingTemplate.id)}
+              className="px-3 py-1.5 rounded-md bg-amber-600 text-white hover:bg-amber-700"
+            >
+              템플릿 적용
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingTemplateId(null)}
+              className="px-3 py-1.5 rounded-md border border-amber-500/30 hover:bg-amber-500/10"
+            >
+              취소
+            </button>
+          </div>
+        </section>
       )}
 
       {/* Template Picker */}
