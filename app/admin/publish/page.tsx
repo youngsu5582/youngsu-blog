@@ -70,6 +70,12 @@ interface AiProvider {
   type: "cli" | "api";
 }
 
+interface PendingAiSuggestion {
+  filePath: string;
+  model: string;
+  suggestion: Partial<Pick<Frontmatter, "description" | "categories" | "tags">>;
+}
+
 // Helper function to detect non-ASCII characters in filename
 function hasNonAsciiFilename(filePath: string): boolean {
   const filename = filePath.split("/").pop() || "";
@@ -118,6 +124,7 @@ export default function PublishPage() {
   const [reviewContent, setReviewContent] = useState<Map<string, string>>(new Map());
   const [showReview, setShowReview] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [pendingAiSuggestion, setPendingAiSuggestion] = useState<PendingAiSuggestion | null>(null);
 
   // Helper functions for localStorage persistence
   const updateGeneratedFiles = (updater: (prev: Map<string, string[]>) => Map<string, string[]>) => {
@@ -277,14 +284,12 @@ export default function PublishPage() {
       });
       const data = await res.json();
       if (data.success) {
-        const s = data.suggestion;
-        updateFrontmatter(editingPost, {
-          ...editing.frontmatter,
-          description: s.description || editing.frontmatter.description,
-          categories: s.categories || editing.frontmatter.categories,
-          tags: s.tags || editing.frontmatter.tags,
+        setPendingAiSuggestion({
+          filePath: editingPost,
+          model: data.model,
+          suggestion: data.suggestion,
         });
-        setResult({ success: true, message: `AI(${data.model}) 제안 적용됨 — 확인 후 수정하세요` });
+        setResult({ success: true, message: `AI(${data.model}) 제안 준비됨 — diff를 확인한 뒤 적용하세요` });
 
         // Save provider preference
         localStorage.setItem("ai-provider-preference", selectedProvider);
@@ -295,6 +300,27 @@ export default function PublishPage() {
       setResult({ success: false, message: "AI 요청 실패" });
     }
     setAiLoading(false);
+  };
+
+  const applyPendingAiSuggestion = () => {
+    if (!pendingAiSuggestion) return;
+    const target = selectedPosts.get(pendingAiSuggestion.filePath);
+    if (!target) return;
+    const suggestion = pendingAiSuggestion.suggestion;
+    updateFrontmatter(pendingAiSuggestion.filePath, {
+      ...target.frontmatter,
+      description: suggestion.description || target.frontmatter.description,
+      categories: suggestion.categories || target.frontmatter.categories,
+      tags: suggestion.tags || target.frontmatter.tags,
+    });
+    setPendingAiSuggestion(null);
+    setResult({ success: true, message: `AI(${pendingAiSuggestion.model}) 제안 적용됨 — 확인 후 수정하세요` });
+  };
+
+  const formatAiDiff = (label: string, before: string | string[], after?: string | string[]) => {
+    const beforeValue = Array.isArray(before) ? before.join(", ") : before.trim();
+    const afterValue = Array.isArray(after) ? after.join(", ") : (after || "").trim();
+    return `${label}: ${beforeValue || "(비어 있음)"} → ${afterValue || "(변경 없음)"}`;
   };
 
   const handleGenerateThumbnail = async () => {
@@ -658,6 +684,42 @@ export default function PublishPage() {
                     </button>
                   </div>
                 </div>
+
+                {pendingAiSuggestion?.filePath === editingPost && (
+                  <section
+                    role="region"
+                    aria-label="AI 제안 diff"
+                    className="rounded-md border border-violet-500/20 bg-violet-500/5 p-3 space-y-3"
+                  >
+                    <div>
+                      <h4 className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                        AI 제안 diff
+                      </h4>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        기존 메타데이터를 바로 덮어쓰지 않아요. 변경될 내용을 확인한 뒤 적용하세요.
+                      </p>
+                    </div>
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <p>{formatAiDiff("설명", editing.frontmatter.description, pendingAiSuggestion.suggestion.description)}</p>
+                      <p>{formatAiDiff("카테고리", editing.frontmatter.categories, pendingAiSuggestion.suggestion.categories)}</p>
+                      <p>{formatAiDiff("태그", editing.frontmatter.tags, pendingAiSuggestion.suggestion.tags)}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={applyPendingAiSuggestion}
+                        className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
+                      >
+                        제안 적용
+                      </button>
+                      <button
+                        onClick={() => setPendingAiSuggestion(null)}
+                        className="px-3 py-1.5 rounded-md border border-border text-xs hover:bg-muted/50 transition-colors"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </section>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">제목</label>

@@ -24,7 +24,7 @@ describe("Admin publish page", () => {
     localStorage.clear();
     vi.stubGlobal(
       "fetch",
-      vi.fn((input: RequestInfo | URL) => {
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
         if (url === "/api/admin/posts") {
@@ -32,7 +32,21 @@ describe("Admin publish page", () => {
         }
 
         if (url === "/api/admin/ai/providers") {
-          return Promise.resolve(new Response(JSON.stringify({ providers: [] }), { status: 200 }));
+          return Promise.resolve(new Response(JSON.stringify({
+            providers: [{ id: "test-ai", label: "테스트 AI", available: true, type: "api" }]
+          }), { status: 200 }));
+        }
+
+        if (url === "/api/admin/ai/suggest" && init?.method === "POST") {
+          return Promise.resolve(new Response(JSON.stringify({
+            success: true,
+            model: "test-ai-model",
+            suggestion: {
+              description: "AI 설명",
+              categories: ["Blog", "AI"],
+              tags: ["admin", "ai-tag"]
+            }
+          }), { status: 200 }));
         }
 
         if (url === "/api/admin/thumbnail/models") {
@@ -67,5 +81,23 @@ describe("Admin publish page", () => {
 
     expect(await screen.findByText("실행 예정: main에 직접 커밋 후 origin/main으로 푸시")).toBeTruthy();
     expect(screen.getByText("경고 2개: 썸네일 URL이 비어 있음, 설명(description)이 비어 있음")).toBeTruthy();
+  });
+
+  it("AI 제안을 바로 덮어쓰지 않고 diff 확인 후 적용한다", async () => {
+    render(<PublishPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /새 글/ }));
+    fireEvent.click(screen.getByRole("button", { name: "AI 도움받기" }));
+
+    expect(await screen.findByRole("region", { name: "AI 제안 diff" })).toBeTruthy();
+    expect(screen.getByText("설명: (비어 있음) → AI 설명")).toBeTruthy();
+    expect(screen.getByText("카테고리: Blog → Blog, AI")).toBeTruthy();
+    expect(screen.getByText("태그: admin → admin, ai-tag")).toBeTruthy();
+    expect(screen.queryByDisplayValue("AI 설명")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "제안 적용" }));
+
+    expect(screen.getByDisplayValue("AI 설명")).toBeTruthy();
+    expect(screen.getByText("ai-tag")).toBeTruthy();
   });
 });
