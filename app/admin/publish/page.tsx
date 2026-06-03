@@ -103,6 +103,7 @@ export default function PublishPage() {
   const [posts, setPosts] = useState<PostInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showNeedsQualityOnly, setShowNeedsQualityOnly] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<Map<string, SelectedPost>>(new Map());
   const [editingPost, setEditingPost] = useState<string | null>(null);
   const [allCategories, setAllCategories] = useState<string[]>([]);
@@ -547,10 +548,22 @@ export default function PublishPage() {
     setPublishing(false);
   };
 
-  const filtered = posts.filter((p) =>
-    p.title.toLowerCase().includes(search.toLowerCase()) ||
-    p.filename.toLowerCase().includes(search.toLowerCase())
-  );
+  const needsQualityWork = (post: PostInfo) => getQualityWarnings(post, {
+    title: post.title,
+    description: post.description,
+    categories: post.categories,
+    tags: post.tags,
+    image: post.image,
+  }).length > 0;
+
+  const needsQualityCount = posts.filter(needsQualityWork).length;
+
+  const filtered = posts.filter((p) => {
+    const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) ||
+      p.filename.toLowerCase().includes(search.toLowerCase());
+    const matchQuality = !showNeedsQualityOnly || needsQualityWork(p);
+    return matchSearch && matchQuality;
+  });
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
@@ -597,10 +610,33 @@ export default function PublishPage() {
               className="w-full pl-8 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
+          <div className="flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => setShowNeedsQualityOnly(false)}
+              className={`text-[10px] px-2 py-1 rounded-full transition-colors ${!showNeedsQualityOnly ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+            >
+              전체 ({posts.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNeedsQualityOnly(!showNeedsQualityOnly)}
+              className={`text-[10px] px-2 py-1 rounded-full transition-colors ${showNeedsQualityOnly ? "bg-amber-600 text-white" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"}`}
+            >
+              품질 보완 필요 ({needsQualityCount})
+            </button>
+          </div>
           <div className="space-y-1 max-h-[400px] overflow-y-auto">
             {filtered.map((post) => {
               const isSelected = selectedPosts.has(post.filePath);
               const isEditing = editingPost === post.filePath;
+              const qualityWarningCount = getQualityWarnings(post, {
+                title: post.title,
+                description: post.description,
+                categories: post.categories,
+                tags: post.tags,
+                image: post.image,
+              }).length;
               return (
                 <div
                   key={post.filePath}
@@ -630,6 +666,11 @@ export default function PublishPage() {
                         {post.gitStatus === "new" ? "NEW" : "MOD"}
                       </span>
                       <span className="text-sm font-medium truncate">{post.title}</span>
+                      {qualityWarningCount > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                          경고 {qualityWarningCount}개
+                        </span>
+                      )}
                       {hasNonAsciiFilename(post.filePath) && (
                         <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 dark:text-orange-500" title="slug에 한글이 포함되어 있습니다">
                           <AlertTriangle className="h-3 w-3" />

@@ -149,6 +149,19 @@ describe("Admin publish page", () => {
     expect(JSON.parse(String(saveCall?.[1]?.body)).overwrite).toBe(true);
   });
 
+  it("품질 보완 필요 필터로 설명/썸네일 누락 글만 볼 수 있다", async () => {
+    render(<PublishPage />);
+
+    expect(await screen.findByRole("button", { name: /새 글/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /번역 있는 글/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "품질 보완 필요 (1)" }));
+
+    expect(screen.getByRole("button", { name: /새 글/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /번역 있는 글/ })).toBeNull();
+    expect(screen.getByText("경고 2개")).toBeTruthy();
+  });
+
   it("발행 전 dry-run 요약으로 실행 방식과 커밋 대상을 보여준다", async () => {
     render(<PublishPage />);
 
