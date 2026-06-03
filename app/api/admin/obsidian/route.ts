@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { buildContentFilePath, isAllowedCollection } from "@/lib/admin-content-paths";
+import { serializeFrontmatter } from "@/lib/frontmatter";
 
 interface FileInfo {
   filename: string;
@@ -107,30 +108,29 @@ function buildImportedMarkdown(params: {
 }) {
   const { body, description, filename, modifiedAt, targetCollection, title } = params;
   const date = modifiedAt.toISOString().split("T")[0];
-  const lines = ["---"];
-  lines.push(`title: "${title || filename}"`);
-  lines.push(`date: ${date}`);
-  if (description) lines.push(`description: "${description}"`);
-  lines.push("categories: []");
-  lines.push("tags: []");
+  const frontmatter: Record<string, unknown> = {
+    title: title || filename,
+    date,
+    description: description || undefined,
+    categories: [],
+    tags: [],
+  };
 
   if (targetCollection === "posts") {
-    lines.push("author: 이영수");
-    lines.push("lang: ko");
-    lines.push("draft: true");
-    lines.push("toc: true");
-    lines.push("comments: true");
+    Object.assign(frontmatter, {
+      author: "이영수",
+      lang: "ko",
+      draft: true,
+      toc: true,
+      comments: true,
+    });
   } else if (targetCollection === "articles") {
-    lines.push("status: seed");
+    frontmatter.status = "seed";
   } else if (targetCollection === "library") {
-    lines.push("mediaType: book");
+    frontmatter.mediaType = "book";
   }
 
-  lines.push("---");
-  lines.push("");
-  lines.push(body.trim());
-  lines.push("");
-  return lines.join("\n");
+  return `${serializeFrontmatter(frontmatter)}\n\n${body.trim()}\n`;
 }
 
 // GET: List .md files in a directory

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import matter from "gray-matter";
 import { resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { serializeFrontmatter } from "@/lib/frontmatter";
 
 const ALLOWED_TRANSLATION_PREFIXES = [
   "content/posts/",
@@ -28,14 +29,6 @@ function resolveTranslationTargetPath(originalRepoPath: string) {
   if (!resolved) return null;
 
   return resolved;
-}
-
-function stringifyYamlScalar(value: unknown) {
-  const str = String(value);
-  if (str.includes(":") || str.includes("#") || str.includes('"')) {
-    return `"${str.replace(/"/g, '\\"')}"`;
-  }
-  return str;
 }
 
 export async function POST(req: Request) {
@@ -107,29 +100,7 @@ export async function POST(req: Request) {
 
     enFrontmatter.lang = "en";
 
-    const lines = ["---"];
-    for (const [key, val] of Object.entries(enFrontmatter)) {
-      if (val === undefined || val === null) continue;
-      if (Array.isArray(val)) {
-        if (val.length === 0) {
-          lines.push(`${key}: []`);
-        } else {
-          lines.push(`${key}:`);
-          val.forEach((v) => {
-            const str = String(v);
-            if (/^\d+$/.test(str)) lines.push(`  - "${str}"`);
-            else lines.push(`  - ${str}`);
-          });
-        }
-      } else if (typeof val === "boolean" || typeof val === "number") {
-        lines.push(`${key}: ${val}`);
-      } else {
-        lines.push(`${key}: ${stringifyYamlScalar(val)}`);
-      }
-    }
-    lines.push("---");
-
-    const output = lines.join("\n") + "\n\n" + content.trim() + "\n";
+    const output = `${serializeFrontmatter(enFrontmatter)}\n\n${content.trim()}\n`;
     fs.writeFileSync(enFile.absPath, output, "utf-8");
 
     return NextResponse.json({
