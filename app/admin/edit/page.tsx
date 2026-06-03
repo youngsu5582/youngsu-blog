@@ -32,6 +32,11 @@ const COLLECTION_BADGE: Record<string, string> = {
 };
 
 const AUTOSAVE_DELAY = 5000; // 5 seconds
+const UNSAVED_CHANGES_MESSAGE = "저장되지 않은 변경사항이 있습니다. 계속 이동할까요?";
+
+function createEditSnapshot(frontmatter: Record<string, unknown>, body: string, slug: string) {
+  return JSON.stringify({ frontmatter, body, slug });
+}
 
 export default function EditPage() {
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -66,6 +71,7 @@ export default function EditPage() {
   const [showMeta, setShowMeta] = useState(true);
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
 
   // Textarea ref for markdown toolbar
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -159,7 +165,19 @@ export default function EditPage() {
     return matchSearch && matchCollection;
   });
 
+  const hasUnsavedChanges = useCallback(() => {
+    if (!selectedItem || !lastSavedSnapshotRef.current) return false;
+    return lastSavedSnapshotRef.current !== createEditSnapshot(frontmatter, body, editSlug);
+  }, [selectedItem, frontmatter, body, editSlug]);
+
+  const confirmNavigation = useCallback(() => {
+    if (!hasUnsavedChanges()) return true;
+    return window.confirm(UNSAVED_CHANGES_MESSAGE);
+  }, [hasUnsavedChanges]);
+
   const loadContent = async (item: ContentItem) => {
+    if (selectedItem && !confirmNavigation()) return;
+
     // Save current auto-save before switching
     if (selectedItem && (body || frontmatter.title || frontmatter.description)) {
       performAutoSave();
@@ -176,6 +194,9 @@ export default function EditPage() {
       const filePath = `content/${item.collection}/${item.slug}.mdx`;
       const res = await fetch(`/api/admin/edit?file=${encodeURIComponent(filePath)}`);
       const data = await res.json();
+      const serverFrontmatter = data.frontmatter || {};
+      const serverBody = data.body !== undefined ? data.body : "";
+      lastSavedSnapshotRef.current = createEditSnapshot(serverFrontmatter, serverBody, item.slug);
 
       // Check for auto-save
       const autoSaveKey = `admin-edit-draft-${item.collection}-${item.slug}`;
@@ -196,18 +217,18 @@ export default function EditPage() {
             setTimeout(() => setResult(null), 3000);
           } else {
             // Use server data
-            if (data.frontmatter) setFrontmatter(data.frontmatter);
-            if (data.body !== undefined) setBody(data.body);
+            setFrontmatter(serverFrontmatter);
+            setBody(serverBody);
           }
         } catch {
           // Fallback to server data
-          if (data.frontmatter) setFrontmatter(data.frontmatter);
-          if (data.body !== undefined) setBody(data.body);
+          setFrontmatter(serverFrontmatter);
+          setBody(serverBody);
         }
       } else {
         // No auto-save, use server data
-        if (data.frontmatter) setFrontmatter(data.frontmatter);
-        if (data.body !== undefined) setBody(data.body);
+        setFrontmatter(serverFrontmatter);
+        setBody(serverBody);
       }
     } catch {}
     setLoadingContent(false);
@@ -234,6 +255,7 @@ export default function EditPage() {
 
         const msg = data.renamed ? `저장 완료 (파일명: ${editSlug}.mdx)` : "저장 완료";
         setResult({ success: true, message: msg });
+        lastSavedSnapshotRef.current = createEditSnapshot(frontmatter, body, editSlug);
         if (data.renamed) {
           // Clear old auto-save key if renamed
           const oldKey = `admin-edit-draft-${selectedItem.collection}-${selectedItem.slug}`;
@@ -460,7 +482,15 @@ export default function EditPage() {
             <div className="space-y-4">
               {/* Back button */}
               <button
-                onClick={() => { setSelectedItem(null); setShowMeta(true); }}
+                onClick={() => {
+                  if (!confirmNavigation()) return;
+                  if (selectedItem && (body || frontmatter.title || frontmatter.description)) {
+                    performAutoSave();
+                  }
+                  setSelectedItem(null);
+                  setShowMeta(true);
+                  lastSavedSnapshotRef.current = null;
+                }}
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />

@@ -11,6 +11,12 @@ const items = [
     collection: "posts",
     date: "2026-01-01",
   },
+  {
+    slug: "second-post",
+    title: "두 번째 글",
+    collection: "posts",
+    date: "2026-01-02",
+  },
 ];
 
 const content = {
@@ -27,6 +33,7 @@ const content = {
 describe("Admin edit page", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.stubGlobal("confirm", vi.fn(() => true));
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -90,5 +97,37 @@ describe("Admin edit page", () => {
     expect(editorRegion.className).toContain("max-h-[calc(100vh-20rem)]");
     expect(previewRegion.className).toContain("max-h-[calc(100vh-20rem)]");
     expect(screen.getByPlaceholderText("마크다운으로 작성하세요...").className).toContain("overflow-y-auto");
+  });
+
+  it("미저장 변경이 있으면 목록으로 돌아가기 전에 확인한다", async () => {
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirm);
+
+    render(<EditPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /긴 글 테스트/ }));
+    const editor = await screen.findByPlaceholderText("마크다운으로 작성하세요...");
+    fireEvent.change(editor, { target: { value: "수정한 본문" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "목록으로" }));
+
+    expect(confirm).toHaveBeenCalledWith("저장되지 않은 변경사항이 있습니다. 계속 이동할까요?");
+    expect(screen.getByRole("region", { name: "편집 작업 바" })).toBeTruthy();
+  });
+
+  it("미저장 변경이 있으면 다른 글 선택을 취소할 수 있다", async () => {
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirm);
+
+    render(<EditPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /긴 글 테스트/ }));
+    const editor = await screen.findByPlaceholderText("마크다운으로 작성하세요...");
+    fireEvent.change(editor, { target: { value: "수정한 본문" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /두 번째 글/ }));
+
+    expect(confirm).toHaveBeenCalledWith("저장되지 않은 변경사항이 있습니다. 계속 이동할까요?");
+    expect(screen.getByText("편집 중: 긴 글 테스트")).toBeTruthy();
   });
 });
