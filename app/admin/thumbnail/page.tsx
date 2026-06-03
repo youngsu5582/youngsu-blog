@@ -29,6 +29,8 @@ export default function ThumbnailPage() {
   const [generatedPrompt, setGeneratedPrompt] = useState<string>("");
   const [generationMethod, setGenerationMethod] = useState<string>("");
   const [filename, setFilename] = useState("");
+  const [savedThumbnailPath, setSavedThumbnailPath] = useState<string>("");
+  const [frontmatterUpdated, setFrontmatterUpdated] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [postSearch, setPostSearch] = useState("");
   const [showPostPicker, setShowPostPicker] = useState(false);
@@ -79,6 +81,8 @@ export default function ThumbnailPage() {
     setGeneratedImage(null);
     setGeneratedPrompt("");
     setGenerationMethod("");
+    setSavedThumbnailPath("");
+    setFrontmatterUpdated(false);
 
     try {
       const res = await fetch("/api/admin/thumbnail", {
@@ -140,6 +144,8 @@ export default function ThumbnailPage() {
       const data = await res.json();
 
       if (data.success) {
+        setSavedThumbnailPath(data.filePath || "");
+        setFrontmatterUpdated(Boolean(data.frontmatterUpdated));
         const message = data.frontmatterUpdated
           ? `저장 완료: ${data.filePath} (frontmatter 자동 업데이트됨)`
           : `저장 완료: ${data.filePath}`;
@@ -333,6 +339,51 @@ export default function ThumbnailPage() {
         )}
       </div>
 
+      <section
+        role="region"
+        aria-label="썸네일 상태"
+        className="rounded-lg border border-border/60 p-4 space-y-3 bg-muted/20"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+            썸네일 상태
+          </h3>
+          <span
+            className={`text-xs px-2 py-1 rounded-full ${
+              savedThumbnailPath
+                ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                : generatedImage
+                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {savedThumbnailPath ? "저장 완료" : generatedImage ? "저장 대기" : "생성 전"}
+          </span>
+        </div>
+
+        {generatedImage ? (
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <p>
+              {savedThumbnailPath
+                ? "생성된 썸네일이 저장됐어요."
+                : "생성된 썸네일이 아직 저장되지 않았어요."}
+            </p>
+            {selectedPost && !savedThumbnailPath && (
+              <p>frontmatter 업데이트 예정: {selectedPost}</p>
+            )}
+            {savedThumbnailPath && <p className="font-medium text-foreground">{savedThumbnailPath}</p>}
+            {savedThumbnailPath && (
+              <p>{frontmatterUpdated ? "frontmatter 업데이트 완료" : "frontmatter 업데이트 없음"}</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            아직 생성된 썸네일이 없어요. 포스트와 모델을 선택한 뒤 생성하면 여기에서 저장 상태를 확인할 수 있어요.
+          </p>
+        )}
+      </section>
+
       {/* Generated Image */}
       {generatedImage && (
         <div className="rounded-lg border border-border/60 p-4 space-y-4">
@@ -351,7 +402,7 @@ export default function ThumbnailPage() {
           <div className="rounded-md border border-border overflow-hidden bg-muted/30">
             <img
               src={`data:image/png;base64,${generatedImage}`}
-              alt="Generated thumbnail"
+              alt="생성된 썸네일 미리보기"
               className="w-full h-auto"
             />
           </div>
