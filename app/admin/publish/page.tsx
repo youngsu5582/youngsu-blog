@@ -77,6 +77,22 @@ function hasNonAsciiFilename(filePath: string): boolean {
   return /[^\x00-\x7F]/.test(filename);
 }
 
+function getQualityWarnings(post: PostInfo, frontmatter: Frontmatter): string[] {
+  const warnings: string[] = [];
+  if (!frontmatter.image) warnings.push("썸네일 URL이 비어 있음");
+  if (!frontmatter.description || frontmatter.description.trim().length === 0) warnings.push("설명(description)이 비어 있음");
+  if (frontmatter.tags.length === 0) warnings.push("태그가 비어 있음");
+  if (frontmatter.categories.length === 0) warnings.push("카테고리가 비어 있음");
+  if (hasNonAsciiFilename(post.filePath)) warnings.push("slug에 비영문 문자가 있음");
+  return warnings;
+}
+
+function getPublishActionLabel(mode: PublishMode, autoPush: boolean) {
+  if (mode === "pr") return "PR 생성 후 리뷰/머지";
+  if (autoPush) return "main에 직접 커밋 후 origin/main으로 푸시";
+  return "main에 직접 커밋 (푸시 없음)";
+}
+
 export default function PublishPage() {
   const [posts, setPosts] = useState<PostInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -846,6 +862,7 @@ export default function PublishPage() {
                   <div className="text-left">
                     <div className="font-medium">직접 커밋</div>
                     <div className="text-[10px] text-muted-foreground">main에 바로 커밋</div>
+                    <div className="mt-1 text-[10px] font-medium text-red-600 dark:text-red-400">위험도 높음 · main에 바로 반영</div>
                   </div>
                 </button>
                 <button
@@ -868,6 +885,7 @@ export default function PublishPage() {
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
+                    aria-label="발행 후 자동 푸시"
                     checked={autoPush}
                     onChange={(e) => setAutoPush(e.target.checked)}
                     className="rounded border-border"
@@ -875,6 +893,9 @@ export default function PublishPage() {
                   <div>
                     <span className="text-sm">발행 후 자동 푸시</span>
                     <span className="text-[10px] text-muted-foreground ml-2">git push origin main</span>
+                    <p className="mt-1 text-[10px] text-red-600 dark:text-red-400">
+                      자동 푸시는 origin/main에 즉시 반영되어 배포를 트리거할 수 있어요.
+                    </p>
                   </div>
                 </label>
               )}
@@ -884,16 +905,17 @@ export default function PublishPage() {
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">발행 품질 체크</h4>
                 {(() => {
                   const checks = Array.from(selectedPosts.values()).map(({ post, frontmatter }) => {
-                    const hasThumbnail = !!frontmatter.image;
-                    const hasDescription = !!frontmatter.description && frontmatter.description.trim().length > 0;
-                    const hasTags = frontmatter.tags.length > 0;
-                    const hasCategory = frontmatter.categories.length > 0;
+                    const warnings = getQualityWarnings(post, frontmatter);
+                    const hasThumbnail = !warnings.includes("썸네일 URL이 비어 있음");
+                    const hasDescription = !warnings.includes("설명(description)이 비어 있음");
+                    const hasTags = !warnings.includes("태그가 비어 있음");
+                    const hasCategory = !warnings.includes("카테고리가 비어 있음");
                     const isSlugEnglish = !/[^\x00-\x7F]/.test(post.filename.replace(/\.mdx?$/, ""));
 
                     return {
                       title: post.title,
                       checks: [
-                        { label: "썸네일 이미지 있음", passed: hasThumbnail },
+                        { label: "썸네일 URL 입력됨", passed: hasThumbnail },
                         { label: "설명(description) 있음", passed: hasDescription },
                         { label: "태그 1개 이상", passed: hasTags },
                         { label: "카테고리 있음", passed: hasCategory },
@@ -974,6 +996,9 @@ export default function PublishPage() {
           </DialogHeader>
 
           <div className="space-y-3 py-4 max-h-[400px] overflow-y-auto">
+            <div className={`rounded-md border p-3 text-xs ${mode === "direct" ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300" : "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300"}`}>
+              실행 예정: {getPublishActionLabel(mode, autoPush)}
+            </div>
             {Array.from(selectedPosts.values()).map(({ post, frontmatter, includeEn }) => (
               <div key={post.filePath} className="rounded-md border border-border/40 p-3 space-y-2">
                 <div className="flex items-center gap-2">
@@ -1004,6 +1029,15 @@ export default function PublishPage() {
                       생성된 파일 {generatedFiles.get(post.filePath)!.length}개 포함
                     </div>
                   )}
+                  {(() => {
+                    const warnings = getQualityWarnings(post, frontmatter);
+                    if (warnings.length === 0) return null;
+                    return (
+                      <div className="text-[10px] text-yellow-700 dark:text-yellow-400">
+                        경고 {warnings.length}개: {warnings.join(", ")}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ))}
