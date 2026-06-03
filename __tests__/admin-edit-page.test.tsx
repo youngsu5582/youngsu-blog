@@ -156,6 +156,25 @@ describe("Admin edit page", () => {
     expect(screen.getByRole("region", { name: "편집 작업 바" })).toBeTruthy();
   });
 
+  it("목록에서 자동저장 초안이 있는 글을 빠르게 필터링하고 표시한다", async () => {
+    localStorage.setItem("admin-edit-draft-posts-second-post", JSON.stringify({
+      frontmatter: { title: "두 번째 자동저장" },
+      body: "초안 본문",
+      editSlug: "second-post",
+      savedAt: "2026-12-31T00:00:00.000Z",
+    }));
+
+    render(<EditPage />);
+
+    expect(await screen.findByRole("button", { name: /두 번째 글/ })).toBeTruthy();
+    expect(screen.getByText("임시저장")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "임시저장 있음 (1)" }));
+
+    expect(screen.getByRole("button", { name: /두 번째 글/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /긴 글 테스트/ })).toBeNull();
+  });
+
   it("미저장 변경이 있으면 다른 글 선택을 취소할 수 있다", async () => {
     const confirm = vi.fn(() => false);
     vi.stubGlobal("confirm", confirm);

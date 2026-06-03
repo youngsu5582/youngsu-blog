@@ -58,6 +58,7 @@ export default function EditPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterCollection, setFilterCollection] = useState<string | null>(null);
+  const [showDraftOnly, setShowDraftOnly] = useState(false);
 
   // Selected item
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
@@ -176,10 +177,18 @@ export default function EditPage() {
     }).catch(() => setLoading(false));
   }, []);
 
+  const hasEditDraft = useCallback((item: ContentItem) => {
+    if (typeof window === "undefined") return false;
+    return Boolean(localStorage.getItem(`admin-edit-draft-${item.collection}-${item.slug}`));
+  }, []);
+
+  const draftCount = items.filter(hasEditDraft).length;
+
   const filtered = items.filter((item) => {
     const matchSearch = !search || item.title.toLowerCase().includes(search.toLowerCase()) || item.slug.toLowerCase().includes(search.toLowerCase());
     const matchCollection = !filterCollection || item.collection === filterCollection;
-    return matchSearch && matchCollection;
+    const matchDraft = !showDraftOnly || hasEditDraft(item);
+    return matchSearch && matchCollection && matchDraft;
   });
 
   const hasUnsavedChanges = useCallback(() => {
@@ -486,6 +495,17 @@ export default function EditPage() {
             })}
           </div>
 
+          <div className="flex flex-wrap gap-1">
+            <button onClick={() => setShowDraftOnly(false)}
+              className={`text-[10px] px-2 py-1 rounded-full transition-colors ${!showDraftOnly ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+              전체 상태
+            </button>
+            <button onClick={() => setShowDraftOnly(!showDraftOnly)}
+              className={`text-[10px] px-2 py-1 rounded-full transition-colors ${showDraftOnly ? "bg-blue-600 text-white" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"}`}>
+              임시저장 있음 ({draftCount})
+            </button>
+          </div>
+
           {/* Items */}
           <div className="space-y-0.5 max-h-[65vh] overflow-y-auto">
             {filtered.map((item) => (
@@ -500,6 +520,11 @@ export default function EditPage() {
                     {item.collection === "posts" ? "P" : item.collection === "articles" ? "A" : item.collection === "notes" ? "N" : "L"}
                   </span>
                   <span className="truncate font-medium">{item.title}</span>
+                  {hasEditDraft(item) && (
+                    <span className="rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium text-blue-600 dark:text-blue-400">
+                      임시저장
+                    </span>
+                  )}
                 </div>
               </button>
             ))}
