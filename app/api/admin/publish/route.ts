@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
+import os from "os";
+import { execFileSync } from "child_process";
 import { updateFrontmatter } from "@/lib/frontmatter";
 import { validateMdx } from "@/lib/mdx-validator";
 
 const CONTENT_ROOT = path.join(process.cwd(), "content");
+
+function git(args: string[], cwd: string) {
+  return execFileSync("git", args, { cwd, encoding: "utf-8" });
+}
+
+function gh(args: string[], cwd: string) {
+  return execFileSync("gh", args, { cwd, encoding: "utf-8" }).trim();
+}
 
 interface PublishPost {
   slug: string;
@@ -121,7 +130,7 @@ export async function POST(req: Request) {
       }
 
       const commitMsg = buildCommitMessage(posts);
-      const tmpFile = path.join(require("os").tmpdir(), `admin-publish-${Date.now()}.txt`);
+      const tmpFile = path.join(os.tmpdir(), `admin-publish-${Date.now()}.txt`);
       const now = new Date();
       const date = now.toISOString().slice(0, 10);
       const time = now.toTimeString().slice(0, 8).replace(/:/g, "");
@@ -140,23 +149,23 @@ export async function POST(req: Request) {
       // 변경된 파일을 stash → 브랜치에서 커밋 → main 복귀 후 stash pop
       // 이렇게 하면 로컬에도 draft: false 상태가 유지됨
       // 신규 글/썸네일은 아직 git이 추적하지 않는 untracked 파일일 수 있으므로 -u가 필요함.
-      execSync(`git stash push -u -- ${filesToCommit.map(f => `"${f}"`).join(" ")}`, { cwd });
-      execSync(`git checkout -b "${branchName}"`, { cwd });
+      git(["stash", "push", "-u", "--", ...filesToCommit], cwd);
+      git(["checkout", "-b", branchName], cwd);
 
       try {
-        execSync("git stash pop", { cwd });
+        git(["stash", "pop"], cwd);
 
         for (const f of filesToCommit) {
-          execSync(`git add "${f}"`, { cwd });
+          git(["add", "--", f], cwd);
         }
 
         fs.writeFileSync(tmpFile, commitMsg, "utf-8");
-        execSync(`git commit -F "${tmpFile}"`, { cwd, encoding: "utf-8" });
+        git(["commit", "-F", tmpFile], cwd);
         if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
 
-        const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
+        const hash = git(["rev-parse", "--short", "HEAD"], cwd).trim();
 
-        execSync(`git push -u origin "${branchName}"`, { cwd, encoding: "utf-8" });
+        git(["push", "-u", "origin", branchName], cwd);
 
         // PR 생성
         const prTitle = posts.length === 1
@@ -165,14 +174,11 @@ export async function POST(req: Request) {
 
         const prBody = posts.map((p) => `- ${p.frontmatter.title || p.slug}`).join("\\n");
 
-        const prUrl = execSync(
-          `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody}"`,
-          { cwd, encoding: "utf-8" },
-        ).trim();
+        const prUrl = gh(["pr", "create", "--title", prTitle, "--body", prBody], cwd);
 
         // main 복귀 (로컬 파일은 수정된 상태 유지)
-        execSync("git checkout main", { cwd });
-        try { execSync(`git branch -D "${branchName}"`, { cwd }); } catch {}
+        git(["checkout", "main"], cwd);
+        try { git(["branch", "-D", branchName], cwd); } catch {}
 
         // main에서도 PR에 넣은 파일을 로컬 작업트리에 복원한다.
         // 특히 신규 글/신규 썸네일은 main에 아직 없어서 checkout main 이후 사라진다.
@@ -215,8 +221,8 @@ export async function POST(req: Request) {
         });
       } catch (e) {
         // 실패 시 main 복귀
-        try { execSync("git checkout main", { cwd }); } catch {}
-        try { execSync(`git branch -D "${branchName}"`, { cwd }); } catch {}
+        try { git(["checkout", "main"], cwd); } catch {}
+        try { git(["branch", "-D", branchName], cwd); } catch {}
         if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
         throw e;
       }
@@ -230,23 +236,23 @@ export async function POST(req: Request) {
     }
 
     const commitMsg = buildCommitMessage(posts);
-    const tmpFile = path.join(require("os").tmpdir(), `admin-publish-${Date.now()}.txt`);
+    const tmpFile = path.join(os.tmpdir(), `admin-publish-${Date.now()}.txt`);
 
     for (const f of filesToCommit) {
-      execSync(`git add "${f}"`, { cwd });
+      git(["add", "--", f], cwd);
     }
 
     fs.writeFileSync(tmpFile, commitMsg, "utf-8");
-    execSync(`git commit -F "${tmpFile}"`, { cwd, encoding: "utf-8" });
+    git(["commit", "-F", tmpFile], cwd);
     fs.unlinkSync(tmpFile);
 
-    const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
+    const hash = git(["rev-parse", "--short", "HEAD"], cwd).trim();
 
     let pushed = false;
     let pushError: string | undefined;
     if (autoPush) {
       try {
-        execSync("git push origin main", { cwd, encoding: "utf-8" });
+        git(["push", "origin", "main"], cwd);
         pushed = true;
       } catch (e) {
         pushError = String(e);
