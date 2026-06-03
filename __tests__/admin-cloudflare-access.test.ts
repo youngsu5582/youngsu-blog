@@ -25,4 +25,12 @@ describe("admin access boundary", () => {
     expect(nav).not.toContain("LogOut");
     expect(nav).not.toContain("로그아웃");
   });
+
+  it("allows a protected production admin runtime to opt in explicitly", () => {
+    const layout = read("app/admin/layout.tsx");
+    const sidebar = read("components/layout/sidebar.tsx");
+
+    expect(layout).toContain('process.env.ADMIN_UI_ENABLED === "true"');
+    expect(sidebar).toContain('process.env.NEXT_PUBLIC_ADMIN_UI_ENABLED === "true"');
+  });
 });

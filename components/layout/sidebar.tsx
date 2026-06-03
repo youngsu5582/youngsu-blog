@@ -13,6 +13,8 @@ import { Avatar } from "@/components/common/avatar";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const adminEnabled =
+    process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_ADMIN_UI_ENABLED === "true";
 
   return (
     <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 theme-sidebar" aria-label="사이드바 네비게이션">
@@ -94,8 +96,8 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Admin link (dev only) */}
-        {process.env.NODE_ENV === "development" && (
+        {/* Admin link (dev or explicitly enabled protected admin runtime) */}
+        {adminEnabled && (
           <div className="mt-4">
             <Link
               href="/admin"
