@@ -5,10 +5,7 @@ import os from "os";
 import { execFileSync } from "child_process";
 import { updateFrontmatter } from "@/lib/frontmatter";
 import { validateMdx } from "@/lib/mdx-validator";
-
-const CONTENT_ROOT = path.join(process.cwd(), "content");
-const ALLOWED_COLLECTIONS = new Set(["posts", "articles", "notes", "library"]);
-const ALLOWED_GENERATED_PREFIXES = ["content/", "public/assets/img/"];
+import { buildContentFilePath, isAllowedGeneratedPath, normalizeRepoRelativePath } from "@/lib/admin-content-paths";
 
 function git(args: string[], cwd: string) {
   return execFileSync("git", args, { cwd, encoding: "utf-8" });
@@ -18,18 +15,10 @@ function gh(args: string[], cwd: string) {
   return execFileSync("gh", args, { cwd, encoding: "utf-8" }).trim();
 }
 
-function isAllowedCommitPath(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, "/").replace(/^\.\//, "");
-  if (path.isAbsolute(normalized) || normalized.includes("..")) return false;
-  if (!ALLOWED_GENERATED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return false;
-
-  const absolute = path.resolve(process.cwd(), normalized);
-  return absolute.startsWith(process.cwd() + path.sep) && fs.existsSync(absolute);
-}
-
 function normalizeGeneratedFile(filePath: string): string | null {
-  const normalized = filePath.replace(/\\/g, "/").replace(/^\.\//, "");
-  return isAllowedCommitPath(normalized) ? normalized : null;
+  const normalized = normalizeRepoRelativePath(filePath);
+  if (!normalized || !isAllowedGeneratedPath(normalized)) return null;
+  return fs.existsSync(path.resolve(process.cwd(), normalized)) ? normalized : null;
 }
 
 function addCommitFile(filesToCommit: string[], filePath: string) {
@@ -50,28 +39,28 @@ function prepareFiles(posts: PublishPost[]): string[] {
   const filesToCommit: string[] = [];
 
   for (const { slug, collection = "posts", frontmatter, includeEn, enSlug, generatedFiles } of posts) {
-    if (!ALLOWED_COLLECTIONS.has(collection)) continue;
-    const contentDir = path.join(CONTENT_ROOT, collection);
-    const koFile = path.join(contentDir, `${slug}.mdx`);
+    const koPath = buildContentFilePath(collection, slug);
+    if (!koPath) continue;
+    const koFile = koPath.absPath;
     if (fs.existsSync(koFile)) {
       const koUpdate = collection === "posts"
         ? { ...frontmatter, draft: false }
         : { ...frontmatter };
       updateFrontmatter(koFile, koUpdate);
-      addCommitFile(filesToCommit, `content/${collection}/${slug}.mdx`);
+      addCommitFile(filesToCommit, koPath.repoPath);
     }
 
     if (includeEn && enSlug) {
-      const enFile = path.join(contentDir, `${enSlug}.mdx`);
-      if (fs.existsSync(enFile)) {
+      const enPath = buildContentFilePath(collection, enSlug);
+      if (enPath && fs.existsSync(enPath.absPath)) {
         const enUpdate: Record<string, unknown> = {
           categories: frontmatter.categories,
           tags: frontmatter.tags,
           image: frontmatter.image,
         };
         if (collection === "posts") enUpdate.draft = false;
-        updateFrontmatter(enFile, enUpdate);
-        addCommitFile(filesToCommit, `content/${collection}/${enSlug}.mdx`);
+        updateFrontmatter(enPath.absPath, enUpdate);
+        addCommitFile(filesToCommit, enPath.repoPath);
       }
     }
 
@@ -127,9 +116,9 @@ export async function POST(req: Request) {
     // MDX 파싱 검증 — 커밋 전에 빌드 에러를 잡는다
     const validationErrors: Array<{ slug: string; errors: Array<{ line?: number; column?: number; message: string }> }> = [];
     for (const { slug, collection = "posts" } of posts) {
-      const filePath = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
-      if (!fs.existsSync(filePath)) continue;
-      const raw = fs.readFileSync(filePath, "utf-8");
+      const contentPath = buildContentFilePath(collection, slug);
+      if (!contentPath || !fs.existsSync(contentPath.absPath)) continue;
+      const raw = fs.readFileSync(contentPath.absPath, "utf-8");
       const bodyMatch = raw.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
       const mdxBody = bodyMatch ? bodyMatch[1] : raw;
       const result = await validateMdx(mdxBody);
@@ -212,23 +201,23 @@ export async function POST(req: Request) {
 
         // main에서도 변경사항 적용 (unstaged 상태로)
         for (const { slug, collection = "posts", frontmatter, includeEn, enSlug } of posts) {
-          const koFile = path.join(CONTENT_ROOT, collection, `${slug}.mdx`);
-          if (fs.existsSync(koFile)) {
+          const koPath = buildContentFilePath(collection, slug);
+          if (koPath && fs.existsSync(koPath.absPath)) {
             const koUpdate = collection === "posts"
               ? { ...frontmatter, draft: false }
               : { ...frontmatter };
-            updateFrontmatter(koFile, koUpdate);
+            updateFrontmatter(koPath.absPath, koUpdate);
           }
           if (includeEn && enSlug) {
-            const enFile = path.join(CONTENT_ROOT, collection, `${enSlug}.mdx`);
-            if (fs.existsSync(enFile)) {
+            const enPath = buildContentFilePath(collection, enSlug);
+            if (enPath && fs.existsSync(enPath.absPath)) {
               const enUpdate: Record<string, unknown> = {
                 categories: frontmatter.categories,
                 tags: frontmatter.tags,
                 image: frontmatter.image,
               };
               if (collection === "posts") enUpdate.draft = false;
-              updateFrontmatter(enFile, enUpdate);
+              updateFrontmatter(enPath.absPath, enUpdate);
             }
           }
         }

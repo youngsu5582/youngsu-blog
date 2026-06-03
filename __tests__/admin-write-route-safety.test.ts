@@ -14,8 +14,7 @@ describe("admin write route safety", () => {
   it("validates collection and slug before constructing a content file path", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "app/api/admin/write/route.ts"), "utf-8");
 
-    expect(source).toContain("ALLOWED_COLLECTIONS");
-    expect(source).toContain("isValidSlug");
-    expect(source).toContain("safeContentPath");
+    expect(source).toContain("buildContentFilePath");
+    expect(source).not.toContain("path.join(process.cwd(), \"content\", collection)");
   });
 });

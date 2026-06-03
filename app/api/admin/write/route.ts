@@ -1,25 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
 import { serializeFrontmatter } from "@/lib/frontmatter";
-
-const ALLOWED_COLLECTIONS = new Set(["posts", "articles", "notes", "library"]);
-
-function isValidSlug(slug: string): boolean {
-  return /^[a-z0-9가-힣-]+$/.test(slug) && !slug.includes("..") && !slug.includes("/") && !slug.includes("\\");
-}
-
-function safeContentPath(collection: string, slug: string): { contentDir: string; filePath: string } | null {
-  if (!ALLOWED_COLLECTIONS.has(collection) || !isValidSlug(slug)) return null;
-
-  const root = path.join(process.cwd(), "content");
-  const contentDir = path.join(root, collection);
-  const filePath = path.join(contentDir, `${slug}.mdx`);
-  const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(path.resolve(root) + path.sep)) return null;
-
-  return { contentDir, filePath };
-}
+import { buildContentFilePath } from "@/lib/admin-content-paths";
 
 function generateSlug(title: string): string {
   return title
@@ -40,11 +22,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "유효한 제목 또는 slug을 입력하세요" }, { status: 400 });
     }
 
-    const safePath = safeContentPath(targetCollection, slug);
+    const safePath = buildContentFilePath(targetCollection, slug);
     if (!safePath) {
       return NextResponse.json({ success: false, error: "허용되지 않는 collection 또는 slug입니다" }, { status: 400 });
     }
-    const { contentDir, filePath } = safePath;
+    const { contentDir, absPath: filePath } = safePath;
 
     if (fs.existsSync(filePath)) {
       return NextResponse.json({ success: false, error: `파일이 이미 존재합니다: ${slug}.mdx` }, { status: 400 });
