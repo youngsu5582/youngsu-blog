@@ -1,37 +1,60 @@
 import { NextResponse } from "next/server";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { normalizeRepoRelativePath } from "@/lib/admin-content-paths";
+
+const ALLOWED_COMMIT_PREFIXES = ["content/", "public/assets/img/", "app/", "components/", "lib/", "__tests__/"];
+
+function runGit(args: string[], cwd: string) {
+  return execFileSync("git", args, { cwd, encoding: "utf-8" });
+}
+
+function normalizeCommitFiles(files: unknown): string[] | null {
+  if (!Array.isArray(files) || files.length === 0) return null;
+
+  const normalized = files
+    .map((file) => typeof file === "string" ? normalizeRepoRelativePath(file) : null)
+    .filter((file): file is string => Boolean(file));
+
+  if (normalized.length !== files.length) return null;
+  if (!normalized.every((file) => ALLOWED_COMMIT_PREFIXES.some((prefix) => file.startsWith(prefix)))) return null;
+
+  return Array.from(new Set(normalized));
+}
 
 export async function POST(req: Request) {
+  const cwd = process.cwd();
+  let tmpFile: string | null = null;
+
   try {
     const { message, files } = await req.json();
-    const cwd = process.cwd();
+    const commitFiles = normalizeCommitFiles(files);
 
-    if (!message) {
+    if (typeof message !== "string" || !message.trim()) {
       return NextResponse.json({ error: "커밋 메시지가 필요합니다" }, { status: 400 });
     }
 
-    // Stage files
-    if (files && files.length > 0) {
-      for (const file of files) {
-        execSync(`git add "${file}"`, { cwd });
-      }
-    } else {
-      execSync("git add -A", { cwd });
+    if (!commitFiles) {
+      return NextResponse.json({ error: "files must be a non-empty array of allowed repo-relative paths" }, { status: 400 });
     }
 
-    // Commit
-    const fs = require("fs");
-    const tmpFile = "/tmp/admin-commit-msg.txt";
-    fs.writeFileSync(tmpFile, message, "utf-8");
-    const result = execSync(`git commit -F ${tmpFile}`, { cwd, encoding: "utf-8" });
-    fs.unlinkSync(tmpFile);
+    for (const file of commitFiles) {
+      runGit(["add", "--", file], cwd);
+    }
 
-    // Get commit hash
-    const hash = execSync("git rev-parse --short HEAD", { cwd, encoding: "utf-8" }).trim();
+    tmpFile = path.join(os.tmpdir(), `admin-commit-msg-${Date.now()}.txt`);
+    fs.writeFileSync(tmpFile, message, "utf-8");
+    const result = runGit(["commit", "-F", tmpFile], cwd);
+
+    const hash = runGit(["rev-parse", "--short", "HEAD"], cwd).trim();
 
     return NextResponse.json({ success: true, hash, output: result });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });
+  } finally {
+    if (tmpFile && fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
   }
 }
