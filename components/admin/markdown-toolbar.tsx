@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, RefObject } from "react";
+import React, { useEffect, RefObject } from "react";
 import {
   Bold,
   Italic,
@@ -183,26 +183,41 @@ export function MarkdownToolbar({ textareaRef, value, onChange }: MarkdownToolba
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // Rebind when editor value changes so toolbar actions use the latest selection/value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, textareaRef]);
 
   return (
-    <div className="flex items-center gap-1 px-3 py-2 border-b border-border/40 bg-muted/30 flex-wrap">
-      <ToolbarButton icon={Bold} onClick={handleBold} title="Bold (Cmd+B)" />
-      <ToolbarButton icon={Italic} onClick={handleItalic} title="Italic (Cmd+I)" />
-      <ToolbarButton icon={Strikethrough} onClick={handleStrikethrough} title="Strikethrough" />
-      <div className="w-px h-4 bg-border/40 mx-0.5" />
-      <ToolbarButton icon={Code} onClick={handleCode} title="Code (Cmd+E)" />
-      <ToolbarButton icon={FileCode} onClick={handleCodeBlock} title="Code Block" />
-      <div className="w-px h-4 bg-border/40 mx-0.5" />
-      <ToolbarButton icon={Link} onClick={handleLink} title="Link (Cmd+K)" />
-      <ToolbarButton icon={Image} onClick={handleImage} title="Image" />
-      <div className="w-px h-4 bg-border/40 mx-0.5" />
-      <ToolbarButton icon={Heading2} onClick={handleHeading2} title="Heading 2" />
-      <ToolbarButton icon={Heading3} onClick={handleHeading3} title="Heading 3" />
-      <div className="w-px h-4 bg-border/40 mx-0.5" />
-      <ToolbarButton icon={List} onClick={handleUnorderedList} title="Unordered List" />
-      <ToolbarButton icon={ListOrdered} onClick={handleOrderedList} title="Ordered List" />
-      <ToolbarButton icon={Quote} onClick={handleQuote} title="Quote" />
+    <div
+      role="toolbar"
+      aria-label="마크다운 편집 도구"
+      className="flex items-center justify-between gap-2 border-b border-border/40 bg-muted/30 px-3 py-2"
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <div role="group" aria-label="텍스트 서식" className="flex items-center gap-0.5 rounded-md bg-background/60 p-0.5 ring-1 ring-border/40">
+          <ToolbarButton icon={Bold} onClick={handleBold} label="굵게" title="굵게 (Cmd/Ctrl+B)" />
+          <ToolbarButton icon={Italic} onClick={handleItalic} label="기울임" title="기울임 (Cmd/Ctrl+I)" />
+          <ToolbarButton icon={Strikethrough} onClick={handleStrikethrough} label="취소선" title="취소선" />
+        </div>
+        <div role="group" aria-label="코드" className="flex items-center gap-0.5 rounded-md bg-background/60 p-0.5 ring-1 ring-border/40">
+          <ToolbarButton icon={Code} onClick={handleCode} label="인라인 코드" title="인라인 코드 (Cmd/Ctrl+E)" />
+          <ToolbarButton icon={FileCode} onClick={handleCodeBlock} label="코드 블록" title="코드 블록" />
+        </div>
+        <div role="group" aria-label="삽입" className="flex items-center gap-0.5 rounded-md bg-background/60 p-0.5 ring-1 ring-border/40">
+          <ToolbarButton icon={Link} onClick={handleLink} label="링크 삽입" title="링크 삽입 (Cmd/Ctrl+K)" />
+          <ToolbarButton icon={Image} onClick={handleImage} label="이미지 삽입" title="이미지 삽입" />
+        </div>
+        <div role="group" aria-label="블록" className="flex items-center gap-0.5 rounded-md bg-background/60 p-0.5 ring-1 ring-border/40">
+          <ToolbarButton icon={Heading2} onClick={handleHeading2} label="제목 2" title="제목 2" />
+          <ToolbarButton icon={Heading3} onClick={handleHeading3} label="제목 3" title="제목 3" />
+          <ToolbarButton icon={List} onClick={handleUnorderedList} label="글머리 목록" title="글머리 목록" />
+          <ToolbarButton icon={ListOrdered} onClick={handleOrderedList} label="번호 목록" title="번호 목록" />
+          <ToolbarButton icon={Quote} onClick={handleQuote} label="인용문" title="인용문" />
+        </div>
+      </div>
+      <span className="hidden shrink-0 text-[10px] text-muted-foreground/60 lg:inline">
+        단축키: Cmd/Ctrl+B · Cmd/Ctrl+K
+      </span>
     </div>
   );
 }
@@ -210,16 +225,18 @@ export function MarkdownToolbar({ textareaRef, value, onChange }: MarkdownToolba
 interface ToolbarButtonProps {
   icon: React.ElementType;
   onClick: () => void;
+  label: string;
   title: string;
 }
 
-function ToolbarButton({ icon: Icon, onClick, title }: ToolbarButtonProps) {
+function ToolbarButton({ icon: Icon, onClick, label, title }: ToolbarButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={label}
       title={title}
-      className="p-1.5 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+      className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
     >
       <Icon className="h-3.5 w-3.5" />
     </button>

@@ -68,9 +68,14 @@ describe("TagInput", () => {
 
     expect(draggedTag).toBeTruthy();
     expect(targetTag).toBeTruthy();
+    expect(screen.getByRole("button", { name: "uptime-kuma 태그 드래그" })).toBeTruthy();
 
     fireEvent.dragStart(draggedTag!);
     fireEvent.dragEnter(targetTag!);
+
+    expect(targetTag!.className).toContain("ring-primary");
+    expect(screen.getByText("여기에 놓기")).toBeTruthy();
+
     fireEvent.dragOver(targetTag!);
     fireEvent.drop(targetTag!);
 

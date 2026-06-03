@@ -554,10 +554,13 @@ export default function EditPage() {
               {/* Body editor + Preview */}
               <div className={`grid gap-4 ${showPreview ? "grid-cols-1 lg:grid-cols-[1.2fr_1fr]" : "grid-cols-1"}`} style={{ minHeight: "50vh" }}>
                 {/* Editor */}
-                <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-muted/30">
-                    <span className="text-xs font-medium text-muted-foreground">마크다운</span>
-                    <span className="text-[10px] text-muted-foreground/50">
+                <div className="flex flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md">
+                  <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-muted/30 px-3 py-2">
+                    <div>
+                      <span className="text-xs font-medium text-muted-foreground">마크다운</span>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/50">이미지는 붙여넣기/드롭으로 업로드할 수 있어요.</p>
+                    </div>
+                    <span className="rounded-full bg-background/70 px-2 py-0.5 text-[10px] text-muted-foreground/60 ring-1 ring-border/40">
                       {body.length.toLocaleString()}자 · 약 {Math.max(1, Math.ceil(body.length / 500))}분
                     </span>
                   </div>
@@ -567,7 +570,8 @@ export default function EditPage() {
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
                     spellCheck={false}
-                    className="flex-1 w-full bg-background px-4 py-3 text-sm font-mono resize-none focus:outline-none leading-relaxed"
+                    placeholder="마크다운으로 작성하세요..."
+                    className="min-h-[46vh] flex-1 w-full bg-background px-4 py-4 text-sm font-mono leading-relaxed resize-none focus:outline-none"
                   />
                 </div>
 

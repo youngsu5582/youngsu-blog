@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { GripVertical, X } from "lucide-react";
 
 interface TagInputProps {
   label: string;
@@ -16,6 +16,7 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -115,6 +116,12 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
       reorderTag(draggedIndex, targetIndex);
     }
     setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const endDragging = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -148,14 +155,29 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
                 key={tag}
                 draggable
                 onDragStart={(e) => handleDragStart(e, index)}
-                onDragEnd={() => setDraggedIndex(null)}
+                onDragEnd={endDragging}
+                onDragEnter={() => setDragOverIndex(index)}
+                onDragLeave={() => setDragOverIndex(null)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, index)}
                 aria-label={`${tag} 태그`}
-                className={`inline-flex cursor-grab items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 ${
+                className={`relative inline-flex cursor-grab items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 transition-all active:cursor-grabbing ${
                   draggedIndex === index ? "opacity-50" : ""
-                }`}
+                } ${dragOverIndex === index && draggedIndex !== index ? "ring-2 ring-primary/60 ring-offset-1" : ""}`}
               >
+                {dragOverIndex === index && draggedIndex !== index && (
+                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-medium text-primary-foreground shadow-sm">
+                    여기에 놓기
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-label={`${tag} 태그 드래그`}
+                  title="드래그해서 순서 변경"
+                  className="-ml-1 cursor-grab rounded-full p-0.5 text-primary/50 hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
+                >
+                  <GripVertical className="h-3 w-3" />
+                </button>
                 <button
                   type="button"
                   onClick={() => startEditing(index)}
