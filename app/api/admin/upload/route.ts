@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
+import { buildSafeUploadName, validateImageUpload } from "@/lib/admin-upload-validation";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public/assets/img/uploads");
 
@@ -21,16 +22,14 @@ export async function POST(req: Request) {
     const uploadedFiles: { name: string; path: string }[] = [];
 
     for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        continue; // Skip non-image files
+      const validation = validateImageUpload(file);
+      if (!validation.valid) {
+        continue; // Skip invalid/non-image files
       }
 
       // Generate unique filename: timestamp-originalname
       const timestamp = Date.now();
-      const ext = path.extname(file.name);
-      const basename = path.basename(file.name, ext);
-      const safeBasename = basename.replace(/[^a-zA-Z0-9가-힣-_]/g, "-");
-      const filename = `${timestamp}-${safeBasename}${ext}`;
+      const filename = buildSafeUploadName(timestamp, file.name, file.type);
 
       // Save file
       const filepath = path.join(UPLOAD_DIR, filename);
