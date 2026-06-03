@@ -1,0 +1,400 @@
+---
+title: Running Self-hosted Services on a Home Server with Docker
+date: "2026-05-31T00:00:00.000Z"
+description: A record of installing Docker and Docker Compose on Ubuntu Server, organizing per-service directories, and setting up self-hosted services for personal operation.
+categories:
+  - Homeserver
+tags:
+  - homeserver
+  - docker-compose
+  - self-hosted
+  - homepage
+  - uptime-kuma
+  - memos
+image: /assets/img/thumbnail/2026-05-31-homeserver-docker-self-hosted-services.png
+author: Lee Youngsu
+lang: en
+draft: false
+toc: true
+comments: true
+series: AI-assisted Homelab
+---
+
+> This English version was written and translated by Hermes Agent.
+
+### Three-line summary
+
+1. When running multiple services on a home server, a Docker and Docker Compose based setup is much easier to manage than installing everything directly.
+2. If each service has its own directory and keeps `docker-compose.yml`, `.env`, and data volumes in one place, it becomes much easier to troubleshoot later.
+3. Rather than exposing many services to the outside from the beginning, it is important to bring them up one by one on the internal network and confirm that the data persists.
+
+# Running Self-hosted Services on a Home Server with Docker
+
+In the previous post, I covered preparing a mini PC, installing Ubuntu Server, and getting it into a state where I could connect through SSH.
+
+At that point, the home server is basically a “machine I can access like a server.”
+But it still does not have any services that I can actually use.
+
+The reason I built a home server was not simply to keep one Linux server running.  
+It was to run the services I need myself, store my data on my side, and add automation when needed.
+
+In this post, I want to summarize the process of installing Docker and Docker Compose on Ubuntu Server,
+organizing a per-service folder structure, and bringing up my first self-hosted services one by one.
+
+## Why I decided to run services with Docker
+
+There are many ways to run services on a home server.
+
+- Install executable files directly
+- Install them through a package manager
+- Split things into virtual machines
+- Manage everything with a Kubernetes cluster
+
+But I decided to run my services with Docker.
+The reason was simple.
+
+When there is only one service, installing it directly can be fine.  
+But once the number grows to two, three, or ten, it becomes difficult.
+
+- Each service may require a different version.
+- Additional dependencies such as a DB or Redis may be needed.
+- The locations of configuration files and stored data are all different.
+
+-> If I install all of that directly on the server, it becomes hard to manage later.
+
+> I also considered Kubernetes, but I have not yet decided how much knowledge or direction I want there, so I thought it was YAGNI for now.
+
+With Docker and Docker Compose, I can leave the way a service runs in a single file.
+
+The information needed to run a service is usually something like this.
+
+- Which image to use
+- Which ports to open
+- Which environment variables to use
+- Where to store data
+- Whether to restart the container when it dies
+- Whether it depends on services like a DB or Redis
+
+Docker Compose lets me keep this configuration in a `docker-compose.yml` file.
+
+In other words, while running a home server, the important thing was not simply “running services,” but  
+“leaving them in a form that I can understand again later.”
+(So I can move them to another mini PC or reuse them whenever I need to.)
+
+So I started with this basic execution environment for the home server.
+
+```text
+Ubuntu Server
++ Docker
++ Docker Compose
++ Per-service directories
++ docker-compose.yml
++ .env
++ Explicit volume paths
+```
+
+At the very least, I wanted a structure where I could tell where each service lives and how it runs.
+
+## Services
+
+> I will skip the basic installation and usage of Docker and Docker Compose.
+
+The first thing I thought about was the folder structure.
+At first, it is possible to create a `docker-compose.yml` anywhere and run it.
+
+But once services increase, it quickly becomes confusing.
+
+- Where is this service's Compose file?
+- Where is the data stored?
+- Where is the .env file?
+- Which directory should I go to if I want to see the logs?
+
+When things reach that state, running the home server becomes tiring.
+
+So I decided to keep Docker-related files in one place.
+
+```text
+/home/yeongsu/docker/
+├── homepage/
+├── uptime-kuma/
+├── memos/
+├── filebrowser/
+├── html-share/
+├── immich/
+├── ryot/
+└── windmill/
+```
+
+The basic rules were:
+
+- One service = one directory
+- Configuration files = stored inside the service directory
+- Data volumes = managed explicitly
+
+### docker-compose.yml and data management
+
+When I first used Docker Compose, I thought of it simply as a configuration file for running containers.
+But I started to feel that `docker-compose.yml` is both an executable file and a kind of document.
+
+For example, by looking at a Compose file, I can understand things like:
+
+- Which image this service uses
+- Which ports it uses
+- What data is stored where
+- Which environment variables are required
+- Whether there is a restart policy
+- Whether it depends on containers like a DB or Redis
+
+The important part here is `volumes`.
+
+Containers can be deleted and recreated. But data must not disappear.
+So it is better to connect service data to host directories explicitly whenever possible.
+
+```yaml
+volumes:
+  - ./data:/data
+```
+
+With this setup, even if I recreate the container, the data stored in the `./data` directory remains.
+
+Also, while operating services, environment variables are often needed.
+
+- Admin accounts
+- DB connection information
+- External API settings
+and so on
+
+I separated those values into `.env` files.
+
+The structure looks roughly like this.
+
+```text
+service-name/
+├── docker-compose.yml
+├── .env
+└── data/
+```
+
+## Services I brought up
+
+There are so many self-hosted services if you start looking for them.
+
+[awesome-selfhosted Repo](https://github.com/awesome-selfhosted/awesome-selfhosted)
+
+Among them, I will briefly introduce the services I actually brought up.
+
+> There are quite a few, so it should be fine to pick only the ones that look interesting from the titles.
+
+### Homepage - the entry point for the home server
+
+[GitHub repository](https://github.com/gethomepage/homepage)
+
+As the number of services on the home server grows, it becomes hard to remember every port and URL.
+When that happens, I end up searching through bookmarks or browser history every time.
+
+Homepage acts as a place to collect links to the services running on the home server.
+It is a kind of entry point or front door for the home server.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/f81b794fbfbeb45569bc7303bc2f5d62.png)
+
+It does not provide extremely detailed information, but it shows the basic information I need, such as:
+
+- CPU, memory, and SSD status
+- Services in use
+- Documents and status pages
+
+### Uptime Kuma - checking the home server status
+
+[GitHub repository](https://github.com/louislam/uptime-kuma)
+
+As important as bringing services up is checking whether they keep running.
+
+- Some services are not used every day,  
+- some services are only needed when batch jobs run,  
+- and some issues only appear when a service needs to be accessed from outside.
+
+Uptime Kuma is a monitoring tool that periodically checks HTTP responses or port status.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/55761c0621cc7d8f597b9e392434e41b.png)
+
+It does not provide detailed system metrics such as CPU, memory, or IO, but it does provide basic information for making decisions.
+
+> Later on, I may move toward using Kubernetes for learning and for more detailed monitoring.
+
+### Memos - a lightweight memo service
+
+[GitHub repository](https://github.com/usememos/memos)
+
+> If Obsidian alone is enough, I do not think this needs to be installed!
+
+I brought up Memos to leave short notes.
+
+These days, I have been trying to become more interested in document management.
+
+At the same time, I felt that putting every memo into Obsidian's Inbox made too many unnecessary things pile up.
+
+EX) Conversations with AI pile up in the INBOX.  
+EX) Short learning notes or summaries pile up.  
+EX) Things that are not development-related feel a bit awkward to put into the INBOX.  
+EX) Small setting changes or minor updates are awkward to record there.
+
+Of course, I could organize everything in Obsidian,
+but when I try to write everything as a complete document from the beginning, I end up not recording things at all.
+
+Memos felt lighter in that sense.
+
+- I can leave something short first and delete it without much burden.
+- I can record daily life without polluting my existing interests or Vault.
+- AI conversations are not stored raw in Obsidian.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/cd8d5deca878b89365723288246a652a.png)
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/b3e994256c8d7b8c34e662d62ee73c9b.png)
+
+I can ask AI to upload conversation content to memo, or briefly summarize what I have learned.
+
+### Filebrowser - web-based home server file management
+
+[GitHub repository](https://github.com/filebrowser/filebrowser)
+
+Sometimes I want to check files inside the server from a browser.
+I could connect through SSH and use commands like `ls`, `scp`, or `rsync`.
+
+But sometimes it is useful to browse the file structure in a browser,  
+and download or upload files in a simple way.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/2e7254342865bf44ac8dd298a055a791.png)
+
+Filebrowser lets me explore a specific directory on the server through a web UI.
+
+### Ryot - media history management service
+
+[GitHub repository](https://github.com/ignisda/ryot)
+
+Ryot is a service for managing my own media history.
+
+The types of media are basically everything:
+anime, dramas, TV shows, podcasts, books, music, and more.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/b71489955e410c48dbfd8f22289e5399.png)
+
+By setting API providers, I can easily add items through search.
+If something is missing, I can also add it manually.
+
+### Dawarich - location history management service
+
+[GitHub repository](https://github.com/Freika/dawarich)
+
+This is a service that records my movement history based on my phone.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/313848b04511b09a322c2bcd19a34754.png)
+
+I thought it would be nice to look back later at the places I visited while traveling or walking around different neighborhoods.
+(Google Timeline provides this too, but I felt a bit uncomfortable because I consider it sensitive information.)
+
+### Windmill - batch management service
+
+[GitHub repository](https://github.com/windmill-labs/windmill)
+
+Windmill is a service that helps manage the cron jobs the server runs in a more concrete way.
+When managing things with cron, problems like these appear.
+
+- It is hard to see which job runs when.
+- It is hard to find logs when something fails.
+- It is hard to manage each job's execution.
+- It is hard to build automation that spans multiple steps.
+
+Windmill lets me manage these automation jobs through a UI.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/575570dfdbd5aec42127dc36e566abd3.png)
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/927f5a5fbcff20a56603384ad1bded89.png)
+
+It supports tag-based list management,
+manual execution regardless of schedule, execution with input settings, and execution history.
+
+### Immich - image management service
+
+[GitHub repository](https://github.com/immich-app/immich)
+
+This is a service for storing photos and videos.
+I had been uploading them to cloud services, but the storage was filling up, and I also wanted to merge photos scattered across multiple clouds.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/be15d3f166b2b735a97f6f4e83a44698.png)
+
+Immich provides many attractive features for moving away from existing cloud services.
+
+- Automatic upload from the phone (install the app and enable backup)
+- Face recognition, automatic classification, and text recognition display
+- Map and location-based photo views using metadata
+- Image management from the web
+
+### Vaultwarden - important information management service
+
+[GitHub repository](https://github.com/dani-garcia/vaultwarden)
+
+Vaultwarden is a service for managing important information.
+
+Chrome provides a good Password Manager, but I felt a bit of inconvenience when using it across multiple profiles.
+(company account, personal account)
+
+Because of that, I felt I needed a service that could manage everything in one place without depending on account switching.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/0e31574000e3f84696a0276a5225e8fb.png)
+
+In addition, I can manage sensitive information that I need to record.
+(home server env values, access tokens, recovery codes, card information, and so on)
+
+In other words, it lets me manage important information beyond just passwords.
+
+### Nginx Proxy Manager - reverse proxy manager
+
+[GitHub repository](https://github.com/NginxProxyManager/nginx-proxy-manager)
+
+Nginx Proxy Manager is a service that helps connect the services running on the home server to domains.
+It lets me manage reverse proxies through a UI without directly writing Nginx configuration files.
+
+- Manage proxy hosts per service
+- Add access restrictions such as Basic Auth
+- Separate externally public services and internally private services
+
+From the outside, users only see the domain, while the actual service ports and addresses can stay hidden internally.
+
+EX) example.youngsu5582.today -> npm:80  
+From the outside, requests enter through the proxy manager, and the proxy manager routes them according to the request address.
+
+### Syncthing - file synchronization service
+
+[GitHub repository](https://github.com/syncthing/syncthing)
+
+Syncthing is a service that helps synchronize files across multiple devices.
+I used it to sync the Obsidian documents on my home server across several machines, such as my work laptop and personal laptop.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/6b488d76cf722d29e8d4b93d60e84e31.png)
+
+## Closing
+
+In this post, I introduced why I chose Docker and Docker Compose, how I structured the setup,
+and the self-hosted services I brought up one by one.
+
+As AI gets better, we are now in an era where, if there is a service we like,
+we can search for it on the internet and ask AI to set it up for us.
+
+In particular, I think one of the biggest advantages of self-hosting is that AI can freely query the data.
+Many self-hosted services expose APIs, and if needed, the data can also be queried directly from the DB.
+
+Based on data coming from self-hosted services,
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/49518adda0f106390fff6ff98ab54fda.png)
+
+I am writing code to view my daily report in a more structured way.
+
+- how many memos I created
+- how many documents I added or created
+- how many photos I took
+- how many movies or songs I rated
+
+Data that used to be difficult to query, was not provided, or was hard to manage centrally
+can now be transformed into the data I need. I think that may be the real appeal of building a home server.
+
+Next time, I will explain how to manage a home server more conveniently through Cloudflare.

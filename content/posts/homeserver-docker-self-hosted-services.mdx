@@ -1,0 +1,399 @@
+---
+title: 홈서버에 Docker로 self-hosted 서비스들을 올려보기
+date: "2026-05-31T00:00:00.000Z"
+description: Ubuntu Server 위에 Docker와 Docker Compose를 설치하고, 서비스별 디렉터리 구조를 잡은 뒤 self-hosted 서비스를 설치 및 운영한 이야기
+categories:
+  - Homeserver
+tags:
+  - homeserver
+  - docker-compose
+  - self-hosted
+  - homepage
+  - uptime-kuma
+  - memos
+image: /assets/img/thumbnail/2026-05-31-homeserver-docker-self-hosted-services.png
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+series: AI-assisted Homelab
+---
+
+### 3줄 요약
+
+1. 홈서버에서 여러 서비스를 운영하려면 직접 설치보다 Docker와 Docker Compose 기반 구성이 훨씬 관리하기 편했다.
+2. 서비스별로 디렉터리를 나누고, `docker-compose.yml`, `.env`, 데이터 볼륨을 한곳에 모아두면 나중에 문제를 찾기 쉽다.
+3. 처음부터 많은 서비스를 외부에 공개하기보다, 내부망에서 하나씩 띄우고 데이터가 유지되는지 확인하는 순서가 중요했다.
+
+# 홈서버에 Docker로 self-hosted 서비스들을 올려보기
+
+이전 글에서는 미니 PC를 준비하고, Ubuntu Server를 설치하고, SSH로 접속할 수 있는 상태까지 정리했다.
+
+거기까지 하면 홈서버는 일단 “서버처럼 접속 가능한 장비”가 된다.
+하지만 아직 실제로 쓸 수 있는 서비스가 올라간 것은 아니다.
+
+홈서버를 만든 이유는 단순히 Linux 서버 하나를 켜두기 위해서가 아니라,  
+내가 필요한 서비스들을 직접 운영하고, 데이터를 내 쪽에 쌓고, 필요하면 자동화까지 붙이기 위해서다.
+
+이번 글에서는 Ubuntu Server 위에 Docker와 Docker Compose를 설치하고
+서비스별 폴더 구조를 잡고, 처음으로 self-hosted 서비스들을 하나씩 올려본 과정을 정리해보려고 한다.
+
+## 왜 Docker로 운영하기로 했나
+
+홈서버에서 서비스를 운영하는 방법은 여러 가지가 있다.
+
+- 직접 실행 파일을 설치
+- 패키지 매니저로 설치
+- 가상머신으로 나눠서 운영
+- 쿠버네티스 클러스터로 관리
+
+하지만 나는 서비스를 Docker 기반으로 운영하기로 했다.
+이유는 단순했다.
+
+서비스가 하나일 때는 직접 설치해도 괜찮다.  
+하지만 서비스가 두 개, 세 개, 열 개로 늘어나면 어려워진다.
+
+- 각 서비스마다 필요한 버전이 다를 수 있다.
+- DB 및 Redis 같은 추가 의존성이 필요할 수 있다.
+- 설정 파일 위치 및 데이터를 저장하는 것도 제각각이다.
+
+-> 이걸 전부 서버에 직접 설치하면 나중에 관리하기가 어려워진다.
+
+> 그렇다고, 쿠버네티스로 관리하자니 아직 지식과 방향에 대해 정하지 않아서 YAGNI 라고 생각했다.
+
+Docker, Docker Compose를 쓰면 서비스 실행 방법을 하나의 파일로 남길 수 있다.
+
+어떤 서비스를 띄울 때 필요한 정보는 보통 이런 것들이다.
+
+- 어떤 이미지를 사용할지
+- 어떤 포트를 열지
+- 어떤 환경변수를 사용할지
+- 데이터를 어디에 저장할지
+- 컨테이너가 죽었을 때 다시 실행할지
+- DB나 Redis 같은 의존 서비스가 있는지
+
+Docker Compose를 사용하면 이런 구성을 `docker-compose.yml` 파일에 남길 수 있다.
+
+즉, 홈서버를 운영하면서 중요한 것은 단순히 서비스를 실행하는 것이 아니라  
+“나중에 내가 다시 봐도 이해할 수 있는 형태로 남기는 것”이었다.
+(내가 언제든, 다른 미니 PC 로 옮기거나 재사용이 가능하게)
+
+그래서 나는 홈서버의 기본 실행 환경을 이렇게 잡았다.
+
+```text
+Ubuntu Server
++ Docker
++ Docker Compose
++ 서비스별 디렉터리
++ docker-compose.yml
++ .env
++ 명시적 volume 경로
+```
+
+적어도 서비스가 어디에 있고, 어떻게 실행되는지는 알 수 있는 구조로 시작했다.
+
+## 서비스
+
+> Docker, Docker-Compose 설치 및 기본적인 사용 방법은 생략한다.
+
+가장 먼저 고민한 것은 폴더 구조였다.
+처음에는 아무 위치에서나 `docker-compose.yml`을 만들고 실행해도 된다.
+
+하지만 서비스가 늘어나면 금방 헷갈린다.
+
+- 이 서비스 compose 파일이 어디 있는지
+- 데이터는 어디에 저장되는지
+- .env 파일은 어디에 있는지
+- 로그를 보려면 어느 디렉터리로 가야 하는지
+
+이런 상태가 되면 홈서버 운영이 피곤해진다.
+
+그래서 나는 Docker 관련 파일을 한 곳에 모아두기로 했다.
+
+```text
+/home/yeongsu/docker/
+├── homepage/
+├── uptime-kuma/
+├── memos/
+├── filebrowser/
+├── html-share/
+├── immich/
+├── ryot/
+└── windmill/
+```
+
+기본 원칙은
+
+- 서비스 하나 = 디렉터리 하나
+- 설정 파일 = 해당 서비스 디렉터리 내부 세팅
+- 데이터 볼륨 = 명시적으로 관리
+
+### docker-compose.yml 및 데이터 관리
+
+처음 Docker Compose를 쓸 때는 단순히 컨테이너를 실행하는 설정 파일이라고 생각했다.
+하지만 `docker-compose.yml`은 실행 파일이며 동시에 문서에 가깝다고 느꼈다.
+
+예를 들어 Compose 파일을 보면 이런 것들을 알 수 있다.
+
+- 이 서비스가 어떤 이미지를 쓰는지
+- 어떤 포트를 사용하는지
+- 어떤 데이터를 어디에 저장하는지
+- 어떤 환경변수가 필요한지
+- 재시작 정책이 있는지
+- DB나 Redis 같은 의존 컨테이너가 있는지
+
+여기서 중요한 것은 `volumes`다.
+
+컨테이너는 지웠다가 다시 만들 수 있다. 하지만 데이터는 사라지면 안 된다.
+그래서 서비스 데이터는 가능한 한 호스트 디렉터리에 명시적으로 연결해두는 것이 좋다.
+
+```yaml
+volumes:
+  - ./data:/data
+```
+
+이렇게 해두면 컨테이너를 재생성해도 `./data` 디렉터리에 저장된 데이터는 유지된다.
+
+추가로, 서비스를 운영하다 보면 환경변수가 필요한 경우가 많다.
+
+- 관리자 계정
+- DB 접속 정보
+- 외부 API 설정
+등등
+
+이런 값들은 `.env` 파일로 분리했다.
+
+구조는 대략 이런 식이다.
+
+```text
+서비스명/
+├── docker-compose.yml
+├── .env
+└── data/
+```
+
+## 띄운 서비스들
+
+self-hosted 서비스는 찾아보면 정말 많다.
+
+[awesome-selfhosted Repo](https://github.com/awesome-selfhosted/awesome-selfhosted)
+
+그 중에서도 내가 올린 서비스들에 대해 간단하게 소개한다.
+
+> 꽤나 많으니, 제목 보고 흥미로운 것만 선택해서 설치해도 좋을거 같다.
+
+### Homepage - 홈 서버의 진입점
+
+[깃허브 주소](https://github.com/gethomepage/homepage)
+
+홈서버에 띄운 서비스가 하나둘 늘어나면 포트와 URL을 기억하기 어려워진다.
+이런 상태가 되면 매번 북마크를 찾거나, 히스토리를 뒤지게 된다.
+
+Homepage는 홈서버에서 운영 중인 서비스들의 링크를 한곳에 모아두는 역할을 한다.
+일종의 홈서버의 진입점이자, 현관이다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/f81b794fbfbeb45569bc7303bc2f5d62.png)
+
+- CPU, Memory, SSD 의 상태
+- 활용되어 있는 서비스
+- 문서 및 상태창
+
+등 디테일한 정보는 아니지만, 필요한 기본 정보들은 전부 제공해준다.
+
+### Uptime Kuma - 홈 서버 상태 체크
+
+[깃허브 주소](https://github.com/louislam/uptime-kuma)
+
+서비스를 띄우는 것만큼 중요한 것은 계속 살아 있는지 확인하는 것이다.
+
+- 어떤 서비스는 매일 쓰지 않고,  
+- 어떤 서비스는 배치 작업이 돌 때만 필요하고,  
+- 어떤 서비스는 외부에서 접근해야 할 때만 문제가 드러난다.
+
+Uptime Kuma는 HTTP 응답이나 포트 상태를 주기적으로 확인해주는 모니터링 도구다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/55761c0621cc7d8f597b9e392434e41b.png)
+
+구체적인 정보는(사용하는 CPU, 메모리, IO 등) 아니지만, 판단할 기초적인 정보는 제공해준다.
+
+> 나중에는, 학습 겸 더 구체적인 모니터링을 위해 쿠버네티스를 사용하는 방향으로 해나가지 않을까.
+
+### Memos - 간편 메모 서비스
+
+[깃허브 주소](https://github.com/usememos/memos)
+
+> 이는, 옵시디언 만으로 충분하다면 설치 안해도 될 거 같다!
+
+Memos는 짧은 메모를 남기기 위해 띄웠다.
+
+요새, 문서 관리에 흥미를 가지려고 노력하고 있다.
+
+이때, 메모들을
+Obsidian 의 Inbox 에 넣자니, 너무 불필요한 요소들이 많이 쌓이게 되는걸 느꼈다.
+
+EX) AI 와 대화한게 INBOX 에 쌓인다.
+EX) 짧게 학습하거나, 정리한 내용들이 쌓인다.
+EX) 개발적인 내용이 아닌 것들도 INBOX에 넣긴 좀 애매하다.
+EX) 설정 변경이나, 소소한 변경들을 기록하기 애매하다.
+
+물론 모든 내용을 Obsidian에 정리할 수도 있지만, 
+처음부터 완성된 문서로 쓰려고 하면 오히려 기록을 안 하게 되는걸 느꼈다.
+
+Memos는 그런 점에서 부담이 적었다.
+
+- 일단 짧게 남기고, 부담없이 삭제할 수 있다.
+- 일상을 기록해도, 기존 관심사나 Vault 가 오염되지 않는다.
+- AI 의 대화 내용이 Obsidian 에 raw 하게 저장되지 않는다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/cd8d5deca878b89365723288246a652a.png)
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/b3e994256c8d7b8c34e662d62ee73c9b.png)
+
+AI 와 대화 내용을 memo 에 올려달라고 하거나, 내가 학습한 내용들에 대해 간략하게 정리할 수 있다.
+
+### Filebrowser - 웹기반 홈서버 파일 관리
+
+[깃허브 주소](https://github.com/filebrowser/filebrowser)
+
+서버 안의 파일을 브라우저에서 확인하고 싶을 때가 있다.
+SSH로 접속해서 `ls`, `scp`, `rsync` 같은 명령어를 사용할 수도 있다.
+
+하지만 가끔은 브라우저에서 파일 구조를 보고,  
+간단히 다운로드하거나 업로드하는 방식이 필요할 수 있다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/2e7254342865bf44ac8dd298a055a791.png)
+
+Filebrowser는 서버의 특정 디렉터리를 웹 UI로 탐색할 수 있게 해준다.
+
+### Ryot - 미디어 이력 관리 서비스
+
+[깃허브 주소](https://github.com/ignisda/ryot)
+
+Ryot 은 자신의 미디어 이력을 관리할 수 있는 서비스이다.
+
+미디어의 종류는 정말 모든것이다.
+애니, 드라마, TV 쇼, 팟캐스트, 책, 음악 등등
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/b71489955e410c48dbfd8f22289e5399.png)
+
+API Provider 를 설정해서, 검색을 통해 간편하게 추가가 가능하다.
+없다면 추가할 수도 있다.
+
+### Dawarich - 동선 관리 서비스
+
+[깃허브 주소](https://github.com/Freika/dawarich)
+
+휴대폰 기반으로, 나의 동선을 기록해주는 서비스이다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/313848b04511b09a322c2bcd19a34754.png)
+
+여행 다니면서, 동네 곳곳을 돌아다니며 나중에 볼 수 있으면 좋겠다고 생각했다.
+(Google Timeline 이 제공해주나, 민감 정보라 생각해서 다소 껄끄러웠다.)
+
+### Windmill - 배치 관리 서비스
+
+[깃허브 주소](https://github.com/windmill-labs/windmill)
+
+서버가 실행해주는 cron 들을 더 구체적으로 관리하게 도와주는 서비스이다.
+cron 으로 관리하면 이와 같은 문제점들이 발생한다.
+
+- 어떤 작업이 언제 실행되는지 보기 어렵다.
+- 실패했을 때 로그를 찾기 어렵다.
+- 작업별 실행 관리하기 어렵다.
+- 여러 단계로 이어지는 자동화가 어렵다.
+
+Windmill 은 이런 자동화 작업을 UI 로 관리하게 해준다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/575570dfdbd5aec42127dc36e566abd3.png)
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/927f5a5fbcff20a56603384ad1bded89.png)
+
+태그 기반 목록 관리가능하고
+스케줄 관계없이 실행, Input 설정후 실행, 실행 기록을 제공해준다.
+
+### Immich - 이미지 관리 서비스
+
+[깃허브 주소](https://github.com/immich-app/immich)
+
+사진과 영상을 보관하는 서비스이다.
+기존, 클라우드에 올리고 있었는데 용량이 다 차기도 했고 & 여러 클라우드에 흩어져 있는걸 합치고 싶었다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/be15d3f166b2b735a97f6f4e83a44698.png)
+
+Immich 는 기존 클라우드에서 전환하기 위해 매력적인 기능들을 전부 제공해준다.
+
+- 휴대폰에서 자동 업로드(앱을 설치하고, 백업 활성화)
+- 얼굴 인식 및 자동 분류 + 텍스트 인식 표시
+- 메타데이터 기반 지도, 장소에서 사진 제공
+- 웹에서 이미지 관리 제공
+
+### VaultWarden - 중요 정보 관리 서비스
+
+[깃허브 주소](https://github.com/dani-garcia/vaultwarden)
+
+Vaultwarden 은 중요 정보 관리 서비스이다.
+
+Chrome 에서 Password Manager 를 잘 제공해주지만, 여러 프로필에서 사용할 때 조금의 불편함을 느꼈다.
+(회사용 계정, 개인용 계정)
+
+그렇기에, 계정 관리 없이 하나로 관리되는 서비스가 필요하다고 느꼈다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/0e31574000e3f84696a0276a5225e8fb.png)
+
+추가로, 내가 기록해야 하는 민감 정보들도 같이 관리가 가능하다.
+(홈서버의 env 값, Access Token, 복구 코드, 카드정보 등등)
+
+즉, Password Manager 를 넘어 중요한 정보들도 관리할 수 있게 해준다.
+
+### Nginx Proxy Manager - 리버스 프록시 매니저
+
+[깃허브 주소](https://github.com/NginxProxyManager/nginx-proxy-manager)
+
+Nginx Proxy Manager 는 홈서버에 띄운 서비스를 도메인에 연결하게 도와주는 서비스이다.
+Nginx 설정 파일을 직접 작성할 필요없이, UI 기반으로 리버스 프록시를 관리하게 도와준다.
+
+- 서비스별 proxy host 관리 가능
+- Basic Auth 같은 접근 제한 추가 가능
+- 외부 공개 서비스, 내부 공개 서비스 분리 가능
+
+외부에서는 도메인만 보고 접근하고, 내부에서는 실제 서비스 포트나 주소는 숨길 수 있다.
+
+EX) example.youngsu5582.today -> npm:80
+외부에서는 proxy manager 로 들어와서, proxy manager 가 요청 주소에 맞게 라우팅
+
+### Syncthing - 파일 동기화 서비스
+
+[깃허브 주소](https://github.com/syncthing/syncthing)
+
+Syncthing 은 여러 장비 사이에서 파일 동기화를 도와주는 서비스이다.
+홈서버의 Obsidian 문서를 여러 곳(회사 노트북, 개인 노트북)에서 동기화를 하기 위해서 사용했다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/6b488d76cf722d29e8d4b93d60e84e31.png)
+
+## 마무리
+
+이번 글에서는 Docker, Docker-Compose 를 선택한 이유와 구조에 대해서,
+그리고 self-hosted 로 서비스들을 하나씩 소개했다.
+
+AI 성능이 좋아지며, 자기가 마음에 드는 서비스가 있으면
+인터넷에서 검색하고 세팅해달라고 하면 다 해주는 시대가 왔다.
+
+특히, self-hosted 의 가장 큰 장점은 AI 가 데이터를 자유자재로 조회할 수 있다는 점인거 같다.
+self-hosted 서비스가 API 를 잘 열어줘있기도 하고, 필요하면 DB 에서 조회도 할 수 있기 때문이다.
+
+self-hosted 서비스에서 나오는 데이터를 기반으로
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/49518adda0f106390fff6ff98ab54fda.png)
+
+나의 하루 Report 를 좀 더 체계적으로 보게 하는 코드를 작성 중이다.
+
+- 메모를 몇개 생성했는지
+- 문서를 몇개 추가/생성했는지
+- 사진을 얼마나 찍었는지
+- 영화/음악 평가를 몇개 했는지
+
+기존에는 조회하기 까다롭거나 제공 안된 데이터들 및 중앙 관리하기 어려웠던 데이터들을
+내게 필요한 데이터로 변환해나갈 수 있는게 홈서버 구축의 진정한 매력이 아닐까.
+
+다음에는, Cloudflare 를 통해 어떻게 홈서버를 더 간편하게 관리할 수 있는지 설명한다.
