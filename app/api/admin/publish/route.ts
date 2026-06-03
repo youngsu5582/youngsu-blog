@@ -7,6 +7,8 @@ import { updateFrontmatter } from "@/lib/frontmatter";
 import { validateMdx } from "@/lib/mdx-validator";
 
 const CONTENT_ROOT = path.join(process.cwd(), "content");
+const ALLOWED_COLLECTIONS = new Set(["posts", "articles", "notes", "library"]);
+const ALLOWED_GENERATED_PREFIXES = ["content/", "public/assets/img/"];
 
 function git(args: string[], cwd: string) {
   return execFileSync("git", args, { cwd, encoding: "utf-8" });
@@ -14,6 +16,24 @@ function git(args: string[], cwd: string) {
 
 function gh(args: string[], cwd: string) {
   return execFileSync("gh", args, { cwd, encoding: "utf-8" }).trim();
+}
+
+function isAllowedCommitPath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (path.isAbsolute(normalized) || normalized.includes("..")) return false;
+  if (!ALLOWED_GENERATED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return false;
+
+  const absolute = path.resolve(process.cwd(), normalized);
+  return absolute.startsWith(process.cwd() + path.sep) && fs.existsSync(absolute);
+}
+
+function normalizeGeneratedFile(filePath: string): string | null {
+  const normalized = filePath.replace(/\\/g, "/").replace(/^\.\//, "");
+  return isAllowedCommitPath(normalized) ? normalized : null;
+}
+
+function addCommitFile(filesToCommit: string[], filePath: string) {
+  if (!filesToCommit.includes(filePath)) filesToCommit.push(filePath);
 }
 
 interface PublishPost {
@@ -30,6 +50,7 @@ function prepareFiles(posts: PublishPost[]): string[] {
   const filesToCommit: string[] = [];
 
   for (const { slug, collection = "posts", frontmatter, includeEn, enSlug, generatedFiles } of posts) {
+    if (!ALLOWED_COLLECTIONS.has(collection)) continue;
     const contentDir = path.join(CONTENT_ROOT, collection);
     const koFile = path.join(contentDir, `${slug}.mdx`);
     if (fs.existsSync(koFile)) {
@@ -37,7 +58,7 @@ function prepareFiles(posts: PublishPost[]): string[] {
         ? { ...frontmatter, draft: false }
         : { ...frontmatter };
       updateFrontmatter(koFile, koUpdate);
-      filesToCommit.push(`content/${collection}/${slug}.mdx`);
+      addCommitFile(filesToCommit, `content/${collection}/${slug}.mdx`);
     }
 
     if (includeEn && enSlug) {
@@ -50,15 +71,16 @@ function prepareFiles(posts: PublishPost[]): string[] {
         };
         if (collection === "posts") enUpdate.draft = false;
         updateFrontmatter(enFile, enUpdate);
-        filesToCommit.push(`content/${collection}/${enSlug}.mdx`);
+        addCommitFile(filesToCommit, `content/${collection}/${enSlug}.mdx`);
       }
     }
 
     // Add generated files (thumbnails, translations)
     if (generatedFiles && generatedFiles.length > 0) {
       for (const genFile of generatedFiles) {
-        if (genFile && !filesToCommit.includes(genFile)) {
-          filesToCommit.push(genFile);
+        const safeFile = normalizeGeneratedFile(genFile);
+        if (safeFile) {
+          addCommitFile(filesToCommit, safeFile);
         }
       }
     }
@@ -68,7 +90,7 @@ function prepareFiles(posts: PublishPost[]): string[] {
       const thumbRelPath = `public${frontmatter.image}`;
       const thumbAbsPath = path.join(process.cwd(), thumbRelPath);
       if (fs.existsSync(thumbAbsPath) && !filesToCommit.includes(thumbRelPath)) {
-        filesToCommit.push(thumbRelPath);
+        addCommitFile(filesToCommit, thumbRelPath);
       }
     }
   }

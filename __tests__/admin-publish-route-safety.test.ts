@@ -11,4 +11,12 @@ describe("admin publish route safety", () => {
     expect(source).not.toMatch(/execSync\(`gh /);
     expect(source).not.toMatch(/git add \"\$\{f\}\"/);
   });
+
+  it("generatedFiles are normalized before they can enter filesToCommit", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "app/api/admin/publish/route.ts"), "utf-8");
+
+    expect(source).toContain("normalizeGeneratedFile");
+    expect(source).toContain("isAllowedCommitPath");
+    expect(source).not.toMatch(/filesToCommit\.push\(genFile\)/);
+  });
 });
