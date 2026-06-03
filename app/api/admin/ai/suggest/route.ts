@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
 import matter from "gray-matter";
 import { executeAi, getAvailableProviders, type AiProvider } from "@/lib/ai-provider";
+import { resolveRepoFilePath } from "@/lib/admin-content-paths";
 
 export async function POST(req: Request) {
   const { filePath, existingCategories, existingTags, provider } = await req.json();
@@ -40,12 +40,12 @@ export async function POST(req: Request) {
   }
 
   // Read post content
-  const absPath = path.join(process.cwd(), filePath);
-  if (!fs.existsSync(absPath)) {
+  const resolved = typeof filePath === "string" ? resolveRepoFilePath(filePath, ["content/"]) : null;
+  if (!resolved || !fs.existsSync(resolved.absPath)) {
     return NextResponse.json({ error: "파일을 찾을 수 없습니다" }, { status: 404 });
   }
 
-  const raw = fs.readFileSync(absPath, "utf-8");
+  const raw = fs.readFileSync(resolved.absPath, "utf-8");
   const { content, data } = matter(raw);
   const truncatedContent = content.substring(0, 3000); // Limit for API
 

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
 import matter from "gray-matter";
 import { executeAi, type AiProvider } from "@/lib/ai-provider";
+import { resolveRepoFilePath } from "@/lib/admin-content-paths";
 
 export async function POST(req: Request) {
   try {
@@ -15,8 +15,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const absPath = path.join(process.cwd(), filePath);
-    if (!fs.existsSync(absPath)) {
+    const resolved = typeof filePath === "string" ? resolveRepoFilePath(filePath, ["content/"]) : null;
+    if (!resolved || !fs.existsSync(resolved.absPath)) {
       return NextResponse.json(
         { success: false, error: "파일을 찾을 수 없습니다" },
         { status: 404 }
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     }
 
     // Read Korean MDX file
-    const raw = fs.readFileSync(absPath, "utf-8");
+    const raw = fs.readFileSync(resolved.absPath, "utf-8");
     const { data: frontmatter, content } = matter(raw);
 
     // Construct translation prompt
@@ -97,9 +97,10 @@ Translate to English and return JSON only.`;
         content: translation.content || content,
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { success: false, error: err.message || String(err) },
+      { success: false, error: message },
       { status: 500 }
     );
   }

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
 import matter from "gray-matter";
 import { executeAi, getAvailableProviders, type AiProvider } from "@/lib/ai-provider";
+import { resolveRepoFilePath } from "@/lib/admin-content-paths";
 
 export async function POST(req: Request) {
   try {
@@ -29,12 +29,12 @@ export async function POST(req: Request) {
       selectedProvider = first.id;
     }
 
-    const absPath = path.join(process.cwd(), filePath);
-    if (!fs.existsSync(absPath)) {
+    const resolved = typeof filePath === "string" ? resolveRepoFilePath(filePath, ["content/"]) : null;
+    if (!resolved || !fs.existsSync(resolved.absPath)) {
       return NextResponse.json({ error: "파일을 찾을 수 없습니다" }, { status: 404 });
     }
 
-    const raw = fs.readFileSync(absPath, "utf-8");
+    const raw = fs.readFileSync(resolved.absPath, "utf-8");
     const { data, content } = matter(raw);
 
     const prompt = `당신은 기술 블로그 전문 에디터입니다. 다음 한국어 기술 블로그 포스트를 상세히 리뷰해주세요.
@@ -94,7 +94,8 @@ ${content}
       provider: response.provider,
       review: reviewContent,
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: `리뷰 실패: ${err.message || String(err)}` }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `리뷰 실패: ${message}` }, { status: 500 });
   }
 }
