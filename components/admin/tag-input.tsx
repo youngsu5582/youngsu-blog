@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { GripVertical, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, GripVertical, X } from "lucide-react";
 
 interface TagInputProps {
   label: string;
@@ -102,6 +102,12 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
     onChange(nextValues);
   };
 
+  const moveTag = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= values.length) return;
+    reorderTag(index, targetIndex);
+  };
+
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
     if (e.dataTransfer) {
@@ -177,6 +183,26 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
                   className="-ml-1 cursor-grab rounded-full p-0.5 text-primary/50 hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
                 >
                   <GripVertical className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveTag(index, -1)}
+                  disabled={index === 0}
+                  aria-label={`${tag} 태그 앞으로 이동`}
+                  title="앞으로 이동"
+                  className="rounded-full p-0.5 text-primary/50 hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveTag(index, 1)}
+                  disabled={index === values.length - 1}
+                  aria-label={`${tag} 태그 뒤로 이동`}
+                  title="뒤로 이동"
+                  className="rounded-full p-0.5 text-primary/50 hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <ArrowRight className="h-3 w-3" />
                 </button>
                 <button
                   type="button"

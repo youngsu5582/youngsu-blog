@@ -86,4 +86,27 @@ describe("TagInput", () => {
       "self-hosting",
     ]);
   });
+
+  it("드래그 없이 버튼으로 태그 순서를 한 칸씩 바꿀 수 있다", () => {
+    const handleChange = vi.fn();
+
+    render(
+      <TagInput
+        label="태그"
+        values={["homeserver", "docker-compose", "self-hosting"]}
+        suggestions={[]}
+        onChange={handleChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "self-hosting 태그 앞으로 이동" }));
+
+    expect(handleChange).toHaveBeenCalledWith([
+      "homeserver",
+      "self-hosting",
+      "docker-compose",
+    ]);
+    expect(screen.getByRole("button", { name: "homeserver 태그 앞으로 이동" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "self-hosting 태그 뒤로 이동" })).toHaveProperty("disabled", true);
+  });
 });
