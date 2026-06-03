@@ -193,6 +193,7 @@ export default function WritePage() {
   // Multi-draft state
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [showDraftPicker, setShowDraftPicker] = useState(false);
+  const [pendingRestoreDraft, setPendingRestoreDraft] = useState<Draft | null>(null);
   const slugError = validateSlug(slug);
 
   // Template picker state
@@ -313,20 +314,11 @@ export default function WritePage() {
         const parsed: Draft[] = JSON.parse(raw) || [];
         setDrafts(parsed);
         if (parsed.length > 0) {
-          // Load the most recently saved draft
+          // Offer the most recently saved draft instead of overwriting an empty new post automatically.
           const latest = parsed.reduce((a, b) =>
             new Date(a.savedAt) > new Date(b.savedAt) ? a : b
           );
-          setCollection(latest.collection);
-          setTitle(latest.title === "(제목 없음)" ? "" : latest.title);
-          setSlug(latest.slug);
-          setSlugManual(latest.slugManual);
-          setDescription(latest.description);
-          setCategories(latest.categories);
-          setTags(latest.tags);
-          setThumbnail(latest.thumbnail);
-          setRelatedSlugs(latest.relatedSlugs);
-          setContent(latest.content);
+          setPendingRestoreDraft(latest);
         }
       }
     } catch {
@@ -346,6 +338,7 @@ export default function WritePage() {
     setThumbnail(draft.thumbnail);
     setRelatedSlugs(draft.relatedSlugs);
     setContent(draft.content);
+    setPendingRestoreDraft(null);
     setShowDraftPicker(false);
     setResult({ success: true, message: "임시저장 불러옴" });
     setTimeout(() => setResult(null), 2000);
@@ -595,6 +588,34 @@ export default function WritePage() {
           </button>
         </div>
       </div>
+
+      {pendingRestoreDraft && (
+        <section
+          role="region"
+          aria-label="임시글 복원 안내"
+          className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-sm text-blue-700 dark:text-blue-300 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div>
+            저장된 임시글 <span className="font-medium">{pendingRestoreDraft.title}</span>이 있어요. 현재 새 글을 덮어쓰지 않고 필요할 때만 복원할 수 있어요.
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => loadDraft(pendingRestoreDraft)}
+              className="px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700"
+            >
+              임시글 복원
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingRestoreDraft(null)}
+              className="px-3 py-1.5 rounded-md border border-blue-500/30 hover:bg-blue-500/10"
+            >
+              무시
+            </button>
+          </div>
+        </section>
+      )}
 
       {result && (
         <div className={`rounded-lg p-3 text-sm ${result.success ? "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"}`}>

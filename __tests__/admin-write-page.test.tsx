@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WritePage from "@/app/admin/write/page";
@@ -53,5 +53,33 @@ describe("Admin write page", () => {
 
     expect(screen.getByText("Slug는 한글/영문 소문자/숫자/하이픈만 사용할 수 있고, / 또는 ..은 사용할 수 없어요.")).toBeTruthy();
     expect((screen.getByRole("button", { name: "저장하기" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("저장된 임시글은 자동으로 덮어쓰지 않고 배너에서 복원하도록 한다", async () => {
+    localStorage.setItem("admin-write-drafts", JSON.stringify([
+      {
+        id: "draft-1",
+        title: "복원할 제목",
+        slug: "restore-me",
+        slugManual: true,
+        description: "복원 설명",
+        collection: "posts",
+        categories: ["Blog"],
+        tags: ["draft"],
+        thumbnail: "",
+        relatedSlugs: [],
+        content: "복원할 본문",
+        savedAt: "2026-01-01T00:00:00.000Z"
+      }
+    ]));
+
+    render(<WritePage />);
+
+    expect(screen.queryByDisplayValue("복원할 본문")).toBeNull();
+    expect(await screen.findByRole("region", { name: "임시글 복원 안내" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "임시글 복원" }));
+
+    await waitFor(() => expect(screen.getByDisplayValue("복원할 본문")).toBeTruthy());
   });
 });
