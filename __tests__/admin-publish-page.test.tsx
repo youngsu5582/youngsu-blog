@@ -17,6 +17,19 @@ const posts = [
     image: undefined,
     hasEnVersion: false,
   },
+  {
+    filePath: "content/posts/translated-post.mdx",
+    filename: "translated-post.mdx",
+    gitStatus: "modified",
+    collection: "posts",
+    title: "번역 있는 글",
+    description: "설명",
+    categories: ["Blog"],
+    tags: ["admin"],
+    image: "/assets/img/thumbnail/translated-post.png",
+    hasEnVersion: true,
+    enFilePath: "content/posts/translated-post-en.mdx",
+  },
 ];
 
 describe("Admin publish page", () => {
@@ -46,6 +59,26 @@ describe("Admin publish page", () => {
               categories: ["Blog", "AI"],
               tags: ["admin", "ai-tag"]
             }
+          }), { status: 200 }));
+        }
+
+        if (url === "/api/admin/translate" && init?.method === "POST") {
+          return Promise.resolve(new Response(JSON.stringify({
+            success: true,
+            translation: {
+              title: "Translated title",
+              description: "Translated description",
+              categories: ["Blog"],
+              tags: ["admin"],
+              content: "Translated content"
+            }
+          }), { status: 200 }));
+        }
+
+        if (url === "/api/admin/translate/save" && init?.method === "POST") {
+          return Promise.resolve(new Response(JSON.stringify({
+            success: true,
+            enPath: "content/posts/translated-post-en.mdx"
           }), { status: 200 }));
         }
 
@@ -99,5 +132,20 @@ describe("Admin publish page", () => {
 
     expect(screen.getByDisplayValue("AI 설명")).toBeTruthy();
     expect(screen.getByText("ai-tag")).toBeTruthy();
+  });
+
+  it("기존 번역본 재번역은 덮어쓰기 확인 후 overwrite 플래그를 보낸다", async () => {
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+
+    render(<PublishPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /번역 있는 글/ }));
+    fireEvent.click(screen.getByRole("button", { name: "재번역" }));
+
+    await screen.findByText("번역 완료!");
+    expect(confirm).toHaveBeenCalledWith("이미 영어 번역본이 있습니다. 재번역하면 기존 번역본을 덮어씁니다. 계속할까요?");
+    const saveCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([url]) => url === "/api/admin/translate/save");
+    expect(JSON.parse(String(saveCall?.[1]?.body)).overwrite).toBe(true);
   });
 });

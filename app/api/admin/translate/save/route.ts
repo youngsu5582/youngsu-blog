@@ -5,7 +5,7 @@ import matter from "gray-matter";
 
 export async function POST(req: Request) {
   try {
-    const { originalPath, title, description, categories, tags, content } =
+    const { originalPath, title, description, categories, tags, content, overwrite = false } =
       await req.json();
 
     if (!originalPath || !title || !content) {
@@ -33,6 +33,17 @@ export async function POST(req: Request) {
 
     // Check if file already exists
     const fileExists = fs.existsSync(absEnPath);
+    if (fileExists && !overwrite) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "이미 영어 번역본이 있습니다. 덮어쓰려면 overwrite=true로 다시 요청하세요.",
+          enPath: enFilePath,
+          requiresOverwrite: true,
+        },
+        { status: 409 }
+      );
+    }
 
     // Construct English frontmatter
     const enFrontmatter: Record<string, any> = {

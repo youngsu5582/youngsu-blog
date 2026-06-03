@@ -394,6 +394,12 @@ export default function PublishPage() {
       return;
     }
 
+    const overwriteTranslation = editing.post.hasEnVersion;
+    if (overwriteTranslation && !window.confirm("이미 영어 번역본이 있습니다. 재번역하면 기존 번역본을 덮어씁니다. 계속할까요?")) {
+      setResult({ success: false, message: "재번역을 취소했습니다" });
+      return;
+    }
+
     setTranslateLoading(true);
     setResult(null);
     try {
@@ -426,6 +432,7 @@ export default function PublishPage() {
           categories: t.categories,
           tags: t.tags,
           content: t.content,
+          overwrite: overwriteTranslation,
         }),
       });
       const saveData = await saveRes.json();
