@@ -148,4 +148,15 @@ describe("Admin publish page", () => {
     const saveCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([url]) => url === "/api/admin/translate/save");
     expect(JSON.parse(String(saveCall?.[1]?.body)).overwrite).toBe(true);
   });
+
+  it("발행 전 dry-run 요약으로 실행 방식과 커밋 대상을 보여준다", async () => {
+    render(<PublishPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /새 글/ }));
+
+    expect(await screen.findByRole("region", { name: "발행 dry-run 요약" })).toBeTruthy();
+    expect(screen.getByText("실행 방식: main에 직접 커밋 (푸시 없음)")).toBeTruthy();
+    expect(screen.getByText("선택한 포스트 1개")).toBeTruthy();
+    expect(screen.getByText("커밋 대상: content/posts/new-post.mdx")).toBeTruthy();
+  });
 });

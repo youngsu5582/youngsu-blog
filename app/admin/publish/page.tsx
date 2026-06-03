@@ -1026,6 +1026,27 @@ export default function PublishPage() {
                 })()}
               </div>
 
+              <section
+                role="region"
+                aria-label="발행 dry-run 요약"
+                className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 space-y-2 text-xs"
+              >
+                <h4 className="font-semibold text-blue-700 dark:text-blue-300">발행 dry-run 요약</h4>
+                <p>실행 방식: {getPublishActionLabel(mode, autoPush)}</p>
+                <p>선택한 포스트 {selectedPosts.size}개</p>
+                <div className="space-y-1 text-muted-foreground">
+                  {Array.from(selectedPosts.values()).map(({ post }) => {
+                    const generated = generatedFiles.get(post.filePath) || [];
+                    return (
+                      <div key={post.filePath} className="space-y-0.5">
+                        <p>커밋 대상: {post.filePath}</p>
+                        {generated.length > 0 && <p>생성 파일: {generated.join(", ")}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
               <button
                 onClick={() => setShowPublishConfirm(true)}
                 disabled={publishing}
