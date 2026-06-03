@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
 import matter from "gray-matter";
-
-const CONTENT_DIR = path.join(process.cwd(), "content");
+import { resolveRepoFilePath } from "@/lib/admin-content-paths";
 
 function updateFrontmatter(filePath: string, updates: Record<string, unknown>) {
   const raw = fs.readFileSync(filePath, "utf-8");
@@ -53,10 +51,10 @@ export async function POST(req: Request) {
     let updated = 0;
 
     for (const filePath of files) {
-      const absPath = path.join(process.cwd(), filePath);
-      if (!fs.existsSync(absPath)) continue;
+      const resolved = typeof filePath === "string" ? resolveRepoFilePath(filePath, ["content/"]) : null;
+      if (!resolved || !fs.existsSync(resolved.absPath)) continue;
 
-      const raw = fs.readFileSync(absPath, "utf-8");
+      const raw = fs.readFileSync(resolved.absPath, "utf-8");
       const { data } = matter(raw);
 
       let newData: Record<string, unknown> = {};
@@ -76,7 +74,7 @@ export async function POST(req: Request) {
         newData = { categories };
       }
 
-      updateFrontmatter(absPath, newData);
+      updateFrontmatter(resolved.absPath, newData);
       updated++;
     }
 
