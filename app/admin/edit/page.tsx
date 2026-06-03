@@ -430,6 +430,13 @@ export default function EditPage() {
     textarea.setSelectionRange(start, start);
   };
 
+  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      void handleSave();
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   }
@@ -755,6 +762,7 @@ export default function EditPage() {
                     <div>
                       <span className="text-xs font-medium text-muted-foreground">마크다운</span>
                       <p className="mt-0.5 text-[10px] text-muted-foreground/50">이미지는 붙여넣기/드롭으로 업로드할 수 있어요.</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/50">Ctrl/⌘+S 저장</p>
                     </div>
                     <span className="rounded-full bg-background/70 px-2 py-0.5 text-[10px] text-muted-foreground/60 ring-1 ring-border/40">
                       {body.length.toLocaleString()}자 · 약 {Math.max(1, Math.ceil(body.length / 500))}분
@@ -765,6 +773,7 @@ export default function EditPage() {
                     ref={textareaRef}
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
+                    onKeyDown={handleEditorKeyDown}
                     spellCheck={false}
                     placeholder="마크다운으로 작성하세요..."
                     className="min-h-0 flex-1 w-full overflow-y-auto bg-background px-4 py-4 text-sm font-mono leading-relaxed resize-none focus:outline-none"

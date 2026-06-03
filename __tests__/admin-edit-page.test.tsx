@@ -140,6 +140,23 @@ describe("Admin edit page", () => {
     expect(screen.getByDisplayValue("auto-saved-slug")).toBeTruthy();
   });
 
+  it("본문 편집 중 Ctrl+S로 즉시 저장할 수 있다", async () => {
+    render(<EditPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /긴 글 테스트/ }));
+    const editor = await screen.findByPlaceholderText("마크다운으로 작성하세요...");
+
+    expect(screen.getByText("Ctrl/⌘+S 저장")).toBeTruthy();
+    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/admin/edit",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+  });
+
   it("미저장 변경이 있으면 목록으로 돌아가기 전에 확인한다", async () => {
     const confirm = vi.fn(() => false);
     vi.stubGlobal("confirm", confirm);
