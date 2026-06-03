@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 interface TagInputProps {
@@ -13,7 +13,17 @@ interface TagInputProps {
 export function TagInput({ label, values, suggestions, onChange }: TagInputProps) {
   const [input, setInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingValue, setEditingValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingIndex !== null) {
+      editInputRef.current?.focus();
+      editInputRef.current?.select();
+    }
+  }, [editingIndex]);
 
   const filtered = suggestions.filter(
     (s) => s.toLowerCase().includes(input.toLowerCase()) && !values.includes(s)
@@ -33,6 +43,54 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
     onChange(values.filter((v) => v !== tag));
   };
 
+  const startEditing = (index: number) => {
+    setEditingIndex(index);
+    setEditingValue(values[index]);
+    setShowSuggestions(false);
+  };
+
+  const cancelEditing = () => {
+    setEditingIndex(null);
+    setEditingValue("");
+  };
+
+  const commitEditing = () => {
+    if (editingIndex === null) return;
+
+    const trimmed = editingValue.trim();
+    if (!trimmed) {
+      onChange(values.filter((_, index) => index !== editingIndex));
+      cancelEditing();
+      return;
+    }
+
+    const duplicateIndex = values.findIndex(
+      (value, index) => value === trimmed && index !== editingIndex
+    );
+    if (duplicateIndex !== -1) {
+      cancelEditing();
+      return;
+    }
+
+    const nextValues = values.map((value, index) =>
+      index === editingIndex ? trimmed : value
+    );
+    if (nextValues[editingIndex] !== values[editingIndex]) {
+      onChange(nextValues);
+    }
+    cancelEditing();
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitEditing();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEditing();
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && input.trim()) {
       e.preventDefault();
@@ -47,16 +105,41 @@ export function TagInput({ label, values, suggestions, onChange }: TagInputProps
       <label className="text-xs font-medium text-muted-foreground">{label}</label>
       <div className="relative">
         <div className="flex flex-wrap gap-1.5 p-2 rounded-md border border-border bg-background min-h-[38px]">
-          {values.map((tag) => (
-            <span
-              key={tag}
-              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20"
-            >
-              {tag}
-              <button onClick={() => removeTag(tag)} className="hover:text-destructive">
-                <X className="h-3 w-3" />
-              </button>
-            </span>
+          {values.map((tag, index) => (
+            editingIndex === index ? (
+              <input
+                key={tag}
+                ref={editInputRef}
+                value={editingValue}
+                onChange={(e) => setEditingValue(e.target.value)}
+                onBlur={commitEditing}
+                onKeyDown={handleEditKeyDown}
+                aria-label={`${tag} 태그 수정 입력`}
+                className="min-w-[80px] max-w-[160px] text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/30 outline-none focus:ring-1 focus:ring-primary"
+              />
+            ) : (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20"
+              >
+                <button
+                  type="button"
+                  onClick={() => startEditing(index)}
+                  className="hover:underline"
+                  aria-label={`${tag} 태그 수정`}
+                >
+                  {tag}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeTag(tag)}
+                  className="hover:text-destructive"
+                  aria-label={`${tag} 태그 삭제`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )
           ))}
           <input
             ref={inputRef}
