@@ -1,8 +1,9 @@
 import { execSync } from "child_process";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
-export type AiProvider = "claude-cli" | "gemini-cli" | "codex-cli" | "openai-api" | "gemini-api";
+export type AiProvider = "claude-cli" | "gemini-cli" | "codex-cli" | "hermes-agent" | "openai-api" | "gemini-api";
 
 export interface AiProviderInfo {
   id: AiProvider;
@@ -23,11 +24,28 @@ export interface AiResponse {
   error?: string;
 }
 
+function quoteForShell(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function getHermesCliCommand(): string {
+  if (process.env.HERMES_CLI_PATH?.trim()) return process.env.HERMES_CLI_PATH.trim();
+
+  const userLocalHermes = path.join(os.homedir(), ".local", "bin", "hermes");
+  if (fs.existsSync(userLocalHermes)) return userLocalHermes;
+
+  return "hermes";
+}
+
 /**
  * CLI 도구가 설치되어 있는지 확인
  */
 function checkCliAvailable(command: string): boolean {
   try {
+    if (command.includes(path.sep)) {
+      fs.accessSync(command, fs.constants.X_OK);
+      return true;
+    }
     execSync(`which ${command}`, { encoding: "utf-8", stdio: "pipe" });
     return true;
   } catch {
@@ -56,6 +74,12 @@ export function getAvailableProviders(): AiProviderInfo[] {
       id: "codex-cli",
       label: "Codex CLI",
       available: checkCliAvailable("codex"),
+      type: "cli",
+    },
+    {
+      id: "hermes-agent",
+      label: "Hermes Agent",
+      available: checkCliAvailable(getHermesCliCommand()),
       type: "cli",
     },
     {
@@ -95,6 +119,9 @@ async function executeCliProvider(provider: AiProvider, prompt: string): Promise
         break;
       case "codex-cli":
         command = `cat "${tempFile}" | codex --quiet`;
+        break;
+      case "hermes-agent":
+        command = `${quoteForShell(getHermesCliCommand())} chat -q "$(cat \"${tempFile}\")" -Q --toolsets safe --source youngsu-blog-admin-review`;
         break;
       default:
         throw new Error(`지원하지 않는 CLI 프로바이더: ${provider}`);
