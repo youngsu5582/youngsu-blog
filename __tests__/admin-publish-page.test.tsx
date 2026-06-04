@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import PublishPage from "@/app/admin/publish/page";
@@ -59,6 +59,14 @@ describe("Admin publish page", () => {
               categories: ["Blog", "AI"],
               tags: ["admin", "ai-tag"]
             }
+          }), { status: 200 }));
+        }
+
+        if (url === "/api/admin/ai/review" && init?.method === "POST") {
+          return Promise.resolve(new Response(JSON.stringify({
+            success: true,
+            provider: "test-ai",
+            review: "## ✅ 발행 전 체크리스트\n- 제목/description/tags/categories 적절\n\n## ⭐ 종합 평가\n- 4/5\n- 최종 판단: 보완 후 발행"
           }), { status: 200 }));
         }
 
@@ -132,6 +140,19 @@ describe("Admin publish page", () => {
 
     expect(screen.getByDisplayValue("AI 설명")).toBeTruthy();
     expect(screen.getByText("ai-tag")).toBeTruthy();
+  });
+
+  it("AI 리뷰 결과를 점수와 최종 판단 요약으로 보여준다", async () => {
+    render(<PublishPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /새 글/ }));
+    fireEvent.click(screen.getByRole("button", { name: "AI 리뷰" }));
+
+    const summary = await screen.findByRole("region", { name: "AI 리뷰 발행 판단 요약" });
+    expect(summary).toBeTruthy();
+    expect(within(summary).getByText("리뷰 점수 4/5")).toBeTruthy();
+    expect(within(summary).getByText("최종 판단: 보완 후 발행")).toBeTruthy();
+    expect(within(summary).getByText("체크리스트 포함")).toBeTruthy();
   });
 
   it("기존 번역본 재번역은 덮어쓰기 확인 후 overwrite 플래그를 보낸다", async () => {

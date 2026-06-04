@@ -264,7 +264,23 @@ export default function ObsidianPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{result.file}</p>
                   {result.success && result.outputPath && (
-                    <p className="text-xs text-green-600 truncate">→ {result.outputPath}</p>
+                    <div className="mt-1 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-300">
+                          초안으로 생성됨
+                        </span>
+                        <a
+                          href={`/admin/edit?file=${encodeURIComponent(result.outputPath)}`}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          편집에서 열기
+                        </a>
+                      </div>
+                      <p className="text-xs text-green-600 break-all">{result.outputPath}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        다음 단계: 편집에서 태그/카테고리와 AI 리뷰를 확인한 뒤 발행하세요.
+                      </p>
+                    </div>
                   )}
                   {!result.success && result.error && (
                     <p className="text-xs text-red-600">{result.error}</p>

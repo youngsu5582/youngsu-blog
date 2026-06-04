@@ -99,6 +99,19 @@ function getPublishActionLabel(mode: PublishMode, autoPush: boolean) {
   return "main에 직접 커밋 (푸시 없음)";
 }
 
+function getReviewSummary(review: string) {
+  const scoreMatch = review.match(/(?:리뷰\s*)?(?:점수|평가)\s*[:：]?\s*(\d(?:\.\d)?\s*\/\s*5|\d(?:\.\d)?\s*점)/i) || review.match(/(\d(?:\.\d)?\s*\/\s*5)/);
+  const decisionMatch = review.match(/최종\s*판단\s*[:：]\s*([^\n]+)/);
+
+  return {
+    score: scoreMatch ? scoreMatch[1].replace(/\s+/g, "") : null,
+    decision: decisionMatch ? decisionMatch[1].trim() : null,
+    hasChecklist: /발행 전 체크리스트|체크리스트/.test(review),
+    hasSensitiveCheck: /민감정보|회사정보|홈서버/.test(review),
+    hasVoiceCheck: /내 말투|AI스럽|말투/.test(review),
+  };
+}
+
 export default function PublishPage() {
   const [posts, setPosts] = useState<PostInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -495,7 +508,10 @@ export default function PublishPage() {
         setResult({ success: true, message: `리뷰 완료 (${data.provider})` });
         // 리뷰 영역으로 스크롤
         setTimeout(() => {
-          document.getElementById("review-result")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          const reviewElement = document.getElementById("review-result");
+          if (typeof reviewElement?.scrollIntoView === "function") {
+            reviewElement.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
         }, 100);
       } else {
         setResult({ success: false, message: data.error || "리뷰 실패" });
@@ -921,7 +937,37 @@ export default function PublishPage() {
 
                 {/* AI Review */}
                 {reviewContent.has(editingPost!) && (
-                  <div id="review-result" className="space-y-1.5">
+                  <div id="review-result" className="space-y-2">
+                    {(() => {
+                      const review = reviewContent.get(editingPost!) || "";
+                      const summary = getReviewSummary(review);
+                      return (
+                        <section
+                          role="region"
+                          aria-label="AI 리뷰 발행 판단 요약"
+                          className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 space-y-2"
+                        >
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            {summary.score && (
+                              <span className="rounded-full bg-amber-500/10 px-2 py-1 font-medium text-amber-700 dark:text-amber-300">
+                                리뷰 점수 {summary.score}
+                              </span>
+                            )}
+                            {summary.decision && (
+                              <span className="rounded-full bg-primary/10 px-2 py-1 font-medium text-primary">
+                                최종 판단: {summary.decision}
+                              </span>
+                            )}
+                            {summary.hasChecklist && <span className="rounded-full bg-green-500/10 px-2 py-1 text-green-700 dark:text-green-300">체크리스트 포함</span>}
+                            {summary.hasVoiceCheck && <span className="rounded-full bg-blue-500/10 px-2 py-1 text-blue-700 dark:text-blue-300">말투 점검 포함</span>}
+                            {summary.hasSensitiveCheck && <span className="rounded-full bg-red-500/10 px-2 py-1 text-red-700 dark:text-red-300">민감정보 점검 포함</span>}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            AI 리뷰를 발행 전 게이트로 사용하세요. 최종 판단이 보완/보류라면 아래 상세 리뷰를 확인한 뒤 수정하세요.
+                          </p>
+                        </section>
+                      );
+                    })()}
                     <button
                       onClick={() => setShowReview(!showReview)}
                       className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline"
