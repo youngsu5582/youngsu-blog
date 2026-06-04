@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Image, Languages, GitPullRequest, Eye, PenLine, Settings, FolderOpen, FileEdit, MapPin, Layers, ChevronDown, PenSquare, Upload, Wrench } from "lucide-react";
+import { LayoutDashboard, Image, Languages, GitPullRequest, Eye, PenLine, Settings, FolderOpen, FileEdit, MapPin, Layers, ChevronDown, PenSquare, Upload, Wrench, Tags } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adminNavGroups = [
@@ -31,6 +31,7 @@ const adminNavGroups = [
     items: [
       { name: "대시보드", href: "/admin", icon: LayoutDashboard },
       { name: "활동관리", href: "/admin/activities", icon: MapPin },
+      { name: "태그관리", href: "/admin/taxonomies", icon: Tags },
       { name: "옵시디언", href: "/admin/obsidian", icon: FolderOpen },
       { name: "설정", href: "/admin/settings", icon: Settings },
     ],
