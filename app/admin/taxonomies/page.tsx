@@ -47,6 +47,13 @@ export default function AdminTaxonomiesPage() {
     return items.filter((item) => item.value.toLowerCase().includes(normalizedQuery));
   }, [items, query]);
 
+  const selectedUsage = useMemo(
+    () => items.find((item) => item.value === fromValue.trim()),
+    [items, fromValue]
+  );
+
+  const affectedFileCount = selectedUsage?.files.length || 0;
+
   const handleSelect = (value: string) => {
     setFromValue(value);
     setToValue(value);
@@ -184,6 +191,30 @@ export default function AdminTaxonomiesPage() {
               className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </label>
+          {selectedUsage && (
+            <section
+              role="region"
+              aria-label="변경 영향 미리보기"
+              className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 space-y-2"
+            >
+              <div>
+                <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                  적용 전 영향 파일 {affectedFileCount}개
+                </h4>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  아래 파일의 {field === "tags" ? "태그" : "카테고리"} 값이 바뀝니다. 새 값이 이미 있으면 병합되고 중복은 제거됩니다.
+                </p>
+              </div>
+              <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
+                {selectedUsage.files.map((file) => (
+                  <li key={file.repoPath} className="rounded border bg-background/70 p-2">
+                    <div className="font-medium text-foreground">{file.title}</div>
+                    <div className="mt-0.5 break-all text-[10px] text-muted-foreground">{file.repoPath}</div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <button
             type="button"
             onClick={handleRename}
@@ -191,7 +222,7 @@ export default function AdminTaxonomiesPage() {
             className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            전체 파일에 적용
+            {affectedFileCount > 0 ? `${affectedFileCount}개 파일에 적용` : "전체 파일에 적용"}
           </button>
           {message && (
             <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground" role="status">
