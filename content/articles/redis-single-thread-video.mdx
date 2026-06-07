@@ -1,0 +1,76 @@
+---
+title: "'Redis 싱글 스레드로 어떻게 그렇게 빠르게 동작할까요?' 영상 정리하기"
+date: "Sun Jun 07 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: Redis 싱글 스레드로 어떻게 그렇게 빠르게 동작할까요? 영상 보고 내용 정리하기
+categories:
+  - 백엔드
+  - Redis
+tags:
+  - redis
+  - developer-tim
+status: seed
+---
+
+아티클 주소 :
+[Redis 싱글 스레드로 어떻게 그렇게 빠르게 동작할까요?](https://www.youtube.com/watch?v=YHUvp-fyNeg)
+
+## 놓치기 쉬운 디테일
+
+이번에, 쿼리 성능을 테스트하면서 사소하지만 놓치기 쉬운 디테일이 있는걸 깨달았다.
+
+```sql
+select client.id
+from client
+where client.created_at > ...
+```
+
+먼저 공통 테이블에서 ID를 조회한 뒤,
+
+```sql
+from feature
+where client_id in(?, ?, ?, ...);
+```
+
+다시 feature 테이블을 조회하는 형태의 쿼리가 있었다.
+
+문제는 파티션 키다.
+
+예를 들어 client 테이블이 created_at 기준으로 파티션되어 있는데, 2차 조회에서 client_id in (...)만 사용하면 DB는 해당 ID가 어느 파티션에 있는지 알 수 없다.
+
+각 파티션 내부에서는 인덱스를 탈 수 있어도, 어떤 파티션을 볼지 판단할 수 없어 여러 파티션을 확인하게 된다.
+
+그래서 클라이언트 정보를 추출 할 때
+
+```sql
+select client.id, client.created_at
+from client
+```
+
+```java
+LocalDateTime createdAtFrom = createdAtList.stream().min(Comparator.naturalOrder()).orElse(null);
+LocalDateTime createdAtTo = createdAtList.stream().max(Comparator.naturalOrder()).orElse(null);
+```
+
+맨 처음, 맨 마지막 created_at 을 추출해서
+
+```java
+private BooleanExpression[] clientInfoConditions(ClientFilterParam param) {
+    return new BooleanExpression[] {
+            goeDateTime(clientInfo.createdAt, param.getClientCreatedAtFromWithMargin()),
+            loeDateTime(clientInfo.createdAt, param.getClientCreatedAtToWithMargin())
+    };
+}
+
+public static BooleanExpression goeDateTime(DateTimePath<LocalDateTime> path, LocalDateTime value) {
+    return value != null ? path.goe(value) : null;
+}
+
+public static BooleanExpression loeDateTime(DateTimePath<LocalDateTime> path, LocalDateTime value) {
+    return value != null ? path.loe(value) : null;
+}
+```
+
+이 값을 2차 조회 조건에 함께 넘긴다.
+
+핵심은 id in (...) 조건은 그대로 유지하고
+파티션 프루닝을 돕기 위해 같은 테이블의 파티션 키 조건을 추가하는 것이다.
