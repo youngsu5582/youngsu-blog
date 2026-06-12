@@ -8,6 +8,7 @@ import { Topbar } from "@/components/layout/topbar";
 import { Footer } from "@/components/layout/footer";
 import { Analytics } from "@/components/common/analytics";
 import { generateWebSiteSchema, renderJsonLd } from "@/lib/json-ld";
+import { buildRootLanguageAlternates } from "@/lib/seo";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -29,10 +30,7 @@ export const metadata: Metadata = {
         { url: "/feed-en.xml", title: `${siteConfig.name} - English` },
       ],
     },
-    languages: {
-      "ko": "/",
-      "en": "/en",
-    },
+    languages: buildRootLanguageAlternates(),
   },
 };
 
@@ -46,8 +44,12 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <head>
-        <link rel="stylesheet" as="style" crossOrigin="anonymous"
-          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+        <link
+          rel="stylesheet"
+          as="style"
+          crossOrigin="anonymous"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+        />
         {renderJsonLd(websiteSchema)}
       </head>
       <body className={`${jetbrainsMono.variable} font-sans antialiased`}>

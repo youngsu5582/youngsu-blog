@@ -1,4 +1,5 @@
 import { siteConfig } from "@/config/site";
+import { absoluteSiteUrl } from "@/lib/seo";
 
 export interface ArticleSchemaProps {
   title: string;
@@ -37,7 +38,7 @@ export function generateArticleSchema(props: ArticleSchemaProps) {
       name: siteConfig.author.name,
       url: siteConfig.url,
     },
-    image: props.image || `${siteConfig.url}/assets/img/avatar.jpg`,
+    image: absoluteSiteUrl(props.image),
     url: props.url,
     mainEntityOfPage: {
       "@type": "WebPage",
@@ -57,6 +58,7 @@ export function generateWebSiteSchema() {
     name: siteConfig.name,
     description: siteConfig.description,
     url: siteConfig.url,
+    publisher: generatePersonSchema(),
     potentialAction: {
       "@type": "SearchAction",
       target: {
@@ -65,6 +67,20 @@ export function generateWebSiteSchema() {
       },
       "query-input": "required name=search_term_string",
     },
+  };
+}
+
+export function generatePersonSchema() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: siteConfig.author.name,
+    url: siteConfig.url,
+    email: siteConfig.author.email,
+    image: absoluteSiteUrl(siteConfig.author.avatar),
+    sameAs: [siteConfig.author.github, siteConfig.author.linkedin].filter(Boolean),
+    jobTitle: "Backend Developer",
+    knowsAbout: ["Backend Development", "Java", "Spring", "Database", "Homelab"],
   };
 }
 
@@ -90,9 +106,6 @@ export function generateBreadcrumbSchema(items: BreadcrumbItem[]) {
  */
 export function renderJsonLd(data: object) {
   return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
-    />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />
   );
 }

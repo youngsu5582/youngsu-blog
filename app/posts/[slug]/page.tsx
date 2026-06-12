@@ -1,5 +1,11 @@
 import { notFound } from "next/navigation";
-import { getAllPosts, getAlternatePost, getPostBySlug, getPostsBySeries, getUrlSlug } from "@/lib/content";
+import {
+  getAllPosts,
+  getAlternatePost,
+  getPostBySlug,
+  getPostsBySeries,
+  getUrlSlug,
+} from "@/lib/content";
 import type { Post } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
@@ -18,6 +24,7 @@ import { TranslationNotice } from "@/components/post/translation-notice";
 import { Breadcrumbs } from "@/components/common/breadcrumbs";
 import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
 import { siteConfig } from "@/config/site";
+import { absoluteSiteUrl, buildTranslatedPostAlternates, contentUrl } from "@/lib/seo";
 import fs from "fs";
 import path from "path";
 
@@ -45,12 +52,14 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
   }
 
   const alternatePost = getAlternatePost(post);
-  const postUrl = `${siteConfig.url}/posts/${slug}`;
+  const postUrl = contentUrl("posts", slug);
   const languageAlternates = alternatePost
-    ? {
-        [post.lang]: postUrl,
-        [alternatePost.lang]: `${siteConfig.url}/posts/${getUrlSlug(alternatePost.slug)}`,
-      }
+    ? buildTranslatedPostAlternates({
+        currentLang: post.lang as "ko" | "en",
+        currentSlug: slug,
+        alternateLang: alternatePost.lang as "ko" | "en",
+        alternateSlug: getUrlSlug(alternatePost.slug),
+      })
     : undefined;
 
   return {
@@ -66,7 +75,7 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
       type: "article",
       publishedTime: post.date,
       authors: [post.author],
-      images: post.image ? [post.image] : undefined,
+      images: post.image ? [absoluteSiteUrl(post.image)] : undefined,
     },
   };
 }
@@ -142,9 +151,8 @@ export default async function PostPage({ params }: PostPageProps) {
   const nextPost = currentIdx > 0 ? allPosts[currentIdx - 1] : undefined;
 
   // Related posts — manual (frontmatter) first, then auto (same category)
-  const relatedSlugs = ("related" in post && Array.isArray(post.related))
-    ? (post.related as string[])
-    : [];
+  const relatedSlugs =
+    "related" in post && Array.isArray(post.related) ? (post.related as string[]) : [];
   const manualRelated = relatedSlugs
     .map((relSlug: string) => {
       // Try language-matched version first
@@ -153,9 +161,17 @@ export default async function PostPage({ params }: PostPageProps) {
     })
     .filter((p): p is Post => Boolean(p));
 
-  const autoRelated = manualRelated.length >= 4 ? [] : allPosts
-    .filter((p) => p.slug !== post.slug && !manualRelated.some((m) => m.slug === p.slug) && p.categories.some((c) => post.categories.includes(c)))
-    .slice(0, 4 - manualRelated.length);
+  const autoRelated =
+    manualRelated.length >= 4
+      ? []
+      : allPosts
+          .filter(
+            (p) =>
+              p.slug !== post.slug &&
+              !manualRelated.some((m) => m.slug === p.slug) &&
+              p.categories.some((c) => post.categories.includes(c)),
+          )
+          .slice(0, 4 - manualRelated.length);
 
   const related = [...manualRelated, ...autoRelated].slice(0, 4);
 
@@ -164,7 +180,7 @@ export default async function PostPage({ params }: PostPageProps) {
   const seriesPosts = post.series ? getPostsBySeries(post.series, post.lang as "ko" | "en") : [];
 
   // JSON-LD structured data
-  const postUrl = `${siteConfig.url}/posts/${slug}`;
+  const postUrl = contentUrl("posts", slug);
   const articleSchema = generateArticleSchema({
     title: post.title,
     description: post.description,
@@ -219,11 +235,7 @@ export default async function PostPage({ params }: PostPageProps) {
 
           {/* Series Navigation */}
           {post.series && seriesPosts.length > 1 && (
-            <SeriesNav
-              seriesName={post.series}
-              posts={seriesPosts}
-              currentSlug={slug}
-            />
+            <SeriesNav seriesName={post.series} posts={seriesPosts} currentSlug={slug} />
           )}
 
           {/* MDX Content */}
@@ -248,20 +260,18 @@ export default async function PostPage({ params }: PostPageProps) {
           {post.comments && <GiscusComments />}
         </article>
 
-      {/* Table of Contents */}
-      {post.toc && headings.length > 0 && (
-        <aside className="hidden xl:block self-start sticky top-20">
-          <TableOfContents headings={headings} />
-        </aside>
-      )}
-    </div>
+        {/* Table of Contents */}
+        {post.toc && headings.length > 0 && (
+          <aside className="hidden xl:block self-start sticky top-20">
+            <TableOfContents headings={headings} />
+          </aside>
+        )}
+      </div>
 
-    {/* Mobile TOC */}
-    {post.toc && headings.length > 0 && (
-      <MobileToc headings={headings} />
-    )}
+      {/* Mobile TOC */}
+      {post.toc && headings.length > 0 && <MobileToc headings={headings} />}
 
-    <ScrollToTop />
+      <ScrollToTop />
     </>
   );
 }
