@@ -57,12 +57,19 @@ export default async function SeriesPage({ searchParams }: SeriesPageProps) {
                         {item.name}
                       </h2>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {item.posts.length}편 · {item.lang.toUpperCase()}
+                        {item.posts.length}편 · {item.lang.toUpperCase()} ·{" "}
+                        {item.status === "completed" ? "완결" : "진행 중"}
                       </p>
                     </div>
                   </div>
                   <ChevronRight className="mt-2 h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
                 </div>
+
+                {item.description && (
+                  <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">
+                    {item.description}
+                  </p>
+                )}
 
                 <div className="mt-5 space-y-2 text-sm">
                   <p className="text-muted-foreground">
@@ -75,7 +82,10 @@ export default async function SeriesPage({ searchParams }: SeriesPageProps) {
 
                 <ol className="mt-5 space-y-1.5 border-t border-border/60 pt-4">
                   {item.posts.slice(0, 3).map((post, postIndex) => (
-                    <li key={post.slug} className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <li
+                      key={post.slug}
+                      className="flex items-center gap-2 text-xs text-muted-foreground"
+                    >
                       <span className="font-mono text-[11px] text-primary/80">
                         {String(postIndex + 1).padStart(2, "0")}
                       </span>

@@ -12,6 +12,10 @@ declare module "#site/content" {
     draft: boolean;
     lang: "ko" | "en";
     series?: string;
+    seriesOrder?: number;
+    seriesDescription?: string;
+    seriesStatus?: "ongoing" | "completed";
+    related: string[];
     slug: string;
     body: string;
     metadata: {

@@ -28,9 +28,7 @@ export function getAllPosts(lang?: "ko" | "en") {
 }
 
 export function getPostBySlug(slug: string) {
-  return posts.find(
-    (post: Post) => post.slug === slug || post.slug === `posts/${slug}`,
-  );
+  return posts.find((post: Post) => post.slug === slug || post.slug === `posts/${slug}`);
 }
 
 export function getBasePostSlug(slug: string) {
@@ -71,10 +69,41 @@ export function getContentByCategory(category: string, lang?: "ko" | "en") {
   return { posts: postResults, articles: articleResults, notes: noteResults };
 }
 
+type SeriesPost = Post & {
+  seriesOrder?: number;
+  seriesDescription?: string;
+  seriesStatus?: "ongoing" | "completed";
+};
+
+function getSeriesOrder(post: Post) {
+  const order = (post as SeriesPost).seriesOrder;
+  return typeof order === "number" && Number.isFinite(order) ? order : Number.POSITIVE_INFINITY;
+}
+
+export function sortSeriesPosts(seriesPosts: Post[]) {
+  return [...seriesPosts].sort((a: Post, b: Post) => {
+    const orderDiff = getSeriesOrder(a) - getSeriesOrder(b);
+    if (orderDiff !== 0) return orderDiff;
+
+    const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+    return dateDiff !== 0 ? dateDiff : a.slug.localeCompare(b.slug);
+  });
+}
+
+export function getAdjacentSeriesPosts(seriesPosts: Post[], currentSlug: string) {
+  const currentIndex = seriesPosts.findIndex((post) => getUrlSlug(post.slug) === currentSlug);
+
+  return {
+    prev: currentIndex > 0 ? seriesPosts[currentIndex - 1] : undefined,
+    next:
+      currentIndex >= 0 && currentIndex < seriesPosts.length - 1
+        ? seriesPosts[currentIndex + 1]
+        : undefined,
+  };
+}
+
 export function getPostsBySeries(series: string, lang?: "ko" | "en") {
-  return getAllPosts(lang)
-    .filter((post: Post) => post.series === series)
-    .sort((a: Post, b: Post) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return sortSeriesPosts(getAllPosts(lang).filter((post: Post) => post.series === series));
 }
 
 export interface SeriesSummary {
@@ -83,6 +112,8 @@ export interface SeriesSummary {
   lang: "ko" | "en";
   posts: Post[];
   latestDate: string;
+  description?: string;
+  status: "ongoing" | "completed";
 }
 
 export function getSeriesSlug(series: string) {
@@ -107,15 +138,18 @@ export function getAllSeries(lang?: "ko" | "en"): SeriesSummary[] {
   return Array.from(grouped.entries())
     .map(([key, groupedPosts]) => {
       const name = key.slice(key.indexOf(":") + 1);
-      const postsInSeries = groupedPosts.sort(
-        (a: Post, b: Post) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-      );
+      const postsInSeries = sortSeriesPosts(groupedPosts);
+      const firstSeriesPost = postsInSeries.find(
+        (post) => (post as SeriesPost).seriesDescription || (post as SeriesPost).seriesStatus,
+      ) as SeriesPost | undefined;
       return {
         name,
         slug: getSeriesSlug(name),
         lang: postsInSeries[0].lang as "ko" | "en",
         posts: postsInSeries,
         latestDate: postsInSeries[postsInSeries.length - 1].date,
+        description: firstSeriesPost?.seriesDescription,
+        status: firstSeriesPost?.seriesStatus ?? "ongoing",
       };
     })
     .sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
@@ -179,7 +213,10 @@ export function getAllTags(lang?: "ko" | "en") {
 export function getAllArticles() {
   return articles
     .filter((a: Article) => a.status !== "draft")
-    .sort((a: Article, b: Article) => { const d = new Date(b.date).getTime() - new Date(a.date).getTime(); return d !== 0 ? d : b.slug.localeCompare(a.slug); });
+    .sort((a: Article, b: Article) => {
+      const d = new Date(b.date).getTime() - new Date(a.date).getTime();
+      return d !== 0 ? d : b.slug.localeCompare(a.slug);
+    });
 }
 
 export function getArticleBySlug(slug: string) {
@@ -192,8 +229,10 @@ export function getArticlesByMoc(moc: string) {
 
 // Library
 export function getAllLibraryItems() {
-  return library
-    .sort((a: LibraryItem, b: LibraryItem) => { const d = new Date(b.date).getTime() - new Date(a.date).getTime(); return d !== 0 ? d : b.slug.localeCompare(a.slug); });
+  return library.sort((a: LibraryItem, b: LibraryItem) => {
+    const d = new Date(b.date).getTime() - new Date(a.date).getTime();
+    return d !== 0 ? d : b.slug.localeCompare(a.slug);
+  });
 }
 
 export function getLibraryItemBySlug(slug: string) {
@@ -206,8 +245,10 @@ export function getLibraryItemsByMediaType(mediaType: "book" | "movie") {
 
 // Notes
 export function getAllNotes() {
-  return notes
-    .sort((a: Note, b: Note) => { const d = new Date(b.date).getTime() - new Date(a.date).getTime(); return d !== 0 ? d : b.slug.localeCompare(a.slug); });
+  return notes.sort((a: Note, b: Note) => {
+    const d = new Date(b.date).getTime() - new Date(a.date).getTime();
+    return d !== 0 ? d : b.slug.localeCompare(a.slug);
+  });
 }
 
 export function getNoteBySlug(slug: string) {

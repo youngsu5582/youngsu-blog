@@ -1,10 +1,64 @@
 import { describe, expect, it } from "vitest";
 
-import { getAllSeries, getSeriesBySlug, getSeriesSlug } from "@/lib/content";
+import {
+  getAdjacentSeriesPosts,
+  getAllSeries,
+  getSeriesBySlug,
+  getSeriesSlug,
+  sortSeriesPosts,
+  type Post,
+} from "@/lib/content";
 import { generateItemListSchema } from "@/lib/json-ld";
 import sitemap from "@/app/sitemap";
 
 describe("series discovery", () => {
+  const makePost = (slug: string, date: string, seriesOrder?: number) =>
+    ({
+      title: slug,
+      date,
+      description: "",
+      categories: [],
+      tags: [],
+      author: "test",
+      toc: true,
+      comments: true,
+      draft: false,
+      lang: "ko",
+      series: "Demo Series",
+      seriesOrder,
+      related: [],
+      slug: `posts/${slug}`,
+      body: "",
+      metadata: { readingTime: 1, wordCount: 10 },
+    }) as Post;
+
+  it("seriesOrder가 있으면 발행일보다 명시 순서를 우선한다", () => {
+    const ordered = sortSeriesPosts([
+      makePost("second", "2026-01-01T00:00:00.000Z", 2),
+      makePost("unspecified", "2025-01-01T00:00:00.000Z"),
+      makePost("first", "2026-03-01T00:00:00.000Z", 1),
+    ]);
+
+    expect(ordered.map((post) => post.slug)).toEqual([
+      "posts/first",
+      "posts/second",
+      "posts/unspecified",
+    ]);
+  });
+
+  it("현재 시리즈 글 기준 이전/다음 편을 찾는다", () => {
+    const ordered = sortSeriesPosts([
+      makePost("second", "2026-01-01T00:00:00.000Z", 2),
+      makePost("third", "2026-02-01T00:00:00.000Z", 3),
+      makePost("first", "2026-03-01T00:00:00.000Z", 1),
+    ]);
+
+    const adjacent = getAdjacentSeriesPosts(ordered, "second");
+
+    expect(adjacent.prev?.slug).toBe("posts/first");
+    expect(adjacent.next?.slug).toBe("posts/third");
+  });
+
   it("시리즈를 언어별로 묶고 안정적인 slug를 만든다", () => {
     const series = getAllSeries("en");
     const homelab = series.find((item) => item.name === "AI-assisted Homelab");

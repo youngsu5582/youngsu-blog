@@ -20,6 +20,9 @@ const posts = defineCollection({
     draft: s.boolean().default(false),
     lang: s.enum(["ko", "en"]).default("ko"),
     series: s.string().optional(),
+    seriesOrder: s.number().optional(),
+    seriesDescription: s.string().optional(),
+    seriesStatus: s.enum(["ongoing", "completed"]).optional(),
     related: s.array(s.string()).default([]),
     slug: s.path(),
     body: s.mdx(),
@@ -74,10 +77,14 @@ const notes = defineCollection({
     date: s.isodate(),
     categories: s.array(s.string()).default([]),
     tags: s.array(s.string()).default([]),
-    references: s.array(s.object({
-      title: s.string(),
-      url: s.string(),
-    })).default([]),
+    references: s
+      .array(
+        s.object({
+          title: s.string(),
+          url: s.string(),
+        }),
+      )
+      .default([]),
     slug: s.path(),
     body: s.mdx(),
     metadata: s.metadata(),
@@ -124,10 +131,7 @@ export default defineConfig({
           },
         },
       ],
-      [
-        rehypeAutolinkHeadings,
-        { behavior: "wrap", properties: { className: ["anchor"] } },
-      ],
+      [rehypeAutolinkHeadings, { behavior: "wrap", properties: { className: ["anchor"] } }],
     ],
   },
 });

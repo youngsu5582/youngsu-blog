@@ -24,7 +24,10 @@ export function generateStaticParams() {
     .map((series) => ({ slug: series.slug }));
 }
 
-export async function generateMetadata({ params, searchParams }: SeriesDetailPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: SeriesDetailPageProps): Promise<Metadata> {
   const { slug } = await params;
   const { lang: requestedLang } = await searchParams;
   const lang = requestedLang === "en" ? "en" : "ko";
@@ -34,9 +37,12 @@ export async function generateMetadata({ params, searchParams }: SeriesDetailPag
     return { title: "시리즈를 찾을 수 없습니다" };
   }
 
+  const description =
+    series.description ?? `${series.name} 연재 글 ${series.posts.length}편을 순서대로 모았습니다.`;
+
   return {
     title: `${series.name} 시리즈`,
-    description: `${series.name} 연재 글 ${series.posts.length}편을 순서대로 모았습니다.`,
+    description,
     alternates: {
       canonical: `${siteConfig.url}/series/${slug}`,
       languages: {
@@ -47,7 +53,7 @@ export async function generateMetadata({ params, searchParams }: SeriesDetailPag
     },
     openGraph: {
       title: `${series.name} 시리즈`,
-      description: `${series.name} 연재 글 ${series.posts.length}편을 순서대로 모았습니다.`,
+      description,
       type: "website",
       url: `${siteConfig.url}/series/${slug}`,
     },
@@ -67,7 +73,7 @@ export default async function SeriesDetailPage({ params, searchParams }: SeriesD
   const seriesUrl = `${siteConfig.url}/series/${slug}${lang === "en" ? "?lang=en" : ""}`;
   const itemListSchema = generateItemListSchema({
     name: `${series.name} 시리즈`,
-    description: `${series.name} 연재 글 ${series.posts.length}편`,
+    description: series.description ?? `${series.name} 연재 글 ${series.posts.length}편`,
     url: seriesUrl,
     items: series.posts.map((post) => ({
       name: post.title,
@@ -99,12 +105,13 @@ export default async function SeriesDetailPage({ params, searchParams }: SeriesD
 
         <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-muted/50 via-card to-background p-6 shadow-sm">
           <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-            {series.posts.length}편 연재 · {series.lang.toUpperCase()}
+            {series.posts.length}편 연재 · {series.lang.toUpperCase()} ·{" "}
+            {series.status === "completed" ? "완결" : "진행 중"}
           </div>
           <h1 className="mt-4 text-3xl font-bold tracking-tight theme-heading">{series.name}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-            시리즈로 묶인 글을 발행일 순서대로 정리했습니다. 처음부터 읽으면 맥락이 이어지고,
-            중간 글로 바로 이동해도 현재 위치를 확인할 수 있어요.
+            {series.description ??
+              "시리즈로 묶인 글을 발행일 순서대로 정리했습니다. 처음부터 읽으면 맥락이 이어지고, 중간 글로 바로 이동해도 현재 위치를 확인할 수 있어요."}
           </p>
         </section>
 

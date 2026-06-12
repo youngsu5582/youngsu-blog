@@ -2,20 +2,35 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, BookOpen, CheckCircle2, Circle, Clock } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
+  CheckCircle2,
+  Circle,
+  Clock,
+  ArrowLeft,
+  ArrowRight,
+} from "lucide-react";
 import { getUrlSlug } from "@/lib/content";
 import type { Post } from "@/lib/content";
 
 interface SeriesNavProps {
   seriesName: string;
+  seriesSlug: string;
   posts: Post[];
   currentSlug: string;
 }
 
-export function SeriesNav({ seriesName, posts, currentSlug }: SeriesNavProps) {
+export function SeriesNav({ seriesName, seriesSlug, posts, currentSlug }: SeriesNavProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const currentIndex = posts.findIndex((post) => getUrlSlug(post.slug) === currentSlug);
   const progress = currentIndex !== -1 ? currentIndex + 1 : 0;
+  const prevPost = currentIndex > 0 ? posts[currentIndex - 1] : undefined;
+  const nextPost =
+    currentIndex >= 0 && currentIndex < posts.length - 1 ? posts[currentIndex + 1] : undefined;
+  const seriesLang = posts[currentIndex]?.lang === "en" ? "en" : "ko";
+  const seriesHref = `/series/${seriesSlug}${seriesLang === "en" ? "?lang=en" : ""}`;
 
   return (
     <div className="mb-6 rounded-lg border border-border/50 bg-gradient-to-br from-muted/40 via-muted/30 to-muted/20 backdrop-blur-sm overflow-hidden shadow-sm">
@@ -46,6 +61,18 @@ export function SeriesNav({ seriesName, posts, currentSlug }: SeriesNavProps) {
         <div className="border-t border-border/50 bg-background/30 backdrop-blur-sm">
           {/* Progress Bar */}
           <div className="px-3.5 pt-2.5 pb-1.5">
+            <div className="flex items-center justify-between gap-3 pb-2 text-xs text-muted-foreground">
+              <span>
+                전체 {posts.length}편 중 {progress}번째 글
+              </span>
+              <Link
+                href={seriesHref}
+                className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+              >
+                시리즈 전체 보기
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
             <div className="w-full h-1 bg-muted/50 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-500"
@@ -165,6 +192,41 @@ export function SeriesNav({ seriesName, posts, currentSlug }: SeriesNavProps) {
               );
             })}
           </ol>
+
+          {(prevPost || nextPost) && (
+            <div className="grid gap-2 border-t border-border/50 px-3.5 py-3 sm:grid-cols-2">
+              {prevPost ? (
+                <Link
+                  href={`/posts/${getUrlSlug(prevPost.slug)}`}
+                  className="group rounded-lg border border-border/60 bg-background/50 p-3 text-xs transition hover:border-primary/30 hover:bg-primary/5"
+                >
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <ArrowLeft className="h-3 w-3" />
+                    이전 편
+                  </span>
+                  <strong className="mt-1 block line-clamp-2 text-sm font-medium text-foreground group-hover:text-primary">
+                    {prevPost.title}
+                  </strong>
+                </Link>
+              ) : (
+                <div />
+              )}
+              {nextPost && (
+                <Link
+                  href={`/posts/${getUrlSlug(nextPost.slug)}`}
+                  className="group rounded-lg border border-border/60 bg-background/50 p-3 text-right text-xs transition hover:border-primary/30 hover:bg-primary/5"
+                >
+                  <span className="inline-flex items-center justify-end gap-1 text-muted-foreground">
+                    다음 편
+                    <ArrowRight className="h-3 w-3" />
+                  </span>
+                  <strong className="mt-1 block line-clamp-2 text-sm font-medium text-foreground group-hover:text-primary">
+                    {nextPost.title}
+                  </strong>
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import {
   getAlternatePost,
   getPostBySlug,
   getPostsBySeries,
+  getSeriesSlug,
   getUrlSlug,
 } from "@/lib/content";
 import type { Post } from "@/lib/content";
@@ -235,7 +236,12 @@ export default async function PostPage({ params }: PostPageProps) {
 
           {/* Series Navigation */}
           {post.series && seriesPosts.length > 1 && (
-            <SeriesNav seriesName={post.series} posts={seriesPosts} currentSlug={slug} />
+            <SeriesNav
+              seriesName={post.series}
+              seriesSlug={getSeriesSlug(post.series)}
+              posts={seriesPosts}
+              currentSlug={slug}
+            />
           )}
 
           {/* MDX Content */}
