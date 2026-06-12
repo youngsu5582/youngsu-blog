@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAiReviewPrompt } from "@/app/api/admin/ai/review/route";
+import { buildAiReviewPrompt } from "@/lib/admin-ai-review-prompt";
 
 describe("buildAiReviewPrompt", () => {
   it("발행 전 체크리스트, 사용자 말투, 민감정보 검수를 포함한다", () => {

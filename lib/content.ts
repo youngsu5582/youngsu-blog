@@ -77,6 +77,54 @@ export function getPostsBySeries(series: string, lang?: "ko" | "en") {
     .sort((a: Post, b: Post) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
+export interface SeriesSummary {
+  name: string;
+  slug: string;
+  lang: "ko" | "en";
+  posts: Post[];
+  latestDate: string;
+}
+
+export function getSeriesSlug(series: string) {
+  return series
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9가-힣]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function getAllSeries(lang?: "ko" | "en"): SeriesSummary[] {
+  const grouped = new Map<string, Post[]>();
+
+  getAllPosts(lang).forEach((post: Post) => {
+    if (!post.series) return;
+    const key = `${post.lang}:${post.series}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), post]);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([key, groupedPosts]) => {
+      const name = key.slice(key.indexOf(":") + 1);
+      const postsInSeries = groupedPosts.sort(
+        (a: Post, b: Post) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+      );
+      return {
+        name,
+        slug: getSeriesSlug(name),
+        lang: postsInSeries[0].lang as "ko" | "en",
+        posts: postsInSeries,
+        latestDate: postsInSeries[postsInSeries.length - 1].date,
+      };
+    })
+    .sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
+}
+
+export function getSeriesBySlug(slug: string, lang?: "ko" | "en") {
+  return getAllSeries(lang).find((series) => series.slug === slug);
+}
+
 export function getAllCategories(lang?: "ko" | "en") {
   const categories = new Map<string, number>();
   // Posts

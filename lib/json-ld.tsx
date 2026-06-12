@@ -16,6 +16,12 @@ export interface BreadcrumbItem {
   url: string;
 }
 
+export interface ItemListEntry {
+  name: string;
+  url: string;
+  description?: string;
+}
+
 /**
  * Generate JSON-LD schema for Article (blog post)
  * @see https://developers.google.com/search/docs/appearance/structured-data/article
@@ -97,6 +103,28 @@ export function generateBreadcrumbSchema(items: BreadcrumbItem[]) {
       position: index + 1,
       name: item.name,
       item: item.url,
+    })),
+  };
+}
+
+export function generateItemListSchema(props: {
+  name: string;
+  description?: string;
+  url: string;
+  items: ItemListEntry[];
+}) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: props.name,
+    description: props.description,
+    url: props.url,
+    itemListElement: props.items.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      url: item.url,
+      ...(item.description ? { description: item.description } : {}),
     })),
   };
 }

@@ -6,6 +6,8 @@ import {
   getAllLibraryItems,
   getAllCategories,
   getAllTags,
+  getAllSeries,
+  getAlternatePost,
   getUrlSlug,
   type Post,
   type Article,
@@ -21,14 +23,29 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const libraryItems = getAllLibraryItems();
   const categories = getAllCategories();
   const tags = getAllTags();
+  const series = getAllSeries();
 
   // Posts
-  const postUrls = posts.map((post: Post) => ({
-    url: `${siteConfig.url}/posts/${getUrlSlug(post.slug)}`,
-    lastModified: new Date(post.date),
-    changeFrequency: "monthly" as const,
-    priority: 0.8,
-  }));
+  const postUrls = posts.map((post: Post) => {
+    const alternatePost = getAlternatePost(post);
+    const languageAlternates = alternatePost
+      ? {
+          [post.lang]: `${siteConfig.url}/posts/${getUrlSlug(post.slug)}`,
+          [alternatePost.lang]: `${siteConfig.url}/posts/${getUrlSlug(alternatePost.slug)}`,
+          "x-default": `${siteConfig.url}/posts/${getUrlSlug(
+            post.lang === "ko" ? post.slug : alternatePost.slug,
+          )}`,
+        }
+      : undefined;
+
+    return {
+      url: `${siteConfig.url}/posts/${getUrlSlug(post.slug)}`,
+      lastModified: new Date(post.date),
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+      ...(languageAlternates ? { alternates: { languages: languageAlternates } } : {}),
+    };
+  });
 
   // Articles
   const articleUrls = articles.map((article: Article) => ({
@@ -68,6 +85,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: new Date(),
     changeFrequency: "weekly" as const,
     priority: 0.6,
+  }));
+
+  // Series pages
+  const seriesUrls = series.map((item) => ({
+    url: `${siteConfig.url}/series/${item.slug}`,
+    lastModified: new Date(item.latestDate),
+    changeFrequency: "weekly" as const,
+    priority: 0.7,
   }));
 
   return [
@@ -115,6 +140,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.7,
     },
+    {
+      url: `${siteConfig.url}/search`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.7,
+    },
+    {
+      url: `${siteConfig.url}/series`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.7,
+    },
     // Static pages
     {
       url: `${siteConfig.url}/about`,
@@ -129,5 +166,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...libraryUrls,
     ...categoryUrls,
     ...tagUrls,
+    ...seriesUrls,
   ];
 }

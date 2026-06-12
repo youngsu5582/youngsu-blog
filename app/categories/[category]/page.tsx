@@ -35,9 +35,9 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
 
   // 부모 카테고리가 지정되면, 해당 부모도 포함하는 콘텐츠만 필터링
   if (parentCategory) {
-    posts = posts.filter((p: any) => p.categories.includes(parentCategory));
-    articles = articles.filter((a: any) => a.categories.includes(parentCategory));
-    notes = notes.filter((n: any) => n.categories.includes(parentCategory));
+    posts = posts.filter((p) => p.categories.includes(parentCategory));
+    articles = articles.filter((a) => a.categories.includes(parentCategory));
+    notes = notes.filter((n: Note) => n.categories.includes(parentCategory));
   }
 
   const totalCount = posts.length + articles.length + notes.length;

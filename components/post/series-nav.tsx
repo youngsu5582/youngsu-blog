@@ -60,7 +60,6 @@ export function SeriesNav({ seriesName, posts, currentSlug }: SeriesNavProps) {
               const slug = getUrlSlug(post.slug);
               const isCurrent = slug === currentSlug;
               const isPast = index < currentIndex;
-              const isFuture = index > currentIndex;
 
               const ItemContent = (
                 <>
