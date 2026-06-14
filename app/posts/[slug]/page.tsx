@@ -131,6 +131,14 @@ function calcReadingTime(rawContent: string): number {
   return Math.max(1, minutes);
 }
 
+function calcWordCount(rawContent: string): number {
+  const body = rawContent.replace(/^---[\s\S]*?---/, "").trim();
+  const noCode = body.replace(/```[\s\S]*?```/g, "");
+  const koreanWords = noCode.match(/[가-힣]+/g) || [];
+  const englishWords = noCode.match(/[a-zA-Z0-9]+/g) || [];
+  return koreanWords.length + englishWords.length;
+}
+
 export default async function PostPage({ params }: PostPageProps) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
@@ -143,6 +151,7 @@ export default async function PostPage({ params }: PostPageProps) {
   const rawContent = getRawContent(slug);
   const headings = post.toc ? extractHeadings(rawContent) : [];
   const readingTime = calcReadingTime(rawContent);
+  const wordCount = calcWordCount(rawContent);
   const alternatePost = getAlternatePost(post);
 
   // Prev/Next navigation
@@ -189,6 +198,17 @@ export default async function PostPage({ params }: PostPageProps) {
     author: post.author,
     image: post.image,
     url: postUrl,
+    inLanguage: post.lang === "en" ? "en-US" : "ko-KR",
+    keywords: post.tags,
+    articleSection: post.categories,
+    wordCount,
+    timeRequired: `PT${readingTime}M`,
+    isPartOf: post.series
+      ? {
+          name: post.series,
+          url: `${siteConfig.url}/series/${getSeriesSlug(post.series)}`,
+        }
+      : undefined,
   });
 
   const breadcrumbSchema = generateBreadcrumbSchema([

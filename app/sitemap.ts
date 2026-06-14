@@ -16,6 +16,22 @@ import {
 } from "@/lib/content";
 import { siteConfig } from "@/config/site";
 
+
+function latestDateForTaxonomy(
+  name: string,
+  field: "categories" | "tags",
+  content: Array<Post | Article | Note>,
+) {
+  const matchingDates = content
+    .filter((item) => item[field]?.includes(name))
+    .map((item) => new Date(item.date).getTime())
+    .filter((time) => Number.isFinite(time));
+
+  if (matchingDates.length === 0) return new Date();
+
+  return new Date(Math.max(...matchingDates));
+}
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const posts = getAllPosts();
   const articles = getAllArticles();
@@ -24,6 +40,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const categories = getAllCategories();
   const tags = getAllTags();
   const series = getAllSeries();
+  const taxonomyContent = [...posts, ...articles, ...notes];
 
   // Posts
   const postUrls = posts.map((post: Post) => {
@@ -74,7 +91,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // Category pages
   const categoryUrls = categories.map((category) => ({
     url: `${siteConfig.url}/categories/${encodeURIComponent(category.name)}`,
-    lastModified: new Date(),
+    lastModified: latestDateForTaxonomy(category.name, "categories", taxonomyContent),
     changeFrequency: "weekly" as const,
     priority: 0.7,
   }));
@@ -82,7 +99,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // Tag pages
   const tagUrls = tags.map((tag) => ({
     url: `${siteConfig.url}/tags/${encodeURIComponent(tag.name)}`,
-    lastModified: new Date(),
+    lastModified: latestDateForTaxonomy(tag.name, "tags", taxonomyContent),
     changeFrequency: "weekly" as const,
     priority: 0.6,
   }));

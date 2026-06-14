@@ -9,6 +9,15 @@ export interface ArticleSchemaProps {
   author: string;
   image?: string;
   url: string;
+  inLanguage?: string;
+  keywords?: string[];
+  articleSection?: string[];
+  wordCount?: number;
+  timeRequired?: string;
+  isPartOf?: {
+    name: string;
+    url: string;
+  };
 }
 
 export interface BreadcrumbItem {
@@ -46,10 +55,52 @@ export function generateArticleSchema(props: ArticleSchemaProps) {
     },
     image: absoluteSiteUrl(props.image),
     url: props.url,
+    ...(props.inLanguage ? { inLanguage: props.inLanguage } : {}),
+    ...(props.keywords?.length ? { keywords: props.keywords.join(", ") } : {}),
+    ...(props.articleSection?.length ? { articleSection: props.articleSection } : {}),
+    ...(props.wordCount ? { wordCount: props.wordCount } : {}),
+    ...(props.timeRequired ? { timeRequired: props.timeRequired } : {}),
+    ...(props.isPartOf
+      ? {
+          isPartOf: {
+            "@type": "CreativeWorkSeries",
+            name: props.isPartOf.name,
+            url: props.isPartOf.url,
+          },
+        }
+      : {}),
     mainEntityOfPage: {
       "@type": "WebPage",
       "@id": props.url,
     },
+  };
+}
+
+export function generateSeriesSchema(props: {
+  name: string;
+  description?: string;
+  url: string;
+  inLanguage?: string;
+  status?: "ongoing" | "completed";
+  items: ItemListEntry[];
+}) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "CreativeWorkSeries",
+    name: props.name,
+    ...(props.description ? { description: props.description } : {}),
+    url: props.url,
+    ...(props.inLanguage ? { inLanguage: props.inLanguage } : {}),
+    ...(props.status
+      ? { creativeWorkStatus: props.status === "completed" ? "Completed" : "InProgress" }
+      : {}),
+    hasPart: props.items.map((item, index) => ({
+      "@type": "BlogPosting",
+      position: index + 1,
+      headline: item.name,
+      url: item.url,
+      ...(item.description ? { description: item.description } : {}),
+    })),
   };
 }
 

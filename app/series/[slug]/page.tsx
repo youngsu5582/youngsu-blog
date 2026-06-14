@@ -5,7 +5,12 @@ import { ArrowLeft, CalendarDays } from "lucide-react";
 
 import { LangToggle } from "@/components/common/lang-toggle";
 import { getAllSeries, getSeriesBySlug, getUrlSlug } from "@/lib/content";
-import { generateBreadcrumbSchema, generateItemListSchema, renderJsonLd } from "@/lib/json-ld";
+import {
+  generateBreadcrumbSchema,
+  generateItemListSchema,
+  generateSeriesSchema,
+  renderJsonLd,
+} from "@/lib/json-ld";
 import { siteConfig } from "@/config/site";
 
 interface SeriesDetailPageProps {
@@ -81,6 +86,18 @@ export default async function SeriesDetailPage({ params, searchParams }: SeriesD
       url: `${siteConfig.url}/posts/${getUrlSlug(post.slug)}`,
     })),
   });
+  const seriesSchema = generateSeriesSchema({
+    name: series.name,
+    description: series.description ?? `${series.name} 연재 글 ${series.posts.length}편`,
+    url: seriesUrl,
+    inLanguage: lang === "en" ? "en-US" : "ko-KR",
+    status: series.status,
+    items: series.posts.map((post) => ({
+      name: post.title,
+      description: post.description,
+      url: `${siteConfig.url}/posts/${getUrlSlug(post.slug)}`,
+    })),
+  });
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "홈", url: siteConfig.url },
     { name: "시리즈", url: `${siteConfig.url}/series` },
@@ -90,6 +107,7 @@ export default async function SeriesDetailPage({ params, searchParams }: SeriesD
   return (
     <>
       {renderJsonLd(itemListSchema)}
+      {renderJsonLd(seriesSchema)}
       {renderJsonLd(breadcrumbSchema)}
       <div className="space-y-8">
         <div className="flex items-center justify-between gap-4">

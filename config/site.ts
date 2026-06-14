@@ -1,7 +1,7 @@
 export const siteConfig = {
   name: "이영수 개발 블로그",
   description: "백엔드 개발자 이영수의 기술 블로그",
-  url: "https://youngsu5582.today",
+  url: "https://www.youngsu5582.today",
   repo: "youngsu5582/youngsu-blog",
 
   author: {
