@@ -1,17 +1,8 @@
 import { NextResponse } from "next/server";
-import * as fs from "fs";
-import * as path from "path";
+import { uploadAdminImage, type UploadedFile } from "@/lib/admin-upload-storage";
 import { buildSafeUploadName, validateImageBuffer, validateImageUpload } from "@/lib/admin-upload-validation";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public/assets/img/uploads");
-
-type UploadedFile = { name: string; path: string };
 type RejectedFile = { name: string; error: string };
-
-// Ensure upload directory exists
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
 
 export async function POST(req: Request) {
   try {
@@ -42,13 +33,14 @@ export async function POST(req: Request) {
 
       const timestamp = Date.now();
       const filename = buildSafeUploadName(timestamp, file.name, file.type);
-      const filepath = path.join(UPLOAD_DIR, filename);
-      fs.writeFileSync(filepath, buffer);
-
-      uploadedFiles.push({
-        name: file.name,
-        path: `/assets/img/uploads/${filename}`,
+      const uploadedFile = await uploadAdminImage({
+        filename,
+        originalName: file.name,
+        buffer,
+        contentType: file.type,
       });
+
+      uploadedFiles.push(uploadedFile);
     }
 
     if (uploadedFiles.length === 0) {

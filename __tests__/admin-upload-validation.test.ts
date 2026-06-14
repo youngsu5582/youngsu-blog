@@ -39,6 +39,12 @@ describe("admin upload and thumbnail route safety", () => {
     expect(uploadRoute).not.toContain("continue; // Skip invalid/non-image files");
   });
 
+  it("upload route delegates persistence to storage helper so S3/R2 can be configured server-side", () => {
+    expect(uploadRoute).toContain("uploadAdminImage");
+    expect(uploadRoute).not.toContain("fs.writeFileSync");
+    expect(uploadRoute).not.toContain("const UPLOAD_DIR");
+  });
+
   it("thumbnail save route validates filename, base64 image bytes, and originalPath", () => {
     expect(thumbnailSaveRoute).toContain("validateThumbnailFilename");
     expect(thumbnailSaveRoute).toContain("validateImageBuffer");
