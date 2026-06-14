@@ -88,6 +88,17 @@ GitHub Actions가 모든 PR/push에서 자동 실행:
 
 Vercel이 main 브랜치 push 시 자동 프로덕션 배포. PR에는 프리뷰 URL 자동 생성.
 
+## AI 작업 컨텍스트
+
+새 AI 세션/다른 계정과 sync할 때는 아래 문서를 먼저 읽힙니다.
+
+1. `README.md`
+2. `AGENTS.md`
+3. `CONTEXT.md`
+4. `docs/AI_SYNC.md`
+
+민감한 `.env.local`, API 키, 비공개 초안/회사 세부정보는 다른 계정에 넘기지 않습니다.
+
 ## 시작하기
 
 ### 사전 요구사항
