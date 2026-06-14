@@ -16,6 +16,7 @@ import {
 } from "@/lib/content";
 import { siteConfig } from "@/config/site";
 
+const STATIC_EPOCH = new Date("2026-01-01T00:00:00.000Z");
 
 function latestDateForTaxonomy(
   name: string,
@@ -32,6 +33,16 @@ function latestDateForTaxonomy(
   return new Date(Math.max(...matchingDates));
 }
 
+function latestDateForContent(content: Array<Post | Article | Note | LibraryItem>) {
+  const dates = content
+    .map((item) => new Date(item.date).getTime())
+    .filter((time) => Number.isFinite(time));
+
+  if (dates.length === 0) return STATIC_EPOCH;
+
+  return new Date(Math.max(...dates));
+}
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const posts = getAllPosts();
   const articles = getAllArticles();
@@ -41,6 +52,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const tags = getAllTags();
   const series = getAllSeries();
   const taxonomyContent = [...posts, ...articles, ...notes];
+  const latestPostDate = latestDateForContent(posts);
+  const latestArticleDate = latestDateForContent(articles);
+  const latestNoteDate = latestDateForContent(notes);
+  const latestLibraryDate = latestDateForContent(libraryItems);
+  const latestSiteDate = latestDateForContent([...taxonomyContent, ...libraryItems]);
 
   // Posts
   const postUrls = posts.map((post: Post) => {
@@ -106,7 +122,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   // Series pages
   const seriesUrls = series.map((item) => ({
-    url: `${siteConfig.url}/series/${item.slug}`,
+    url: `${siteConfig.url}/series/${item.slug}${item.lang === "en" ? "?lang=en" : ""}`,
     lastModified: new Date(item.latestDate),
     changeFrequency: "weekly" as const,
     priority: 0.7,
@@ -116,63 +132,101 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // Homepage
     {
       url: siteConfig.url,
-      lastModified: new Date(),
+      lastModified: latestSiteDate,
       changeFrequency: "daily",
       priority: 1.0,
     },
     // Main listing pages
     {
       url: `${siteConfig.url}/posts`,
-      lastModified: new Date(),
+      lastModified: latestPostDate,
       changeFrequency: "daily",
       priority: 0.9,
+      alternates: {
+        languages: {
+          ko: `${siteConfig.url}/posts`,
+          en: `${siteConfig.url}/posts?lang=en`,
+          "x-default": `${siteConfig.url}/posts`,
+        },
+      },
+    },
+    {
+      url: `${siteConfig.url}/posts?lang=en`,
+      lastModified: latestPostDate,
+      changeFrequency: "daily",
+      priority: 0.8,
     },
     {
       url: `${siteConfig.url}/articles`,
-      lastModified: new Date(),
+      lastModified: latestArticleDate,
       changeFrequency: "daily",
       priority: 0.9,
     },
     {
       url: `${siteConfig.url}/notes`,
-      lastModified: new Date(),
+      lastModified: latestNoteDate,
       changeFrequency: "daily",
       priority: 0.8,
     },
     {
       url: `${siteConfig.url}/library`,
-      lastModified: new Date(),
+      lastModified: latestLibraryDate,
       changeFrequency: "weekly",
       priority: 0.7,
     },
     {
       url: `${siteConfig.url}/categories`,
-      lastModified: new Date(),
+      lastModified: latestSiteDate,
       changeFrequency: "weekly",
       priority: 0.8,
     },
     {
       url: `${siteConfig.url}/tags`,
-      lastModified: new Date(),
+      lastModified: latestSiteDate,
       changeFrequency: "weekly",
       priority: 0.7,
     },
     {
       url: `${siteConfig.url}/search`,
-      lastModified: new Date(),
+      lastModified: latestSiteDate,
       changeFrequency: "weekly",
       priority: 0.7,
     },
     {
       url: `${siteConfig.url}/series`,
-      lastModified: new Date(),
+      lastModified: latestPostDate,
       changeFrequency: "weekly",
       priority: 0.7,
+      alternates: {
+        languages: {
+          ko: `${siteConfig.url}/series`,
+          en: `${siteConfig.url}/series?lang=en`,
+          "x-default": `${siteConfig.url}/series`,
+        },
+      },
+    },
+    {
+      url: `${siteConfig.url}/series?lang=en`,
+      lastModified: latestPostDate,
+      changeFrequency: "weekly",
+      priority: 0.6,
+    },
+    {
+      url: `${siteConfig.url}/archives`,
+      lastModified: latestSiteDate,
+      changeFrequency: "weekly",
+      priority: 0.6,
+    },
+    {
+      url: `${siteConfig.url}/activities`,
+      lastModified: latestSiteDate,
+      changeFrequency: "weekly",
+      priority: 0.5,
     },
     // Static pages
     {
       url: `${siteConfig.url}/about`,
-      lastModified: new Date(),
+      lastModified: STATIC_EPOCH,
       changeFrequency: "monthly",
       priority: 0.5,
     },

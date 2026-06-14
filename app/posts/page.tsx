@@ -2,6 +2,8 @@ import { getAllPosts, getUrlSlug, calcReadingTimeFromBody, getAlternatePost } fr
 import { PostList } from "@/components/post/post-list";
 import { BrowserLanguageHint } from "@/components/post/browser-language-hint";
 import { LangToggle } from "@/components/common/lang-toggle";
+import { siteConfig } from "@/config/site";
+import type { Metadata } from "next";
 
 const POSTS_PER_PAGE = 10;
 
@@ -9,10 +11,36 @@ interface PostsPageProps {
   searchParams: Promise<{ page?: string; lang?: string }>;
 }
 
-export const metadata = {
-  title: "포스트",
-  description: "모든 포스트를 확인하세요.",
-};
+export async function generateMetadata({ searchParams }: PostsPageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const lang = params.lang === "en" ? "en" : "ko";
+  const canonical = lang === "en" ? `${siteConfig.url}/posts?lang=en` : `${siteConfig.url}/posts`;
+
+  return {
+    title: lang === "en" ? "Posts" : "포스트",
+    description:
+      lang === "en"
+        ? "English posts from Youngsu Lee's backend engineering blog."
+        : "백엔드 개발자 이영수의 기술 블로그 포스트 모음입니다.",
+    alternates: {
+      canonical,
+      languages: {
+        ko: `${siteConfig.url}/posts`,
+        en: `${siteConfig.url}/posts?lang=en`,
+        "x-default": `${siteConfig.url}/posts`,
+      },
+    },
+    openGraph: {
+      title: lang === "en" ? "Posts" : "포스트",
+      description:
+        lang === "en"
+          ? "English posts from Youngsu Lee's backend engineering blog."
+          : "백엔드 개발자 이영수의 기술 블로그 포스트 모음입니다.",
+      url: canonical,
+      type: "website",
+    },
+  };
+}
 
 export default async function PostsPage({ searchParams }: PostsPageProps) {
   const params = await searchParams;

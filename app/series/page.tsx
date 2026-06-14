@@ -11,13 +11,36 @@ interface SeriesPageProps {
   searchParams: Promise<{ lang?: string }>;
 }
 
-export const metadata: Metadata = {
-  title: "시리즈",
-  description: "연재 중인 블로그 시리즈를 모아봅니다.",
-  alternates: {
-    canonical: `${siteConfig.url}/series`,
-  },
-};
+export async function generateMetadata({ searchParams }: SeriesPageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const lang = params.lang === "en" ? "en" : "ko";
+  const canonical = lang === "en" ? `${siteConfig.url}/series?lang=en` : `${siteConfig.url}/series`;
+
+  return {
+    title: lang === "en" ? "Series" : "시리즈",
+    description:
+      lang === "en"
+        ? "Serialized post collections from Youngsu Lee's backend engineering blog."
+        : "연재 중인 블로그 시리즈를 모아봅니다.",
+    alternates: {
+      canonical,
+      languages: {
+        ko: `${siteConfig.url}/series`,
+        en: `${siteConfig.url}/series?lang=en`,
+        "x-default": `${siteConfig.url}/series`,
+      },
+    },
+    openGraph: {
+      title: lang === "en" ? "Series" : "시리즈",
+      description:
+        lang === "en"
+          ? "Serialized post collections from Youngsu Lee's backend engineering blog."
+          : "연재 중인 블로그 시리즈를 모아봅니다.",
+      url: canonical,
+      type: "website",
+    },
+  };
+}
 
 export default async function SeriesPage({ searchParams }: SeriesPageProps) {
   const params = await searchParams;
