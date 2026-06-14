@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X, Search, Archive, ChevronDown, Clock, Plus } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
+import { handleMarkdownIndentKeyDown } from "@/components/admin/markdown-editor-keyboard";
 import { attachImageUploadHandlers } from "@/components/admin/image-upload-handler";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -519,6 +520,10 @@ export default function WritePage() {
     textarea.setSelectionRange(start, start);
   };
 
+  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    handleMarkdownIndentKeyDown(event, content, setContent);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -897,6 +902,7 @@ export default function WritePage() {
             ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
+            onKeyDown={handleEditorKeyDown}
             spellCheck={false}
             placeholder={"마크다운으로 작성하세요...\n\n## 소제목\n\n본문 내용을 자유롭게 작성하세요.\n\n- 리스트 아이템\n\n```java\npublic class Hello {}\n```"}
             className="min-h-[52vh] flex-1 w-full bg-background px-4 py-4 text-sm font-mono leading-relaxed resize-none focus:outline-none"

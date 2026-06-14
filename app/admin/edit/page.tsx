@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Loader2, Save, Search, FileText, BookOpen, StickyNote, Library, ArrowRight, Eye, EyeOff, Clock, ChevronDown, ChevronUp, ArrowLeft, Trash2 } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
+import { handleMarkdownIndentKeyDown } from "@/components/admin/markdown-editor-keyboard";
 import { attachImageUploadHandlers } from "@/components/admin/image-upload-handler";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -431,6 +432,8 @@ export default function EditPage() {
   };
 
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (handleMarkdownIndentKeyDown(event, body, setBody)) return;
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       void handleSave();

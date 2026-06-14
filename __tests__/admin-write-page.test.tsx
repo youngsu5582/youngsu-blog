@@ -118,4 +118,20 @@ describe("Admin write page", () => {
 
     expect(editor.selectionStart).toBe("## 시작\n본문\n### 구현\n내용\n".length);
   });
+
+  it("본문에서 선택한 여러 줄을 Shift+Tab으로 한 단계 내어쓸 수 있다", () => {
+    render(<WritePage />);
+
+    const editor = screen.getByPlaceholderText(/마크다운으로 작성하세요/) as HTMLTextAreaElement;
+    const value = "```yml\n  services:\n    cloudflared:\n      image: cloudflare/cloudflared:latest\n```";
+    fireEvent.change(editor, { target: { value } });
+
+    const start = value.indexOf("  services:");
+    const end = value.indexOf("```", start) - 1;
+    editor.setSelectionRange(start, end);
+    fireEvent.keyDown(editor, { key: "Tab", shiftKey: true });
+
+    expect(editor.value).toBe("```yml\nservices:\n  cloudflared:\n    image: cloudflare/cloudflared:latest\n```");
+  });
+
 });
