@@ -6,6 +6,7 @@ import { MDXContent } from "@/components/mdx/mdx-content";
 import { Breadcrumbs } from "@/components/common/breadcrumbs";
 import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
 import { siteConfig } from "@/config/site";
+import { absoluteSiteUrl } from "@/lib/seo";
 import type { Metadata } from "next";
 
 interface ArticlePageProps {
@@ -31,18 +32,42 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
     };
   }
 
+  const url = `${siteConfig.url}/articles/${slug}`;
+  const images = article.image ? [absoluteSiteUrl(article.image)] : undefined;
+
   return {
     title: article.title,
     description: article.description,
+    alternates: {
+      canonical: `/articles/${slug}`,
+    },
     openGraph: {
       title: article.title,
       description: article.description,
       type: "article",
       publishedTime: article.date,
       authors: [article.author],
-      images: article.image ? [article.image] : undefined,
+      url,
+      images,
+    },
+    twitter: {
+      card: images ? "summary_large_image" : "summary",
+      title: article.title,
+      description: article.description,
+      images,
     },
   };
+}
+
+// Estimate article length for structured data.
+function calcWordCount(rawContent: string): number {
+  return rawContent
+    .replace(/^---[\s\S]*?---/, "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 // Extract headings from MDX content for TOC
@@ -92,6 +117,11 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
     author: article.author,
     image: article.image,
     url: articleUrl,
+    inLanguage: "ko",
+    keywords: article.tags,
+    articleSection: article.categories,
+    wordCount: calcWordCount(article.body),
+    timeRequired: `PT${Math.max(1, article.metadata.readingTime)}M`,
   });
 
   const breadcrumbSchema = generateBreadcrumbSchema([
@@ -105,54 +135,56 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       {renderJsonLd(articleSchema)}
       {renderJsonLd(breadcrumbSchema)}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_250px] gap-8">
-      <article className="min-w-0">
-        <Breadcrumbs
-          items={[
-            { label: "아티클", href: "/articles" },
-            { label: article.title, href: `/articles/${slug}`, current: true },
-          ]}
-        />
-        {/* Status badge */}
-        <div className="mb-4">
-          <span
-            className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium ${
-              article.status === "evergreen"
-                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+        <article className="min-w-0">
+          <Breadcrumbs
+            items={[
+              { label: "아티클", href: "/articles" },
+              { label: article.title, href: `/articles/${slug}`, current: true },
+            ]}
+          />
+          {/* Status badge */}
+          <div className="mb-4">
+            <span
+              className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium ${
+                article.status === "evergreen"
+                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                  : article.status === "seed"
+                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                    : "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400"
+              }`}
+            >
+              {article.status === "evergreen"
+                ? "🌲 Evergreen"
                 : article.status === "seed"
-                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                  : "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400"
-            }`}
-          >
-            {article.status === "evergreen" ? "🌲 Evergreen" : article.status === "seed" ? "🌱 Seed" : "📝 Draft"}
-          </span>
-          {article.moc && (
-            <span className="ml-2 text-sm text-muted-foreground">
-              MOC: {article.moc}
+                  ? "🌱 Seed"
+                  : "📝 Draft"}
             </span>
-          )}
-        </div>
+            {article.moc && (
+              <span className="ml-2 text-sm text-muted-foreground">MOC: {article.moc}</span>
+            )}
+          </div>
 
-        <PostHeader
-          title={article.title}
-          date={article.date}
-          author={article.author}
-          categories={article.categories}
-          tags={article.tags}
-          readingTime={article.metadata.readingTime}
-        />
+          <PostHeader
+            title={article.title}
+            date={article.date}
+            author={article.author}
+            categories={article.categories}
+            tags={article.tags}
+            readingTime={article.metadata.readingTime}
+          />
 
-        {/* MDX Content */}
-        <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
-          <MDXContent code={article.body} />
-        </div>
-      </article>
+          {/* MDX Content */}
+          <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+            <MDXContent code={article.body} />
+          </div>
+        </article>
 
-      {/* Table of Contents */}
-      {headings.length > 0 && (
-        <aside className="hidden xl:block">
-          <TableOfContents headings={headings} />
-        </aside>
-      )}
+        {/* Table of Contents */}
+        {headings.length > 0 && (
+          <aside className="hidden xl:block">
+            <TableOfContents headings={headings} />
+          </aside>
+        )}
       </div>
     </>
   );

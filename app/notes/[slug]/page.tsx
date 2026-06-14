@@ -3,9 +3,11 @@ import { getAllNotes, getNoteBySlug, getUrlSlug, type Note } from "@/lib/content
 import { MDXContent } from "@/components/mdx/mdx-content";
 import { ScrollToTop } from "@/components/common/scroll-to-top";
 import { Breadcrumbs } from "@/components/common/breadcrumbs";
+import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
+import { siteConfig } from "@/config/site";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Calendar, ExternalLink } from "lucide-react";
+import { Calendar, ExternalLink } from "lucide-react";
 
 interface NotePageProps {
   params: Promise<{ slug: string }>;
@@ -18,6 +20,20 @@ export async function generateStaticParams() {
   }));
 }
 
+function noteDescription(note: Note, fallbackTitle: string) {
+  return note.description || `학습 노트: ${fallbackTitle}`;
+}
+
+function calcWordCount(rawContent: string): number {
+  return rawContent
+    .replace(/^---[\s\S]*?---/, "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
 export async function generateMetadata({ params }: NotePageProps): Promise<Metadata> {
   const { slug } = await params;
   const note = getNoteBySlug(slug);
@@ -26,9 +42,29 @@ export async function generateMetadata({ params }: NotePageProps): Promise<Metad
     return { title: "노트를 찾을 수 없습니다" };
   }
 
+  const title = note.title || slug;
+  const description = noteDescription(note, title);
+  const url = `${siteConfig.url}/notes/${slug}`;
+
   return {
-    title: note.title || slug,
-    description: `학습 노트: ${note.title || slug}`,
+    title,
+    description,
+    alternates: {
+      canonical: `/notes/${slug}`,
+    },
+    openGraph: {
+      title,
+      description,
+      type: "article",
+      publishedTime: note.date,
+      authors: [siteConfig.author.name],
+      url,
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+    },
   };
 }
 
@@ -41,10 +77,31 @@ export default async function NotePage({ params }: NotePageProps) {
   }
 
   const title = note.title || slug;
-  const references = (note as any).references || [];
+  const description = noteDescription(note, title);
+  const references = note.references || [];
+  const noteUrl = `${siteConfig.url}/notes/${slug}`;
+  const articleSchema = generateArticleSchema({
+    title,
+    description,
+    datePublished: note.date,
+    author: siteConfig.author.name,
+    url: noteUrl,
+    inLanguage: "ko",
+    keywords: note.tags,
+    articleSection: note.categories,
+    wordCount: calcWordCount(note.body),
+    timeRequired: `PT${Math.max(1, note.metadata.readingTime)}M`,
+  });
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "홈", url: siteConfig.url },
+    { name: "학습 노트", url: `${siteConfig.url}/notes` },
+    { name: title, url: noteUrl },
+  ]);
 
   return (
     <>
+      {renderJsonLd(articleSchema)}
+      {renderJsonLd(breadcrumbSchema)}
       <article className="max-w-2xl mx-auto">
         <Breadcrumbs
           items={[

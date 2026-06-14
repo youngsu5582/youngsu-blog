@@ -127,6 +127,17 @@ export function generateWebSiteSchema() {
   };
 }
 
+export function generateProfilePageSchema() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ProfilePage",
+    name: `${siteConfig.author.name} 소개`,
+    description: siteConfig.description,
+    url: `${siteConfig.url}/about`,
+    mainEntity: generatePersonSchema(),
+  };
+}
+
 export function generatePersonSchema() {
   return {
     "@context": "https://schema.org",
