@@ -10,6 +10,7 @@ import {
 } from "@/lib/content";
 import { generateItemListSchema } from "@/lib/json-ld";
 import sitemap from "@/app/sitemap";
+import { siteConfig } from "@/config/site";
 
 describe("series discovery", () => {
   const makePost = (slug: string, date: string, seriesOrder?: number) =>
@@ -87,10 +88,10 @@ describe("series and sitemap SEO", () => {
     const schema = generateItemListSchema({
       name: series!.name,
       description: `${series!.name} series`,
-      url: "https://youngsu5582.today/series/ai-assisted-homelab?lang=en",
+      url: `${siteConfig.url}/series/ai-assisted-homelab?lang=en`,
       items: series!.posts.map((post) => ({
         name: post.title,
-        url: `https://youngsu5582.today/posts/${post.slug.replace(/^posts\//, "")}`,
+        url: `${siteConfig.url}/posts/${post.slug.replace(/^posts\//, "")}`,
       })),
     });
 
@@ -101,15 +102,15 @@ describe("series and sitemap SEO", () => {
 
   it("sitemap에 검색 페이지와 번역 포스트 alternates를 포함한다", () => {
     const entries = sitemap();
-    const searchEntry = entries.find((entry) => entry.url === "https://youngsu5582.today/search");
+    const searchEntry = entries.find((entry) => entry.url === `${siteConfig.url}/search`);
     const translatedPost = entries.find(
-      (entry) => entry.url === "https://youngsu5582.today/posts/homeserver-setup-en",
+      (entry) => entry.url === `${siteConfig.url}/posts/homeserver-setup-en`,
     );
 
     expect(searchEntry).toBeDefined();
     expect(translatedPost?.alternates?.languages).toMatchObject({
-      en: "https://youngsu5582.today/posts/homeserver-setup-en",
-      ko: "https://youngsu5582.today/posts/homeserver-setup",
+      en: `${siteConfig.url}/posts/homeserver-setup-en`,
+      ko: `${siteConfig.url}/posts/homeserver-setup`,
     });
   });
 });

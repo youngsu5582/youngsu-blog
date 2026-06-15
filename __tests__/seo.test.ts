@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { siteConfig } from "@/config/site";
 import {
   absoluteSiteUrl,
   buildRootLanguageAlternates,
@@ -10,7 +11,7 @@ import { generateArticleSchema, generatePersonSchema, generateWebSiteSchema } fr
 describe("SEO URL helpers", () => {
   it("상대 이미지 경로를 siteConfig 기반 절대 URL로 만든다", () => {
     expect(absoluteSiteUrl("/assets/img/thumbnail/example.png")).toBe(
-      "https://youngsu5582.today/assets/img/thumbnail/example.png",
+      `${siteConfig.url}/assets/img/thumbnail/example.png`,
     );
   });
 
@@ -33,9 +34,9 @@ describe("SEO URL helpers", () => {
         alternateSlug: "homeserver-setup-en",
       }),
     ).toEqual({
-      ko: "https://youngsu5582.today/posts/homeserver-setup",
-      en: "https://youngsu5582.today/posts/homeserver-setup-en",
-      "x-default": "https://youngsu5582.today/posts/homeserver-setup",
+      ko: `${siteConfig.url}/posts/homeserver-setup`,
+      en: `${siteConfig.url}/posts/homeserver-setup-en`,
+      "x-default": `${siteConfig.url}/posts/homeserver-setup`,
     });
   });
 });
@@ -51,14 +52,14 @@ describe("JSON-LD SEO schemas", () => {
       url: "https://youngsu5582.today/posts/example",
     });
 
-    expect(schema.image).toBe("https://youngsu5582.today/assets/img/thumbnail/example.png");
+    expect(schema.image).toBe(`${siteConfig.url}/assets/img/thumbnail/example.png`);
   });
 
   it("WebSite SearchAction은 실제 /search 페이지를 가리킨다", () => {
     const schema = generateWebSiteSchema();
 
     expect(schema.potentialAction.target.urlTemplate).toBe(
-      "https://youngsu5582.today/search?q={search_term_string}",
+      `${siteConfig.url}/search?q={search_term_string}`,
     );
   });
 
