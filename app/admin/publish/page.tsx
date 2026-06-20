@@ -1239,11 +1239,6 @@ export default function PublishPage() {
               </div>
             </div>
           </div>
-          <DialogFooter className="mx-0 mb-0 rounded-none border-t bg-background/95 px-5 py-4 sm:px-6">
-            <Button variant="outline" onClick={() => setPreviewPost(null)}>
-              닫기
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
