@@ -76,7 +76,7 @@ function PostContentPreview({ filePath }: { filePath: string }) {
   }
 
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none">
+    <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-p:leading-relaxed prose-pre:max-w-full prose-pre:overflow-x-auto">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );
@@ -1215,15 +1215,31 @@ export default function PublishPage() {
 
       {/* Post Content Preview Dialog */}
       <Dialog open={Boolean(previewPost)} onOpenChange={(open) => !open && setPreviewPost(null)}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="truncate">{previewPost?.title || "본문 미리보기"}</DialogTitle>
-            <DialogDescription>{previewPost?.filePath}</DialogDescription>
+        <DialogContent className="flex h-[96vh] w-[calc(100vw-0.75rem)] max-w-[1400px] grid-rows-none flex-col gap-0 overflow-hidden p-0 sm:h-[92vh] sm:w-[calc(100vw-2rem)] sm:max-w-[1400px]">
+          <DialogHeader className="border-b border-border/60 px-5 py-4 sm:px-6">
+            <DialogTitle className="truncate pr-8">{previewPost?.title || "본문 미리보기"}</DialogTitle>
+            <DialogDescription className="truncate">{previewPost?.filePath}</DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/60 bg-background p-5">
-            {previewPost && <PostContentPreview key={previewPost.filePath} filePath={previewPost.filePath} />}
+          <div
+            aria-label="블로그 실제 레이아웃 미리보기"
+            className="min-h-0 flex-1 overflow-y-auto bg-muted/20"
+            role="region"
+          >
+            <div className="mx-auto max-w-6xl px-6 py-10 lg:px-10">
+              <div className="grid grid-cols-1 gap-10 xl:grid-cols-[minmax(0,1fr)_220px]">
+                <article className="min-w-0 rounded-xl border border-border/40 bg-background p-6 shadow-sm sm:p-8 lg:p-10">
+                  {previewPost && <PostContentPreview key={previewPost.filePath} filePath={previewPost.filePath} />}
+                </article>
+                <aside className="hidden self-start rounded-xl border border-border/40 bg-background/70 p-4 text-xs text-muted-foreground xl:block">
+                  <p className="font-medium text-foreground">미리보기</p>
+                  <p className="mt-2 leading-relaxed">
+                    실제 글 페이지처럼 본문 폭과 사이드 여백을 맞춰 보여줍니다.
+                  </p>
+                </aside>
+              </div>
+            </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="mx-0 mb-0 rounded-none border-t bg-background/95 px-5 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setPreviewPost(null)}>
               닫기
             </Button>
