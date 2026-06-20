@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit, AlertTriangle } from "lucide-react";
+import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit, AlertTriangle, Eye } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -29,6 +29,55 @@ function TranslationPreview({ filePath }: { filePath: string }) {
     <div className="prose prose-sm dark:prose-invert max-w-none text-xs">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content.slice(0, 1500)}</ReactMarkdown>
       {content.length > 1500 && <p className="text-[10px] text-muted-foreground mt-2">... (일부만 표시)</p>}
+    </div>
+  );
+}
+
+function PostContentPreview({ filePath }: { filePath: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/admin/edit?file=${encodeURIComponent(filePath)}`)
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "본문을 불러올 수 없습니다");
+        if (!cancelled) setContent(data.body || "");
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "본문을 불러올 수 없습니다");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        본문을 불러오는 중...
+      </div>
+    );
+  }
+
+  if (error) {
+    return <p className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400">{error}</p>;
+  }
+
+  if (!content) {
+    return <p className="rounded-md border border-border/60 p-3 text-sm text-muted-foreground">본문이 비어 있습니다.</p>;
+  }
+
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );
 }
@@ -138,6 +187,7 @@ export default function PublishPage() {
   const [reviewContent, setReviewContent] = useState<Map<string, string>>(new Map());
   const [showReview, setShowReview] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [previewPost, setPreviewPost] = useState<PostInfo | null>(null);
   const [pendingAiSuggestion, setPendingAiSuggestion] = useState<PendingAiSuggestion | null>(null);
 
   // Helper functions for localStorage persistence
@@ -717,6 +767,13 @@ export default function PublishPage() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold truncate">{editing.post.title}</h3>
                   <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setPreviewPost(editing.post)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-foreground hover:bg-muted/50 transition-colors"
+                    >
+                      <Eye className="h-3 w-3" />
+                      본문 미리보기
+                    </button>
                     <select
                       value={selectedProvider}
                       onChange={(e) => setSelectedProvider(e.target.value)}
@@ -1155,6 +1212,24 @@ export default function PublishPage() {
           )}
         </div>
       </div>
+
+      {/* Post Content Preview Dialog */}
+      <Dialog open={Boolean(previewPost)} onOpenChange={(open) => !open && setPreviewPost(null)}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="truncate">{previewPost?.title || "본문 미리보기"}</DialogTitle>
+            <DialogDescription>{previewPost?.filePath}</DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/60 bg-background p-5">
+            {previewPost && <PostContentPreview key={previewPost.filePath} filePath={previewPost.filePath} />}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewPost(null)}>
+              닫기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Publish Confirmation Dialog */}
       <Dialog open={showPublishConfirm} onOpenChange={setShowPublishConfirm}>
