@@ -1,0 +1,74 @@
+---
+title: ALB 로그
+date: "Sun Jun 21 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: ALB 의 로그를 학습
+categories:
+  - 학습
+  - 인프라
+tags:
+  - alb
+  - aws
+  - alb-log
+---
+
+# ALB 로그
+
+### 왜 필요한가??
+
+기본적으로 S3 Access LOG 는 비활성화다.
+
+운영때 무슨 일이 일어날지 모르므로 저장하는 것이 좋다.
+
+ALB 는 모든 트래픽이 진입하는 첫 관문이다.
+
+서버 로그는 서버에 도달하고, 처리된 요청에 대해서만 남는다.
+
+ALB 가 요청 자체를 막거나, forward 하거나, redirection 하면 알 수가 없다.
+
+이를 위해, ALB 로그를 남겨야 한다.
+
+추가적인 요소들도 존재한다.
+
+1. 성능 병목 위치 파악 : ALB, 백엔드, 응답 전송 중 뭐가 느린지 파악 가능
+2. 보안 검사 : 클라이언트 주소, 유저 에이전트, ssl 프로토콜 등 어떤 환경에서 접속했는지 파악 가능
+
+### 정보
+
+엄청 많은 정보를 준다. 잘라서 정리한다.
+
+https 2026-06-19T23:57:09.633565Z app/elb-develop 127.0.0.1:54244 - -1 -1 -1
+
+h2 2026-06-21T02:47:47.421741Z app/elb-develop 127.0.0.1:54244 10.0.0.1:80 0.000 0.011 0.000
+
+= type -> time -> elb -> `client:port` -> `target:port` -> request_processing_time -> target_processing_time -> response_processing_time
+
+- `client:port` : 요청 보낸 클라이언트 IP, 포트
+- `target:port` : 전달된 타겟 IP, 포트 - 전달이 안되면 `-`
+- request_processing_time : ALB -> 타겟으로 전달된 시간 - 전달 자체가 안되면 `-1`
+- target_processing_time : 타겟이 처리한 시간 - 전달 자체가 없으면 `-1`
+- response_processing_time : 응답 처리 시간 - 전달 자체가 없으면 `-1`
+
+403 - 570 162 "GET https://api.service.com:443/ HTTP/1.1" "Mozilla/5.0 "
+
+200 200 73 279 "GET https://api.service.com:443/ HTTP/2.0" "Mozilla/5.0"
+
+= elb_status_code -> target_status_code -> received_bytes -> sent_bytes -> request -> user_agent
+
+- target_status_code : 전달된 타겟이 응답해준 상태 코드, 전달이 안되면 `-`
+
+> 중간에, ssl_cipher, ssl_protocol, target_group_arn, trace_id, domain_name, chosen_cent_arn 등은 생략한다.
+
+2026-06-19T23:57:09.633000Z "fixed-response" "-" "-" "-" "-" "-" "-" TID_5... "-" "-" "-"
+
+2026-06-21T02:47:47.410000Z "forward" "-" "-" "10.0.0.0:80" "200" "-" "-" TID_1... "-" "-" "-"
+
+= request_creation_time -> actions_executed -> redirect_url -> error_reason -> `target:port_list` -> `target_status_code_list`
+
+- actions_executed : 실행된 행동 - fixed-response 는 ALB 가 직접 고정 응답, forward 는 타겟 그룹으로 전달
+- `target:port_list` : 나중에 추가된 필드, 연결된 타겟 목록, 첫 타겟이 연결 실패하면, 다른 타겟으로 재시도시 쌓일수 있다.
+- `target_status_code_list` : 나중에 추가된 필드, 타겟이 응답한 상태 코드 목록, 위와 동일
+
+---
+
+LLM 한테 물어보면 잘 알려준다.
+로그를 그대로 전달해도 좋지만, 각각이 의미하는게 뭔지는 가볍게 알아야 할 거 같아서 정리한다.

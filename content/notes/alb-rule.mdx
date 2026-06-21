@@ -1,0 +1,71 @@
+---
+title: ALB 규칙
+date: "2026-06-21T00:00:00.000Z"
+description: ALB 의 Rule 과 Action 에 대해 학습
+categories:
+  - 학습
+  - 인프라
+tags:
+  - alb
+  - aws
+  - alb-rule
+  - alb-action
+---
+
+# ALB 규칙
+
+ALB 는 요청을 받으면 아래와 같이 처리한다.
+
+Client -> Listener -> Rules -> Target Group -> Target
+
+- Listener : 어떤 포트, 프로토콜을 Listen 할지
+- Rules : Listener 에서 요청을 어디로 보낼지 정의 - `이 조건이면 어디로 보낸다` 등등
+- Target Group : 실제 트래픽을 받는 Target 들의 그룹
+- Target : EC2, ECS, Lambda 등
+
+## Rule
+
+조건(Condition) 과 액션(Action) 쌍으로 이루어진다.
+
+- 우선순위 순서를 따른다
+- AND 에 따라 처리한다
+
+1. Path : `/api/example/*`, 경로 기반 라우팅
+2. Host : `api.service.com`, 들어온 도메인별 분기
+3. HTTP method : `POST, GET`, 메소드별 제한
+4. Query String : 쿼리 파라미터에 의한 분기
+5. Source IP : `10.0.0.0/8`, IP 화이트리스트의 처리
+6. HTTP Header : `Authorization = Bearer *`, 헤더 조건에 따른 분기
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/099aa90f4af6406329c89a412c250951.png)
+
+
+다양한 조합이 가능하다.
+
+- 호스트 헤더 + 경로 + IP
+- 호스트 헤더 + 경로 + HTTP 헤더
+
+등
+
+를 통해 특정 대상 그룹에 전달할 수 있다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/4f9687af2a8a72ce01d63850ddf3fbb4.png)
+
+## Action
+
+규칙에 일치하면, 처리할 행동을 정의한다.
+
+1. Forward : Target Group 으로 전달, 정상 경로
+2. Redirect : 301, 302 Redirect (HTTP -> HTTPS 로 전달 등)
+3. Fixed Response : 403, 503 (ALB 가 직접 응답), 트래픽이 타겟에 안 닿음 (로그나 요청 자체 X)
+4. Authenticate : OIDC 등 인증 강제
+
+---
+
+Rule 과 Action 을 통해 아래와 같이 사용 가능하다.
+
+- HTTP -> HTTPS 강제
+- 점검 페이지
+- 특정 IP 허용 (관리자, 내부망 등)
+- 배포시 요청 라우팅
+- MSA 분기
