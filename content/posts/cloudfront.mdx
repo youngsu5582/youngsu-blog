@@ -1,0 +1,70 @@
+---
+title: CloudFront
+date: "Tue Jun 23 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: CloudFront 의 설정에 대한 간단한 설명
+categories:
+  - 학습
+  - 인프라
+tags:
+  - cloudfront
+  - aws
+  - cf
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+---
+
+CloudFront 는 CDN 이다.
+
+S3, ELB, API Gateway 등을 선택할 수 있다.
+
+Origin 과 Behavior 를 세팅할 수 있다.
+
+### Origin
+
+CF 에 연결할 Origin 을 선택한다.
+
+(S3, ELB, API Gateway 등등)
+
+OAI, OAC 등으로 Origin 에 대해 권한을 받을 수 있다.
+
+- OAI : Origin Access Identity, CloudFront 전용 가상의 신원, Legacy
+  - 버킷 정책에서 OAI 에게 `s3:GetObject` 허용해서 조회 가능하게 하는 것
+- OAC : S3 + 더 넓음
+
+### Behavior
+
+#### Settings
+
+경로 패턴에 따라, 어떤 Origin 에 향하게 할 지 결정 가능하다.
+
+- 자동 객체 압축 : gzip 등 텍스트류에 효과적 (JPEG, WebP 같은 압축 이미지엔 미적용)
+
+#### Viewer
+
+- 프로토콜 정책 : HTTP, HTTPS 등을 결정
+
+  - HTTP and HTTPS : 둘 다 그대로 처리
+  - Redirect HTTP to HTTPS : HTTP 로 오면 301 로 https 로 리다이렉션
+  - HTTPS only : HTTP 요청은 거부
+- 허용된 HTTP 방법 : 허용할 HTTP Method 를 명시
+
+  - GET, HEAD : 단순 조회
+  - GET, HEAD, OPTIONS : 단순 조회 + Preflight 용 OPTION
+  - GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE : 업로드는 CF 거치지 않고 S3
+
+#### Cache
+
+- 캐시 정책 : 캐시 키 + TTL
+
+캐시 키 : 같은 객체로 보는 기준
+TTL : min/default/max 지정 가능, 실제 기준은 S3 객체의 Cache-Control 을 따름
+
+  - CachingOptimized : Recommended for S3, 경로만 캐시 키, TTL 은 S3 에 지정된 정책 따름.
+  - CachingDisabled : 캐싱 X, TTL 0, 매번 origin
+  - UseOriginCacheControlHeaders : origin 이 준 Cache-Control 로 TTL 결정
+
+> Optimized 와 ControlHeaders 의 차이점은 Header 유무이다.  
+> ControlHeaderes 는 없으면, 캐싱 X
