@@ -7,6 +7,48 @@ import { serializeFrontmatter } from "@/lib/frontmatter";
 
 const CONTENT_DIR = path.join(process.cwd(), "content");
 
+function collectCommittedDraftItems(existingItems: Array<{ slug: string; title: string; collection: string; date: string }>) {
+  const collections = ["posts", "articles", "notes", "library"];
+  const draftItems: Array<{ slug: string; title: string; collection: string; date: string; source: string }> = [];
+
+  for (const collection of collections) {
+    const dir = path.join(CONTENT_DIR, collection);
+    let files: string[] = [];
+    try {
+      files = fs.readdirSync(dir).filter((file) => file.endsWith(".mdx") || file.endsWith(".md"));
+    } catch {
+      continue;
+    }
+
+    for (const filename of files) {
+      const absPath = path.join(dir, filename);
+      const slug = filename.replace(/\.mdx?$/, "");
+
+      if (existingItems.some((item) => item.collection === collection && item.slug === slug)) {
+        continue;
+      }
+
+      try {
+        const raw = fs.readFileSync(absPath, "utf-8");
+        const { data } = matter(raw);
+        if (data.draft !== true) continue;
+
+        draftItems.push({
+          slug,
+          title: (data.title as string) || slug,
+          collection,
+          date: (data.date as string) || new Date().toISOString(),
+          source: "filesystem-draft",
+        });
+      } catch (err) {
+        console.error(`Failed to read draft ${absPath}:`, err);
+      }
+    }
+  }
+
+  return draftItems;
+}
+
 // GET: 파일의 frontmatter 읽기 또는 전체 컨텐츠 목록
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -97,6 +139,10 @@ export async function GET(req: Request) {
       }));
 
       const items = [...posts, ...articles, ...notes, ...library];
+
+      // Supplement with committed draft files that public content helpers intentionally exclude
+      const committedDraftItems = collectCommittedDraftItems(items);
+      items.push(...committedDraftItems);
 
       // Supplement with uncommitted content files from git status
       try {
