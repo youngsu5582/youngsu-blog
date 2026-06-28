@@ -1,7 +1,7 @@
 ---
-title: Why an ECS Staging Server Was Redeployed Even Though It Was Healthy
+title: Why an ECS Staging Server Was Redeployed Even Though It Looked Fine
 date: 2026-06-28
-description: A breakdown of why an ECS staging server kept getting redeployed after booting normally, focusing on healthCheckGracePeriodSeconds, container health checks, and ALB target health checks.
+description: A breakdown of why an ECS staging server was redeployed after booting normally, focusing on healthCheckGracePeriodSeconds, container health checks, and ALB target health check timing.
 categories:
   - AWS
 tags:
@@ -17,22 +17,22 @@ toc: true
 comments: true
 ---
 
-> This English version was written and translated by Hermes Agent.
+> This English version was translated by Hermes Agent.
 
 ### Three-line summary
 
-1. Just because an ECS task reaches `RUNNING` does not mean it is immediately ready to serve traffic.
-2. In an ECS service behind a load balancer, both the Container Health Check and the ALB Target Health Check must pass before the task is considered stably healthy.
+1. Just because an ECS task reaches `RUNNING` does not mean it is immediately in a healthy serving state.
+2. An ECS service behind a load balancer is only considered stably healthy after both the Container Health Check and the ALB Target Health Check pass.
 3. If you size `healthCheckGracePeriodSeconds` only around app startup time, the task can be terminated before the ALB finishes confirming consecutive successful checks.
 
-# Why an ECS Staging Server Was Redeployed Even Though It Was Healthy
+# Why an ECS Staging Server Was Redeployed Even Though It Looked Fine
 
-Recently, I had a case where a staging server went down once and was redeployed again even though there was no obvious application error.
+Recently, I ran into a case where a staging server went down once and was redeployed again even though there was no obvious application error.
 
-At first I thought, “Did the server actually die?” But after tracing the logs, it turned out that the app itself had not crashed abnormally.
-The real issue was the timing of ECS and ALB health checks, along with the `healthCheckGracePeriodSeconds` setting.
+At first, I wondered, “Did the server actually die?” But after tracing the logs, it turned out that the application itself had not crashed abnormally.
+The real issue was the timing of the ECS and ALB health checks, together with the `healthCheckGracePeriodSeconds` setting.
 
-In this post, I want to organize the settings I checked at that time and explain why the server was judged as a termination target even after it had booted normally.
+In this post, I want to walk through the settings I checked at the time and explain why the server was treated as a termination target even after it had started up normally.
 
 ## Infrastructure setup
 
@@ -43,7 +43,7 @@ The environment where this happened looked roughly like this.
 - ALB: load balancer
 
 ECS works in units of tasks.
-And the process of a task becoming alive is a little different from the process of it becoming “actually ready to receive traffic.”
+And the process of a task coming up is a little different from the process of it becoming “actually ready to receive traffic.”
 
 ## 1. ECS Task Lifecycle
 
@@ -68,7 +68,7 @@ If the work does not complete successfully, it goes back down in reverse order.
 
 > `Running -> Deactivating -> Stopping -> Deprovisioning -> Stopped`
 
-The important point here is that **`RUNNING` does not immediately mean the service is in a healthy serving state**.
+The important point here was that **`RUNNING` does not immediately mean the service is ready to serve traffic normally**.
 Even if the application process is up, it still needs to pass the health checks described next.
 
 ## 2. Container Health Check
@@ -94,13 +94,13 @@ Each option means the following.
 - `retries`: how many consecutive failures count as unhealthy
 
 This check runs **inside the container**.
-In other words, it is checking whether the application is up from the perspective of `localhost:8080`.
+In other words, it checks whether the application is up from the perspective of `localhost:8080`.
 
 The points that stood out again while reviewing this were these.
 
-- Because it is an in-container command, it does not guarantee network reachability from outside or through the ALB path.
+- Because it is an in-container command, it does not guarantee network reachability from outside the container or through the ALB path.
 - On the other hand, it can keep failing until the app is fully up.
-- If there is no `startPeriod`, failures during initial boot are still observed right away.
+- If there is no `startPeriod`, failures during initial boot are still counted from the beginning.
 
 ## 3. ALB Target Health Check
 
@@ -137,7 +137,7 @@ The important parts to remember here are these.
 - Since `HealthyThresholdCount = 3`, it takes **three consecutive successes** to become healthy.
 - Since `UnhealthyThresholdCount = 4`, it becomes unhealthy after **four consecutive failures**.
 
-For example, if the traffic port is 28080, the ALB will send requests to `/api/health` on that port every 30 seconds to check the state.
+For example, if the traffic port is 28080, the ALB sends requests to `/api/health` on that port every 30 seconds to check the target state.
 
 And this ALB check runs **in parallel** with the Container Health Check.
 That was the key part of this issue.
@@ -158,7 +158,7 @@ It evaluates both of the following.
 
 In our staging ECS service, `healthCheckGracePeriodSeconds` was set to `150s`.
 
-The problem was that **the ALB Target Health Check does not start from the moment the app becomes ready. It starts from the moment the task enters `ACTIVATING`**.
+The problem was that **the ALB Target Health Check does not start when the app is ready. It starts when the task enters `ACTIVATING`**.
 
 So the check timing can look something like this.
 
@@ -203,38 +203,38 @@ The logs at that time looked roughly like this.
 - 40:38 deployment started
 - 41:58 server finished booting
 - 43:28 server marked for termination due to ALB health check failure
-- 44:31 server received termination request
+- 44:31 server received a termination request
 - 44:35 server terminated
 
-At first, it was also a bit confusing why there was about a one-minute gap between “server marked for termination” and “termination request sent.”
+At first, it was also a bit confusing why there was about a one-minute gap between “server marked for termination” and “server received a termination request.”
 
-That part was caused by the ALB’s **deregistration delay**, in other words the draining time.
+That part was caused by the ALB’s **deregistration delay**, in other words, the draining time.
 
 Reference: [Edit target group attributes for your Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/edit-target-group-attributes.html#deregistration-delay)
 
 The target remains in the draining state until that time expires,
 and only after that does the server receive the actual termination request and shut down.
 
-## Conclusion from this review
+## What I took away from this
 
 The conclusion was simple.
 
-We need to give `healthCheckGracePeriodSeconds` more room.
+`healthCheckGracePeriodSeconds` needs to be set with more margin.
 
 More precisely, you should not set it by looking only at “application boot time.”
 You should **include the time it takes for the ALB health check to be fully confirmed as healthy**.
 
-The clearest way to think about it for me was like this.
+The clearest way to think about it, at least for me, was like this.
 
 - The ALB health check starts from `ACTIVATING`, regardless of whether the service is actually ready.
-- Normal completion only happens after **app readiness time + ALB consecutive success time** have both passed.
+- A normal successful rollout only finishes after **app readiness time + ALB consecutive success time** have both passed.
 - For example, if app boot takes 82 seconds and the ALB requires 3 successful checks at 30-second intervals, another 60 to 90 seconds may be needed before the target is stably confirmed.
 - So `healthCheckGracePeriodSeconds` should be set with more margin than that combined time.
 
 ## Wrap-up
 
 This issue was less about the server being dead,
-and more about **not giving enough time for the server to be officially recognized as healthy**.
+and more about **not giving the system enough time to officially recognize the server as healthy**.
 
 When operating ECS, it is common to first focus only on application startup time.
 But in an environment with a load balancer attached, you also need to look at the ALB health check interval and threshold.
@@ -252,4 +252,4 @@ Look at these together as well.
 - ALB Target Group Health Check interval / threshold
 - deregistration delay
 
-Looking at all four together can reveal the cause much faster than expected.
+Looking at all four together can reveal the cause much faster than you might expect.
