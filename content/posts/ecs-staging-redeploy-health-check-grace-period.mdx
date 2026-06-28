@@ -1,7 +1,7 @@
 ---
-title: ECS 스테이징 서버가 멀쩡한데 재배포되던 이유 - healthCheckGracePeriodSeconds와 ALB 헬스 체크 타이밍
+title: ECS 스테이징 서버가 정상인데 재배포된 이유 - healthCheckGracePeriodSeconds와 ALB 헬스 체크
 date: 2026-06-28
-description: ECS 스테이징 서버가 정상 부팅 후에도 내려가며 다시 배포되던 현상을 healthCheckGracePeriodSeconds, Container Health Check, ALB Target Health Check 흐름으로 정리한 글
+description: ECS 스테이징 서버가 정상 부팅 후에도 재배포되던 원인을 healthCheckGracePeriodSeconds, Container Health Check, ALB Target Health Check 타이밍으로 정리한 글
 categories:
   - AWS
 tags:
@@ -23,7 +23,7 @@ comments: true
 2. 로드밸런서를 붙인 ECS 서비스는 Container Health Check 와 ALB Target Health Check 를 모두 통과해야 안정적으로 healthy 로 간주된다.
 3. 앱 부팅 시간만 보고 `healthCheckGracePeriodSeconds` 를 잡으면, ALB 의 연속 성공 판정이 끝나기 전에 태스크가 종료될 수 있다.
 
-# ECS 스테이징 서버가 멀쩡한데 재배포되던 이유
+# ECS 스테이징 서버가 정상인데 재배포된 이유
 
 최근에 스테이징 서버가 특별한 에러 없이 한 번 내려갔다가, 다시 재배포되는 일이 있었다.
 
