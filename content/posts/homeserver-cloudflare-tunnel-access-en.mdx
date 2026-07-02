@@ -1,0 +1,458 @@
+---
+title: Opening a Homeserver Securely with Cloudflare Tunnel and Access
+date: "2026-06-12T00:00:00.000Z"
+description: How I made my homeserver services safely accessible from outside without router port forwarding, using Cloudflare Tunnel, Nginx Proxy Manager, and Cloudflare Access
+image: /assets/img/thumbnail/2026-06-12-homeserver-cloudflare-tunnel-access.png
+categories:
+  - Homeserver
+tags:
+  - homeserver
+  - cloudflare
+  - cloudflare-tunnel
+  - cloudflare-access
+  - nginx-proxy-manager
+author: Lee Youngsu
+lang: en
+draft: false
+toc: true
+comments: true
+series: AI-assisted Homelab
+---
+
+> This English version was translated by Hermes Agent.
+
+### TL;DR
+
+1. As soon as I wanted to use my homeserver services from outside my home, I had to start thinking about port forwarding and security.
+2. I split responsibilities so Cloudflare handles the external entry point, while Nginx Proxy Manager handles internal routing.
+3. With Cloudflare Access, I can put sensitive services behind an extra authentication layer and restrict them to specific users.
+
+# Opening a Homeserver Securely with Cloudflare Tunnel and Access
+
+In the previous posts, I installed Docker and Docker Compose on my homeserver and deployed several self-hosted services.
+
+- [Why I built a homeserver and how I prepared for it](/posts/homeserver-setup)
+- [Running self-hosted services on a homeserver with Docker](/posts/homeserver-docker-self-hosted-services)
+
+At that point, everything was working fine inside my home network.
+
+```text
+http://xn--ip-v41jw5m:3000
+http://xn--ip-v41jw5m:3001
+http://xn--ip-v41jw5m:8081
+```
+
+But once I started using those services more seriously, I ran into the next question pretty quickly.
+
+I wanted to access them from outside my home too. But if I was going to do that, how could I open them up safely?
+
+Some self-hosted services come with decent built-in security features, but many do not. And even when they do, managing access separately for every service gets tedious fast.
+
+Reusing the same password everywhere feels risky, but setting up different credentials for every service is also a hassle 🫠
+
+At first, I assumed simple router port forwarding would be enough. I had already used ngrok or occasional port forwarding before when I needed to expose a local server.
+
+But once I started thinking in terms of actually operating a homeserver, there turned out to be more to consider than I expected.
+
+- My home IP address can change, so I need to think about DNS updates.
+- I would have to open ports 80 and 443 on the router.
+- As I add more services, I would need to manually manage ports and domain mappings.
+- Sensitive services like admin dashboards or file browsers are risky to expose directly to the internet.
+- I would also need to handle HTTPS certificates.
+
+That is what led me to build the setup around Cloudflare.
+
+## Final architecture
+
+This is roughly what my current setup looks like.
+
+```text
+User browser
+  ↓
+Cloudflare DNS / HTTPS
+  ↓
+Cloudflare Tunnel
+  ↓
+Nginx Proxy Manager
+  ↓
+Docker services
+```
+
+What I like about this structure is that each layer has a clear role.
+
+Cloudflare handles the public-facing edge, Tunnel provides the secure connection back to my server at home, and Nginx Proxy Manager routes traffic to the right service inside the homelab.
+
+## Cloudflare
+
+Cloudflare is a global network that sits between users and servers.
+
+A lot of major services use it, and even for personal use, it offers more than I initially expected.
+
+### Features
+
+#### 1. Edge network (CDN)
+
+Cloudflare runs servers in many cities around the world.
+
+That means static resources can be served from locations closer to users, which improves response times and reduces load on the origin server. Not every request is automatically cached, of course, but it is still very different from sending all traffic straight to a server in my house.
+
+- Static asset caching
+- Reduced load on the origin server
+- Better response times for users who are physically far away
+
+#### 2. DNS management
+
+Cloudflare also provides fast and reliable DNS.
+
+- Fast global DNS resolution
+- Easy record management through the web UI
+- DNS changes usually propagate fairly quickly
+
+On top of that, if you want to fully use the features I describe below, it is much easier to move domain management to Cloudflare as well.
+
+> This does increase my dependence on Cloudflare. Still, I chose the path that felt more reliable and easier to operate than building every piece myself.
+
+#### 3. External HTTPS handling
+
+Using Cloudflare also means I do not have to manage public HTTPS certificates directly on the homeserver.
+
+That removes a lot of operational overhead around things like:
+
+- issuing public certificates on the home server,
+- renewing them before they expire,
+- and checking whether renewals failed.
+
+In my current setup, Cloudflare handles external HTTPS, while Nginx Proxy Manager stays focused on internal routing.
+
+#### 4. Security-related features
+
+Once you expose services to the internet, you start seeing all kinds of strange requests.
+
+For example:
+
+- `GET /.env`
+- attempts to probe admin paths that do not even exist
+- scanner-style requests
+- repeated or excessive requests
+
+If I wanted to handle all of that myself, I would need to manage nginx rules, firewall settings, redirects, filtering, and more. Cloudflare can absorb part of that work at the edge.
+
+- DDoS mitigation
+- WAF
+- Bot and scanner mitigation
+- Rate limiting
+- Hiding the origin server IP
+
+> The exact scope of these features depends on the pricing plan and product tier.
+
+#### 5. Extra features
+
+Cloudflare also gives me tools like Cloudflare Tunnel and Cloudflare Access, both of which would be fairly cumbersome to build on my own.
+
+Honestly, those two features were the main reason I centered the whole setup around Cloudflare.
+
+### Managing a domain with Cloudflare DNS
+
+If you already bought a domain from a registrar, the overall process looks roughly like this:
+
+```text
+1. Add the domain to Cloudflare
+2. Check the two nameservers Cloudflare gives you
+3. Change the nameservers at your domain registrar to Cloudflare's
+4. Wait until the domain becomes Active in Cloudflare
+5. Manage DNS records in Cloudflare from that point on
+```
+
+## Cloudflare Tunnel
+
+The usual shape of a request looks like this:
+
+`user → my domain → public IP → port forwarding → homeserver`
+
+In other words, traffic comes directly inbound from the internet to the server in my house.
+
+With Tunnel, that direction changes a bit.
+
+```text
+Homeserver → Cloudflare Tunnel → Cloudflare
+User → Cloudflare → Tunnel → Homeserver
+```
+
+The important shift is that the connection starts from the homeserver side first.
+
+That has some meaningful advantages.
+
+- I do not need to open ports 80 or 443 directly on the router.
+- I do not have to expose my public IP address.
+- It is much easier to live with a dynamic home IP.
+- It becomes easier to control public exposure from the Cloudflare side.
+
+Of course, service-level authentication, authorization, and vulnerability management are still separate concerns. Tunnel does not magically solve all security issues, but it does remove a lot of the risk and inconvenience that comes from exposing a home server directly to the internet.
+
+### Installation and setup
+
+After creating a Tunnel in the Cloudflare dashboard, I connected my homeserver by running `cloudflared` as a container.
+
+```yaml
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    external: true
+```
+
+Needless to say, the actual token should never be left in code or pasted directly into a blog post. In real operation, it is better to keep it in `.env` or a separate secret file.
+
+If the container shows `healthy`, the connection is working as expected.
+
+### Applied use case: Tunnel for SSH
+
+Right now, SSH is only available from inside my local network.
+
+- [See part 1](/posts/homeserver-setup#4-%EC%99%B8%EB%B6%80-%EB%84%A4%ED%8A%B8%EC%9B%8C%ED%81%AC%EC%97%90%EC%84%9C%EC%9D%98-ssh-%EC%A0%91%EC%86%8D)
+
+But this can also be opened up through Cloudflare Tunnel.
+
+```config
+Host homeserver
+  HostName {Route path}
+  User {login username}
+  IdentityFile ~/.ssh/{private key filename}
+  IdentitiesOnly yes
+  ProxyCommand cloudflared access ssh --hostname %h
+```
+
+You can add something like this to `.ssh/config`.
+
+- `HostName`: the hostname or route you actually want to connect to
+- `ProxyCommand`: establishes the SSH connection through Cloudflare Access authentication
+
+With this approach, SSH is tunneled through the `cloudflared` process instead of exposing a raw TCP port directly. That means I do not need to expose my server's public IP or open the SSH port to the internet.
+
+## Tunnel + Nginx Proxy Manager
+
+Cloudflare Tunnel can also connect directly to each service.
+
+For example:
+
+```text
+home.example.com  → http://homepage:3000
+files.example.com → http://filebrowser:80
+```
+
+At first, that looked simple enough. But as the number of services grows, it means I would have to manage external routing one by one from the Cloudflare side.
+
+I wanted to manage internal routing in one place instead, so I chose to put Nginx Proxy Manager (NPM) in the middle.
+
+> Not Node Package Manager.
+
+### Sample Nginx Proxy Manager compose
+
+```yaml
+services:
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: npm
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "81:81"
+      - "443:443"
+
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    external: true
+```
+
+A few details are worth understanding here.
+
+- `ports`
+  - Binds the NPM admin UI and proxy ports to the host
+- `volumes`
+  - `/data` stores the actual settings and database
+  - `/etc/letsencrypt` stores NPM certificates, although in my current setup it is mostly there as a fallback
+- `networks`
+  - `homelab` is a shared network that multiple containers can join
+  - `external: true` means this compose file uses an already existing network instead of creating a new one
+
+With NPM in place, the external layer can look like this:
+
+```text
+home.example.com   → http://npm:80
+files.example.com  → http://npm:80
+status.example.com → http://npm:80
+admin.example.com  → http://npm:80
+```
+
+Then inside NPM, requests are routed again to each backend service.
+
+```text
+home.example.com   → homepage:3000
+files.example.com  → filebrowser:80
+status.example.com → uptime-kuma:3001
+admin.example.com  → youngsu-blog-admin:3000
+```
+
+This makes the separation of responsibilities much cleaner.
+
+- Cloudflare: public entry point
+- Tunnel: connection back to the homeserver
+- NPM: internal routing management
+
+And NPM is clearly convenient in practice too.
+
+- It is easy to change upstream targets per service
+- WebSocket-related options can be handled in the UI
+- Temporary protection like Basic Auth is easy to add
+- Services can talk over the Docker network using `http://container-name:port`
+
+That is why I use Cloudflare as the front door and NPM as the internal reception desk.
+
+## Cloudflare Access
+
+Once Cloudflare Tunnel is working, exposing services externally becomes very easy. But that convenience also makes it easier to expose sensitive services by accident.
+
+So I wanted another layer of protection in front of those services.
+
+That is exactly what Cloudflare Access gives me.
+
+For example, I can apply it to domains like these:
+
+```text
+files.example.com
+admin.example.com
+docs.example.com
+batch.example.com
+sync.example.com
+```
+
+The request flow looks like this:
+
+```text
+User
+  ↓
+https://admin.example.com
+  ↓
+Cloudflare Access authentication
+  ↓
+Authentication succeeds
+  ↓
+Cloudflare Tunnel
+  ↓
+NPM
+  ↓
+admin service
+```
+
+In practice, this means users have to pass an identity check before they ever reach the service itself.
+
+## Signing in to Access with Google OAuth
+
+Cloudflare Access supports multiple login methods.
+
+I chose Google OAuth because it is easy for me to manage through a Google account, and it also seemed like the simplest option if I later wanted to allow access only to specific people.
+
+The overall flow looks like this:
+
+```text
+1. Check the Team domain in Cloudflare Zero Trust
+2. Create an OAuth client in Google Cloud Console
+3. Register the authorized redirect URI
+4. Add Google as a login method in Cloudflare Zero Trust
+5. Create an Access Application
+6. Add only my email to the Allow policy
+```
+
+### 1. Check the Team domain
+
+In Cloudflare `Zero Trust`, you can find your team domain. You will need this value later when configuring the Google OAuth redirect URI.
+
+### 2. Create an OAuth client in Google Cloud Console
+
+In Google Cloud Console, go to `APIs & Services` → `Credentials`, then create an `OAuth client ID`.
+
+I chose `Web application` as the application type.
+
+### 3. Register the redirect URI
+
+Register the redirect URI using the team domain you checked earlier.
+
+```text
+https://<team-domain>.cloudflareaccess.com/cdn-cgi/access/callback
+```
+
+This value needs to match exactly. If it does not, you will run into errors like `redirect_uri_mismatch`.
+
+### 4. Add Google as a login method in Cloudflare
+
+In Cloudflare Zero Trust, add Google as one of the login methods.
+
+At that point, you just need to enter the values issued by Google:
+
+- Client ID
+- Client secret
+
+> The Cloudflare UI changes from time to time, so finding the exact menu can be a little confusing.
+
+### 5. Create an Access Application
+
+Now create the actual application you want to protect.
+
+For example, if you want to protect `home.example.today`:
+
+- subdomain: `home`
+- domain: `example.today`
+
+You can configure it that way.
+
+If you only want to protect a specific path, Cloudflare Access can also be applied at the path level.
+
+### 6. Create an allow policy
+
+Finally, create the allow policy.
+
+For example:
+
+- allowed email: only my Gmail account
+- session duration: something reasonable like one week or one month
+
+That is enough to get started.
+
+If you see a Google login screen in the browser, or a message like `to continue to cloudflareaccess.com`, then the setup is working properly.
+
+## Wrapping up
+
+Setting up the homeserver itself and deploying Docker services onto it was already a fun process.
+
+But the moment I attached a real domain and made those services reachable from the internet, I needed a more deliberate baseline for security and operations.
+
+For me, Cloudflare provided that boundary.
+
+```text
+Cloudflare Tunnel
+→ lets me expose services externally without opening up my home server directly
+
+Nginx Proxy Manager
+→ routes multiple Docker services by domain
+
+Cloudflare Access
+→ adds an authentication barrier in front of services so only specific users can reach them
+```
+
+Because of that, my homeserver no longer feels like a machine that only works inside my house. It feels much closer to personal infrastructure: some services available from outside when I need them, and sensitive ones kept behind explicit access controls.
+
+Next, I want to write about how I set up Hermes Agent on the homeserver and how I actually use it in practice.
