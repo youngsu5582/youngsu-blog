@@ -197,6 +197,8 @@ Cloudflare Tunnel, Cloudflare Access처럼 개인이 직접 구현하면 꽤 번
 
 Cloudflare 대시보드에서 Tunnel을 만든 뒤, 홈서버에서는 `cloudflared` 컨테이너를 띄우는 방식으로 붙였다.
 
+![image](https://d1apvpgu6ekv4q.cloudfront.net/565c0c58462ca6ddc9d69dfc1104d3fa.png)
+
 ```yaml
 services:
   cloudflared:
@@ -213,6 +215,8 @@ networks:
 ```
 
 실제 토큰 값은 당연히 코드나 글에 그대로 남기면 안 된다. 운영할 때도 `.env`나 별도 secret 파일로 분리하는 것이 좋다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/534168c7577dc100eb7ea8c83ede0f66.png)
 
 컨테이너 상태에서 `healthy`가 보이면 연결이 잘 된 상태다.
 
@@ -385,9 +389,13 @@ Cloudflare Access는 여러 로그인 방식을 지원한다.
 
 Cloudflare에서 `Zero Trust`로 들어가면 팀 도메인을 확인할 수 있다. 이 값은 뒤에서 Google OAuth redirect URI에 들어간다.
 
+![image](https://d1apvpgu6ekv4q.cloudfront.net/ea7ab6694a25e4c2e664219452efade3.png)
+
 ### 2. Google Cloud Console에서 OAuth Client 생성
 
 Google Cloud Console에서 `API 및 서비스` → `사용자 인증 정보`로 들어간 다음, `OAuth 클라이언트 ID`를 만든다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/d291ecc2f63df0dc5454f670aae7d84b.png)
 
 애플리케이션 유형은 `웹 애플리케이션`으로 선택했다.
 
@@ -399,11 +407,15 @@ Google Cloud Console에서 `API 및 서비스` → `사용자 인증 정보`로 
 https://<team-domain>.cloudflareaccess.com/cdn-cgi/access/callback
 ```
 
+![image](https://d1apvpgu6ekv4q.cloudfront.net/21e32199e6b12a5b2da4e3adc1564bc2.png)
+
 이 값을 정확히 넣어야 한다. 여기서 틀리면 `redirect_uri_mismatch` 같은 오류가 난다.
 
 ### 4. Cloudflare에 Google Login Method 추가
 
 Cloudflare Zero Trust에서 Google을 로그인 방식으로 추가한다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/874df44106f66b2beae2ec47042d06e8.png)
 
 이때 Google에서 발급받은:
 
@@ -412,16 +424,22 @@ Cloudflare Zero Trust에서 Google을 로그인 방식으로 추가한다.
 
 을 입력하면 된다.
 
+![image](https://d1apvpgu6ekv4q.cloudfront.net/647fea2a78cc7877a10da41bec647100.png)
+
 > 중간에 UI가 바뀌어서 메뉴를 찾기 조금 헷갈릴 수 있다.
 
 ### 5. Access Application 생성
 
 이제 실제 보호할 애플리케이션을 만든다.
 
+![image](https://d1apvpgu6ekv4q.cloudfront.net/4e0c17ed9051b80552fb73c5ed7cc562.png)
+
 예를 들어 `home.example.today`를 보호하고 싶다면:
 
 - 하위 도메인: `home`
 - 도메인: `example.today`
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/49fc6a284067b26bd4fb21e8773a13bc.png)
 
 로 지정하면 된다.
 
@@ -431,6 +449,8 @@ Cloudflare Zero Trust에서 Google을 로그인 방식으로 추가한다.
 
 마지막으로 허용 정책을 만든다.
 
+![image](https://d1apvpgu6ekv4q.cloudfront.net/3b0bde9bbb9912fdc30b96ab2b05130f.png)
+
 예를 들어:
 
 - 허용 이메일: 내 Gmail 한 개만
@@ -438,7 +458,11 @@ Cloudflare Zero Trust에서 Google을 로그인 방식으로 추가한다.
 
 이런 식으로 설정할 수 있다.
 
+![image](https://d1apvpgu6ekv4q.cloudfront.net/fc515ed75019e1bff9bac02f7571de9f.png)
+
 브라우저에서 접속했을 때 Google 로그인 화면이나 `to continue to cloudflareaccess.com` 류의 안내가 뜨면 정상적으로 붙은 것이다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/70365fbf6261da2d060c09bc4b5e4907.png)
 
 ## 마무리
 
