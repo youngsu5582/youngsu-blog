@@ -5,7 +5,7 @@
   "scripts": {
     "velite": "velite",
     "dev": "velite dev & next dev",
-    "build": "velite --clean && next build",
+    "build": "velite --clean && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
