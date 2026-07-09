@@ -1,0 +1,211 @@
+---
+title: Spring Boot 3.5로 올렸더니 multipart 요청이 터진 이야기
+date: "2026-07-06T00:00:00.000Z"
+description: Spring Boot 3.5 업그레이드 후 multipart/form-data 요청이 갑자기 실패한 원인을 추적하며, 내장 Tomcat의 새 part 제한과 @ModelAttribute 대신 JSON 파트 설계로 바꾼 과정을 정리한 글
+categories:
+  - Spring
+tags:
+  - spring-boot
+  - spring-boot 3.5
+  - tomcat
+  - multipart
+  - troubleshooting
+image: /assets/img/thumbnail/2026-07-06-spring-boot-3-5-multipart-request-broken-by-tomcat-part-limit.png
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+---
+
+### 3줄 요약
+
+1. Spring Boot 3.5 라인으로 올리면서 같이 올라온 Tomcat 10.1.4x 계열에 multipart part 제한이 생겼다.
+2. `@ModelAttribute` 로 중첩 구조를 폼 필드로 펼치면 파일이 거의 없어도 part 수가 금방 커진다.
+3. 한도를 높여 임시 봉합할 수는 있지만, 구조화 데이터는 `@RequestPart` JSON 한 파트로 보내는 쪽이 더 근본적인 해결이다.
+
+# Spring Boot 3.5로 올렸더니 multipart 요청이 터진 이야기
+
+Spring Boot 를 3.4 에서 3.5 로 올린 뒤, staging 에서 일부 `multipart/form-data` 요청이 갑자기 500 을 내기 시작했다.
+
+처음에는 Spring 쪽 바인딩이나 검증, Jackson 동작이 달라졌나 싶었다. 그런데 원인을 따라가 보니 범인은 스프링이 아니라 **내장 Tomcat** 이었다.
+
+이번 글은 그 원인을 추적한 과정과, 설정만 올려서 덮지 않고 multipart 요청 구조 자체를 바꾼 이유를 정리한 기록이다.
+
+## 업그레이드 자체는 평범해 보였다
+
+Spring Boot 4 로 가기 전에, 먼저 3.4 에서 3.5 로 마이너 업그레이드를 진행했다.
+
+3.4.x 에서 3.5.14 까지의 변경 내역을 훑어보면서 주의할 점을 정리했다. 눈에 띄는 건 주로 라이브러리 버전 변경이었고, 애플리케이션 로직에 직접 영향을 줄 만한 큰 변화는 없어 보였다.
+
+- Spring Boot 4 에서 제거될 deprecated 코드 정리
+- Converter 의존 순서 변화로 인한 초기화 에러를 피하기 위해 `ObjectProvider` 로 변경
+- Spring Cloud 버전 조정
+
+개발 서버에 배포하고 E2E 도 통과했다. 그래서 큰 문제는 없을 거라고 생각했다.
+
+그런데 staging 에서 일부 multipart 요청이 500 을 응답하기 시작했다.
+
+## Tomcat 이 조용히 바뀌었다
+
+Spring Boot 3.5.x 는 내장 Tomcat 을 10.1.4x ~ 10.1.5x 대로 끌어올린다.
+
+이 버전대에서는 `CVE-2025-48988`, `CVE-2025-48976` 대응으로 multipart 처리 제한이 새로 들어왔다.
+
+- [CVE-2025-48988](https://www.cve.org/CVERecord?id=CVE-2025-48988): multipart 요청의 part 개수가 사실상 무제한이어서, 많은 part 를 가진 요청으로 메모리 고갈을 유발할 수 있었다.
+- [CVE-2025-48976](https://www.cve.org/CVERecord?id=CVE-2025-48976): multipart part 헤더 크기에 제한이 없어, 큰 헤더를 반복해서 붙인 요청으로 메모리 고갈을 유발할 수 있었다.
+
+### part 는 무엇을 세는가
+
+`multipart/form-data` 는 요청 본문을 여러 조각(part) 으로 나눠 담는 방식이다.
+
+```
+Content-Type: multipart/form-data; boundary=----X <- 요청 전체 헤더
+
+------X                                 ← boundary (조각 시작)
+Content-Disposition: form-data; name="title"
+Content-Type: text/plain                ← 파트 헤더
+
+도박 근절 영상                           ← 파트 본문
+------X                                 ← boundary (다음 조각)
+```
+
+여기서 중요한 건, **중첩 객체를 폼 필드로 펼친 각 요소도 각각 하나의 part 로 취급된다는 점**이다.
+
+```
+------X
+Content-Disposition: form-data; name="imageList[0].role"
+
+REFERENCE
+------X
+Content-Disposition: form-data; name="imageList[0].info.subType"
+
+other
+------X
+```
+
+즉, 필드가 6개인 객체 5개를 배열로 보내면 part 개수는 금방 30개가 된다.
+
+이 변화 이후 Tomcat 에는 다음과 같은 제한이 생겼다.
+
+- `maxPartCount`: 한 요청에 허용되는 **part 개수** 상한
+- `maxPartHeaderSize`: part 하나당 헤더 크기 상한
+
+> - `maxPartCount` 는 처음 도입될 때 기본값이 10 이었다.
+> - 이후 Tomcat 10.1.43 에서 기본값이 50 으로 올라갔다.
+
+이 제한을 초과하면 애플리케이션 코드까지 도달하기 전에 multipart 처리 단계에서 실패한다.
+
+내 경우에도 최종적으로는 아래 예외로 관측됐다.
+
+> `org.springframework.web.multipart.MaxUploadSizeExceededException: Maximum upload size exceeded`
+
+이 메시지만 보면 파일 크기 문제처럼 보이지만, 실제 원인은 **파일 용량이 아니라 part 개수 초과**였다.
+
+### 왜 놓쳤는가
+
+버전 업그레이드 때는 보통 [릴리즈 노트](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-3.5-Release-Notes) 를 먼저 확인한다.
+
+그런데 여기에는 Tomcat 쪽 multipart 제한 변화가 눈에 띄게 드러나 있지 않았다. Miscellaneous 섹션에 아래 정도만 있었다.
+
+```
+Tomcat connector’s max parameter count can be configured using the server.tomcat.max-parameter-count property.
+```
+
+그래서 나도 큰 문제는 없을 거라고 생각했다.
+
+사후 분석을 하다가 [Spring Boot 3.5.11 available now](https://spring.io/blog/2026/02/19/spring-boot-3-5-11-available-now) 글의 댓글에서 CVE 반영 언급을 확인했다.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/ee463ed5cdcc3b2c465f423822b54ed7.png)
+
+결국 교훈은 단순했다. 업그레이드 리스크는 프레임워크 API 변경만 보면 안 되고, 그 아래의 **내장 서버 기본 정책 변화**까지 같이 봐야 한다.
+
+## 대응 방향은 두 가지였다
+
+이 상황에서 선택지는 크게 두 가지였다.
+
+### 1. 한도를 올린다
+
+```yaml
+server:
+  tomcat:
+    max-part-count: 200
+```
+
+설정 한 줄로 당장의 장애를 멈출 수 있다. 운영 관점에서는 가장 빠른 응급조치다.
+
+다만 이건 어디까지나 **완화책**에 가깝다. 구조화된 데이터를 계속 폼 필드 여러 개로 펼쳐 보내는 한, 데이터가 커질수록 part 수는 다시 늘어난다.
+
+### 2. JSON part 로 바꾼다
+
+근본적으로는 요청 구조를 바꾸는 게 맞다고 봤다.
+
+문제의 뿌리는 Tomcat 이 아니라, **구조화된 데이터를 폼 필드로 모두 펼쳐 보낸 설계**에 있었다. 폼 필드(name-value) 는 평평한 데이터를 담기에는 편하지만, 중첩 객체나 가변 배열을 표현하기에는 잘 맞지 않는다.
+
+스프링 공식 문서도 비슷한 방향을 이야기한다.
+
+> `@RequestParam` 은 name-value 폼 필드에, `@RequestPart` 는 JSON·XML 같은 더 복잡한 콘텐츠에 쓴다.
+
+`@RequestPart` 는 `@RequestBody` 의 part 버전이라고 보면 된다. 즉, 각 part 하나를 `HttpMessageConverter` 를 통해 객체로 역직렬화한다.
+
+그래서 구조화된 본문 전체는 JSON part 하나로 보내고, 파일이 필요하면 별도의 바이너리 part 로 붙이는 방식이 더 자연스럽다.
+
+## 바꾼 결과
+
+**Before — 필드마다 part (part 수 = 데이터에 비례)**
+
+```java
+@PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<?> update(@ModelAttribute @Validated UpdateRequest dto) { ... }
+```
+
+```js
+imageList.forEach((img, i) => {
+  fd.append(`imageList[${i}].uuid`, img.uuid);
+  fd.append(`imageList[${i}].role`, img.role);
+  // ... 항목마다 여러 줄
+});
+```
+
+**After — JSON part 하나 (part 수 = 1 + 파일 수)**
+
+```java
+@PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<?> update(
+        @RequestPart("data") @Validated UpdateRequest dto,
+        @RequestPart(value = "files", required = false) List<MultipartFile> files) { ... }
+```
+
+```js
+const fd = new FormData();
+fd.append('data', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+files.forEach((f) => fd.append('files', f));
+```
+
+여기서 포인트는 `data` part 에 `Content-Type: application/json` 이 붙어야, Spring 이 이를 JSON 으로 역직렬화할 수 있다는 점이다.
+
+이제 part 수는 데이터 크기와 무관하게 `1 + 파일 수` 로 고정된다.
+
+씬이 100개든 이미지가 30장이든, 구조화 텍스트(JSON) 는 part 하나에 들어간다. 그래서 `maxPartCount` 같은 제한에 다시 걸릴 가능성이 크게 줄어든다.
+
+물론 모든 multipart API 를 이런 식으로 바꿔야 한다는 뜻은 아니다. 단순한 폼 필드 몇 개와 파일 몇 개 정도라면 기존 `@ModelAttribute + multipart/form-data` 도 충분히 쓸 만하다.
+
+하지만 **가변 길이 배열, 중첩 객체, 반복 필드가 많은 요청**이라면, 처음부터 JSON part + file part 구조로 설계하는 쪽이 더 안전하다고 느꼈다.
+
+## 마무리
+
+이번 일을 겪고 나서 남은 교훈은 두 가지였다.
+
+첫째, 버전 업그레이드는 릴리즈 노트에 적힌 공개 API 변경만 보는 작업이 아니다.
+
+프레임워크 아래에 있는 내장 서버, 보안 패치, 기본 제한값 같은 것들이 조용히 동작을 바꾸고, 그 조용한 변화가 실제 장애로 이어질 수 있다.
+
+그래서 업그레이드 자체만큼이나 **빠르게 감지하고, 필요하면 바로 롤백할 수 있는 환경**이 중요하다고 느꼈다. 감지만 되면 로컬 재현과 원인 추적은 상대적으로 빠르게 할 수 있다.
+
+둘째, 외부 변경은 우리 코드에 이미 있던 **약한 설계**를 드러내는 방아쇠가 되기도 한다.
+
+처음에는 “multipart 요청의 part 개수를 갑자기 제한한다고?” 싶었지만, 다시 보니 `@ModelAttribute` 기반 multipart 요청에 중첩 구조를 flat 하게 펼쳐 보내는 방식 자체가 오래 버티기 좋은 설계는 아니었다.
+
+결국 이번 이슈는 Tomcat 변경 때문에 생긴 장애이면서도, 동시에 우리 요청 구조를 다시 보게 만든 계기였다.
+
+혹시 Spring Boot 버전을 3.5 이상으로 올리면서 multipart 요청이 갑자기 깨진다면, 파일 크기만 보지 말고 **part 개수 제한**도 같이 확인해 보면 좋겠다.
