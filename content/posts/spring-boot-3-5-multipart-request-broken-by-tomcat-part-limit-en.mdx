@@ -1,0 +1,211 @@
+---
+title: Upgrading to Spring Boot 3.5 Broke Our multipart Requests
+date: "2026-07-06T00:00:00.000Z"
+description: A write-up of how multipart/form-data requests suddenly started failing after upgrading to Spring Boot 3.5, why the real cause was Tomcat's new part limits, and why I switched from @ModelAttribute to a JSON part design.
+categories:
+  - Spring
+tags:
+  - spring-boot
+  - spring-boot 3.5
+  - tomcat
+  - multipart
+  - troubleshooting
+image: /assets/img/thumbnail/2026-07-06-spring-boot-3-5-multipart-request-broken-by-tomcat-part-limit.png
+author: Lee Youngsu
+lang: en
+draft: true
+toc: true
+comments: true
+---
+
+### Summary in 3 lines
+
+1. Moving to the Spring Boot 3.5 line also pulled in Tomcat 10.1.4x, which introduced multipart part limits.
+2. If you flatten nested structures into form fields with `@ModelAttribute`, the number of parts grows quickly even when there are barely any files.
+3. Raising the limit can be a temporary band-aid, but sending structured data as a single JSON part with `@RequestPart` is the more fundamental fix.
+
+# Upgrading to Spring Boot 3.5 Broke Our multipart Requests
+
+After upgrading Spring Boot from 3.4 to 3.5, some `multipart/form-data` requests suddenly started returning 500s in staging.
+
+At first I suspected something had changed in Spring binding, validation, or Jackson. But once I traced it down, the real culprit was not Spring at all. It was the **embedded Tomcat**.
+
+This post is a record of how I tracked that down, and why I decided not to stop at a config-only workaround but to change the multipart request structure itself.
+
+## The upgrade itself looked ordinary
+
+Before moving to Spring Boot 4, I first did a minor upgrade from 3.4 to 3.5.
+
+I reviewed the changes from 3.4.x up to 3.5.14. Most of what stood out looked like library version bumps, and there did not seem to be any major application-level changes that would directly affect our business logic.
+
+- Cleaning up deprecated code that will be removed in Spring Boot 4
+- Switching to `ObjectProvider` to avoid initialization issues caused by converter dependency ordering changes
+- Adjusting the Spring Cloud version
+
+It deployed fine on the development server, and E2E tests also passed. So I assumed there would not be any major issue.
+
+Then some multipart requests in staging started returning 500.
+
+## Tomcat changed quietly
+
+Spring Boot 3.5.x pulls the embedded Tomcat up into the 10.1.4x to 10.1.5x range.
+
+In that version line, multipart processing limits were introduced as part of the response to `CVE-2025-48988` and `CVE-2025-48976`.
+
+- [CVE-2025-48988](https://www.cve.org/CVERecord?id=CVE-2025-48988): the number of parts in a multipart request was effectively unbounded, so requests with a huge number of parts could exhaust memory.
+- [CVE-2025-48976](https://www.cve.org/CVERecord?id=CVE-2025-48976): multipart part headers had no size limit, so repeating large headers across many parts could also exhaust memory.
+
+### What exactly counts as a part?
+
+`multipart/form-data` sends a request body as multiple pieces.
+
+```
+Content-Type: multipart/form-data; boundary=----X <- request-level header
+
+------X                                 ← boundary (part begins)
+Content-Disposition: form-data; name="title"
+Content-Type: text/plain                ← part header
+
+Stop gambling video                     ← part body
+------X                                 ← boundary (next part)
+```
+
+The important detail here is that **every field created by flattening a nested object into form fields is also treated as its own part**.
+
+```
+------X
+Content-Disposition: form-data; name="imageList[0].role"
+
+REFERENCE
+------X
+Content-Disposition: form-data; name="imageList[0].info.subType"
+
+other
+------X
+```
+
+So if you send an array of 5 objects and each object has 6 fields, you can easily end up with 30 parts.
+
+After this change, Tomcat introduced limits such as these:
+
+- `maxPartCount`: the maximum **number of parts** allowed in a single request
+- `maxPartHeaderSize`: the maximum header size for each part
+
+> - `maxPartCount` was introduced with a default of 10.
+> - Later, Tomcat 10.1.43 raised the default to 50.
+
+If you exceed that limit, the request can fail in multipart processing before it ever reaches your application code.
+
+In my case, the final exception showed up like this.
+
+> `org.springframework.web.multipart.MaxUploadSizeExceededException: Maximum upload size exceeded`
+
+That message looks like a file-size problem at first glance, but the real issue was **not file size but the number of parts**.
+
+### Why I missed it
+
+When upgrading versions, I usually start with the [release notes](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-3.5-Release-Notes).
+
+But the multipart-limit change on the Tomcat side was not surfaced prominently there. In the Miscellaneous section, I mainly saw a note like this:
+
+```
+Tomcat connector’s max parameter count can be configured using the server.tomcat.max-parameter-count property.
+```
+
+So I assumed there would not be any major problem.
+
+Later, while doing a postmortem, I found a mention that the CVE response had been included in the comments of [Spring Boot 3.5.11 available now](https://spring.io/blog/2026/02/19/spring-boot-3-5-11-available-now).
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/ee463ed5cdcc3b2c465f423822b54ed7.png)
+
+In the end, the lesson was simple: upgrade risk is not only about public framework API changes. You also have to watch for **default-policy changes in the embedded server underneath it**.
+
+## I had two response options
+
+At that point, the options were basically these two.
+
+### 1. Raise the limit
+
+```yaml
+server:
+  tomcat:
+    max-part-count: 200
+```
+
+A single config line can stop the incident immediately. From an operations standpoint, it is the fastest emergency response.
+
+But this is still only a **mitigation**. As long as structured data keeps being flattened into many form fields, the number of parts will keep growing with the size of the data.
+
+### 2. Switch to a JSON part
+
+Fundamentally, I felt the right answer was to change the request structure.
+
+The root problem was not Tomcat itself, but the **design that sent structured data by flattening it into many form fields**. Name-value form fields are convenient for flat data, but they are not a great fit for nested objects or variable-length arrays.
+
+The Spring documentation points in the same direction.
+
+> Use `@RequestParam` for name-value form fields and `@RequestPart` for more complex content such as JSON or XML.
+
+You can think of `@RequestPart` as the part-level version of `@RequestBody`. Each part is deserialized through an `HttpMessageConverter`.
+
+So it is much more natural to send the full structured payload as one JSON part and attach files as separate binary parts when needed.
+
+## What changed
+
+**Before — one part per field (part count grows with the data)**
+
+```java
+@PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<?> update(@ModelAttribute @Validated UpdateRequest dto) { ... }
+```
+
+```js
+imageList.forEach((img, i) => {
+  fd.append(`imageList[${i}].uuid`, img.uuid);
+  fd.append(`imageList[${i}].role`, img.role);
+  // ... several more lines for each item
+});
+```
+
+**After — one JSON part (part count = 1 + file count)**
+
+```java
+@PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<?> update(
+        @RequestPart("data") @Validated UpdateRequest dto,
+        @RequestPart(value = "files", required = false) List<MultipartFile> files) { ... }
+```
+
+```js
+const fd = new FormData();
+fd.append('data', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+files.forEach((f) => fd.append('files', f));
+```
+
+The key detail is that the `data` part needs `Content-Type: application/json`, so Spring knows to deserialize it as JSON.
+
+Now the number of parts stays fixed at `1 + file count`, no matter how large the structured payload becomes.
+
+Whether there are 100 scenes or 30 images, the structured text lives inside a single JSON part. That makes it much less likely to hit limits such as `maxPartCount` again.
+
+Of course, that does not mean every multipart API should be rewritten this way. If you only have a few simple form fields and a few files, the traditional `@ModelAttribute + multipart/form-data` combination can still be perfectly fine.
+
+But if the request includes **variable-length arrays, nested objects, or many repeated fields**, designing it as JSON part + file parts from the beginning feels much safer.
+
+## Closing thoughts
+
+After this incident, I was left with two takeaways.
+
+First, a version upgrade is not just about checking the public API changes listed in the release notes.
+
+Things like embedded servers, security patches, and default limits can quietly change runtime behavior, and that quiet change can turn into a real incident.
+
+That made me appreciate how important it is to have an environment where you can **detect issues quickly and roll back immediately if needed**. Once the issue is detected, reproducing it locally and tracing the root cause is relatively straightforward.
+
+Second, external changes can become the trigger that reveals a **weak design that was already present in your code**.
+
+At first my reaction was, “They suddenly limited the number of parts in multipart requests?” But after stepping back, I realized that using `@ModelAttribute` with a multipart request and flattening nested structures into many parts was not a design that would age well anyway.
+
+So in the end, this incident was caused by a Tomcat change, but it also became a useful opportunity to re-evaluate the request structure itself.
+
+If your multipart requests suddenly break after upgrading to Spring Boot 3.5 or later, it is worth checking **part count limits**, not just file sizes.
