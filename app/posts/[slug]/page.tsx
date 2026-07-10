@@ -74,7 +74,10 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
       title: post.title,
       description: post.description,
       type: "article",
+      url: postUrl,
+      locale: post.lang === "en" ? "en_US" : "ko_KR",
       publishedTime: post.date,
+      modifiedTime: post.updated ?? post.date,
       authors: [post.author],
       images: post.image ? [absoluteSiteUrl(post.image)] : undefined,
     },
@@ -195,6 +198,7 @@ export default async function PostPage({ params }: PostPageProps) {
     title: post.title,
     description: post.description,
     datePublished: post.date,
+    dateModified: post.updated,
     author: post.author,
     image: post.image,
     url: postUrl,
@@ -224,7 +228,7 @@ export default async function PostPage({ params }: PostPageProps) {
       <ReadingProgress />
       <ReadingPosition slug={slug} />
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-10">
-        <article className="min-w-0">
+        <article className="min-w-0" lang={post.lang === "en" ? "en" : undefined}>
           <Breadcrumbs
             items={[
               { label: "포스트", href: "/posts" },

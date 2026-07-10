@@ -1,6 +1,13 @@
 import { getAllPosts, getUrlSlug, type Post } from "@/lib/content";
 import { siteConfig } from "@/config/site";
 
+// RSS 리더는 상대 경로를 해석할 기준이 없으므로 절대 URL로 변환
+function toFeedHtml(html: string) {
+  return html
+    .replaceAll('src="/', `src="${siteConfig.url}/`)
+    .replaceAll('href="/', `href="${siteConfig.url}/`);
+}
+
 export async function GET() {
   // 영어 포스트만 포함 (articles와 notes는 lang 필드가 없으므로 제외)
   const posts = getAllPosts("en");
@@ -10,7 +17,7 @@ export async function GET() {
       <title><![CDATA[${post.title}]]></title>
       <link>${siteConfig.url}/posts/${getUrlSlug(post.slug)}</link>
       <description><![CDATA[${post.description || ""}]]></description>
-      <content:encoded><![CDATA[${post.body}]]></content:encoded>
+      <content:encoded><![CDATA[${toFeedHtml(post.html)}]]></content:encoded>
       <pubDate>${new Date(post.date).toUTCString()}</pubDate>
       <guid isPermaLink="true">${siteConfig.url}/posts/${getUrlSlug(post.slug)}</guid>
     </item>

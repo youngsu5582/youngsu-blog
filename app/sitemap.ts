@@ -73,7 +73,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
     return {
       url: `${siteConfig.url}/posts/${getUrlSlug(post.slug)}`,
-      lastModified: new Date(post.date),
+      lastModified: new Date(post.updated ?? post.date),
       changeFrequency: "monthly" as const,
       priority: 0.8,
       ...(languageAlternates ? { alternates: { languages: languageAlternates } } : {}),
@@ -186,12 +186,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.7,
     },
-    {
-      url: `${siteConfig.url}/search`,
-      lastModified: latestSiteDate,
-      changeFrequency: "weekly",
-      priority: 0.7,
-    },
+    // NOTE: /search(사이트 내 검색 결과 페이지)는 색인 대상이 아니므로 sitemap에서 제외
     {
       url: `${siteConfig.url}/series`,
       lastModified: latestPostDate,

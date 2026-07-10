@@ -10,6 +10,7 @@ const posts = defineCollection({
   schema: s.object({
     title: s.string(),
     date: s.isodate(),
+    updated: s.isodate().optional(),
     description: s.string().optional().default(""),
     categories: s.array(s.string()).default([]),
     tags: s.array(s.string()).default([]),
@@ -26,6 +27,8 @@ const posts = defineCollection({
     related: s.array(s.string()).default([]),
     slug: s.path(),
     body: s.mdx(),
+    // RSS content:encoded 용 정적 HTML — body(컴파일된 MDX JS)는 피드에 넣을 수 없음
+    html: s.markdown(),
     metadata: s.metadata(),
   }),
 });
@@ -46,6 +49,7 @@ const articles = defineCollection({
     subTopic: s.string().optional(),
     slug: s.path(),
     body: s.mdx(),
+    html: s.markdown(),
     metadata: s.metadata(),
   }),
 });
@@ -88,6 +92,7 @@ const notes = defineCollection({
       .default([]),
     slug: s.path(),
     body: s.mdx(),
+    html: s.markdown(),
     metadata: s.metadata(),
   }),
 });
@@ -102,6 +107,10 @@ export default defineConfig({
     clean: true,
   },
   collections: { posts, articles, library, notes },
+  // s.markdown() (피드용 html) 파이프라인 — 사이트 렌더링(mdx)과 동일한 줄바꿈 처리
+  markdown: {
+    remarkPlugins: [remarkBreaks],
+  },
   mdx: {
     remarkPlugins: [remarkBreaks],
     rehypePlugins: [
