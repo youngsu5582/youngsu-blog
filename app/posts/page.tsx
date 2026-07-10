@@ -14,28 +14,41 @@ interface PostsPageProps {
 export async function generateMetadata({ searchParams }: PostsPageProps): Promise<Metadata> {
   const params = await searchParams;
   const lang = params.lang === "en" ? "en" : "ko";
-  const canonical = lang === "en" ? `${siteConfig.url}/posts?lang=en` : `${siteConfig.url}/posts`;
+  const page = Math.max(1, Number(params.page) || 1);
+
+  // 페이지네이션 페이지는 self-canonical (2페이지가 1페이지의 사본으로 처리되는 것 방지)
+  const query = new URLSearchParams();
+  if (lang === "en") query.set("lang", "en");
+  if (page > 1) query.set("page", String(page));
+  const queryString = query.toString();
+  const canonical = `${siteConfig.url}/posts${queryString ? `?${queryString}` : ""}`;
+
+  const baseTitle = lang === "en" ? "Posts" : "포스트";
+  const title = page > 1 ? `${baseTitle} - ${page}` : baseTitle;
+  const description =
+    lang === "en"
+      ? "English posts from Youngsu Lee's backend engineering blog."
+      : "백엔드 개발자 이영수의 기술 블로그 포스트 모음입니다.";
 
   return {
-    title: lang === "en" ? "Posts" : "포스트",
-    description:
-      lang === "en"
-        ? "English posts from Youngsu Lee's backend engineering blog."
-        : "백엔드 개발자 이영수의 기술 블로그 포스트 모음입니다.",
+    title,
+    description,
     alternates: {
       canonical,
-      languages: {
-        ko: `${siteConfig.url}/posts`,
-        en: `${siteConfig.url}/posts?lang=en`,
-        "x-default": `${siteConfig.url}/posts`,
-      },
+      // hreflang은 언어 간 등가 페이지에만 — 페이지네이션 페이지는 언어별 개수가 달라 등가가 아님
+      ...(page === 1
+        ? {
+            languages: {
+              ko: `${siteConfig.url}/posts`,
+              en: `${siteConfig.url}/posts?lang=en`,
+              "x-default": `${siteConfig.url}/posts`,
+            },
+          }
+        : {}),
     },
     openGraph: {
-      title: lang === "en" ? "Posts" : "포스트",
-      description:
-        lang === "en"
-          ? "English posts from Youngsu Lee's backend engineering blog."
-          : "백엔드 개발자 이영수의 기술 블로그 포스트 모음입니다.",
+      title,
+      description,
       url: canonical,
       type: "website",
     },

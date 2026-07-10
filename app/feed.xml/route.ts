@@ -1,6 +1,13 @@
 import { getAllPosts, getAllArticles, getAllNotes, getUrlSlug, type Post, type Article, type Note } from "@/lib/content";
 import { siteConfig } from "@/config/site";
 
+// RSS 리더는 상대 경로를 해석할 기준이 없으므로 절대 URL로 변환
+function toFeedHtml(html: string) {
+  return html
+    .replaceAll('src="/', `src="${siteConfig.url}/`)
+    .replaceAll('href="/', `href="${siteConfig.url}/`);
+}
+
 export async function GET() {
   // 한국어 콘텐츠 수집
   const posts = getAllPosts("ko");
@@ -14,7 +21,7 @@ export async function GET() {
       title: post.title,
       slug: post.slug,
       description: post.description || "",
-      body: post.body,
+      html: post.html,
       date: new Date(post.date),
     })),
     ...articles.map((article: Article) => ({
@@ -22,7 +29,7 @@ export async function GET() {
       title: article.title,
       slug: article.slug,
       description: article.description || "",
-      body: article.body,
+      html: article.html,
       date: new Date(article.date),
     })),
     ...notes.map((note: Note) => ({
@@ -30,7 +37,7 @@ export async function GET() {
       title: note.title || "Untitled",
       slug: note.slug,
       description: "", // Notes don't have descriptions
-      body: note.body,
+      html: note.html,
       date: new Date(note.date),
     })),
   ]
@@ -42,7 +49,7 @@ export async function GET() {
       <title><![CDATA[${item.title}]]></title>
       <link>${siteConfig.url}/${item.type}/${getUrlSlug(item.slug)}</link>
       <description><![CDATA[${item.description}]]></description>
-      <content:encoded><![CDATA[${item.body}]]></content:encoded>
+      <content:encoded><![CDATA[${toFeedHtml(item.html)}]]></content:encoded>
       <pubDate>${item.date.toUTCString()}</pubDate>
       <guid isPermaLink="true">${siteConfig.url}/${item.type}/${getUrlSlug(item.slug)}</guid>
     </item>

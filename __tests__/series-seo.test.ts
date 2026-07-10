@@ -30,6 +30,7 @@ describe("series discovery", () => {
       related: [],
       slug: `posts/${slug}`,
       body: "",
+      html: "",
       metadata: { readingTime: 1, wordCount: 10 },
     }) as Post;
 
@@ -100,14 +101,15 @@ describe("series and sitemap SEO", () => {
     expect(schema.itemListElement[0].url).toContain("/posts/");
   });
 
-  it("sitemap에 검색 페이지와 번역 포스트 alternates를 포함한다", () => {
+  it("sitemap은 검색 페이지를 제외하고 번역 포스트 alternates를 포함한다", () => {
     const entries = sitemap();
+    // 사이트 내 검색 결과 페이지는 색인 대상이 아니므로 sitemap에 없어야 한다
     const searchEntry = entries.find((entry) => entry.url === `${siteConfig.url}/search`);
     const translatedPost = entries.find(
       (entry) => entry.url === `${siteConfig.url}/posts/homeserver-setup-en`,
     );
 
-    expect(searchEntry).toBeDefined();
+    expect(searchEntry).toBeUndefined();
     expect(translatedPost?.alternates?.languages).toMatchObject({
       en: `${siteConfig.url}/posts/homeserver-setup-en`,
       ko: `${siteConfig.url}/posts/homeserver-setup`,
