@@ -1,0 +1,522 @@
+---
+title: 서버 탓인가, 클라이언트 탓인가 — 이미지 업로드 시간 측정기 구현
+date: "2026-07-16T00:00:00.000Z"
+description: multipart 이미지 업로드의 전체 요청 시간을 필터 체인, 바디 읽기, 순수 서버 처리 시간으로 나눠 느린 원인을 구분하는 방법을 정리했다.
+categories:
+  - 백엔드
+  - 성능
+tags:
+  - Spring
+  - multipart
+  - 이미지 업로드
+  - 성능 측정
+  - 네트워크
+  - observability
+author: 이영수
+lang: ko
+draft: true
+toc: true
+comments: true
+image: /assets/img/thumbnail/2026-07-16-image-upload-timing-measurement.png
+---
+
+## 서버가 느리다?
+
+이미지 업로드 API의 p99 응답시간이 10초를 넘겼다는 대시보드가 떴다. 해외 요청이였다.
+이 API는 사용자가 올린 이미지를 `POST multipart/form-data`로 서버가 받는 API였다.
+
+여기서 곤란한 질문이 생긴다.
+
+그 10초는 우리 코드 및 서버(DB, 외부 API, 무거운 파싱)가 느린 것인가, 아니면 유저가 느린 네트워크로 큰 이미지를 올리면서 서버가 기다리는지 명확하게 알 수 없다.
+
+하지만, 우리가 보는 latency 지표는 이 둘을 구분해 주지 않았다.
+원인을 알지 못하면 나중에 제대로 된 대응도 못 한다고 생각했다.
+
+이번 내용은 파일을 업로드하면 무슨 일이 일어나는지, 네트워크에서는 어떤 흐름인지 그리고 코드에서 시간을 어떻게 측정할지에 대한 내용이다.
+
+## 느린 업로드가 왜 '서버 요청 시간' 으로 둔갑하는가
+
+HTTP 서버는 요청이 오면 Request Line 과 헤더까지만 먼저 읽고, 애플리케이션으로 제어를 넘긴다.
+
+이와 같이 하는 이유는, 인증 및 인가, 라우팅 및 리다이렉션, 그리고 크기(Content-Length) 를 통해 거절하는 등 메타데이터만 필요한 작업을 할 때 불필요한 로딩을 피하기 위한 HTTP 프로토콜의 의도다.
+
+### HTTP 가 Body 를 읽는 순간
+
+```
+POST /api/upload HTTP/1.1
+Content-Type: multipart/form-data; boundary=----X
+Content-Length: 20971520
+                             ← 빈 줄. 헤더 끝.
+<...body...>
+```
+
+본문(body)은 소켓에 남겨두고, 애플리케이션이 요구할 때(`getParts()`, `getInputStream()`) 읽는다.
+
+Multipart 요청은 Spring MVC 의 DispatcherServlet 에서
+
+```java
+protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    HttpServletRequest processedRequest = request;
+    ...
+    boolean multipartRequestParsed = false;
+    try {
+        ModelAndView mv = null;
+        Exception dispatchException = null;
+
+        try {
+           processedRequest = checkMultipart(request);
+           multipartRequestParsed = (processedRequest != request);
+           ...
+    }
+    ...
+}
+```
+
+checkMultipart 메소드 때 본문을 읽는다.
+
+문제는 그 본문 읽기다. 호출이 되면, 톰캣의 워커 스레드는 소켓에서 본문 바이트를 직접 읽기 시작한다.
+
+- 본문 바이트를 읽는 대략적인 흐름
+
+
+```abc
+1. request.getInputStream
+2. CoyoteInputStream
+3. IdentityInputFilter
+4. Http11InputBuffer
+5. NioChannel
+6. OS read() system call
+```
+
+이 중 직접적으로 읽는 코드를 보면
+
+```java
+// NioSocketWrapper#fillReadBuffer() — 블로킹 read 구현부
+
+synchronized (readLock) {
+    n = getSocket().read(buffer);
+    if (n == -1) {
+        throw new EOFException();
+    } else if (n == 0) {
+        if (!readBlocking) {
+            readBlocking = true;
+            registerReadInterest();
+        }
+        try {
+            if (timeout > 0) {
+                startNanos = System.nanoTime();
+                readLock.wait(timeout);
+            } else {
+                readLock.wait();
+            }
+        } catch (InterruptedException ignore) {
+       }
+    }
+}
+return n;
+```
+
+아래와 같은 코드가 있다.
+
+> 클래스마다 구현 방법은 다를 수 있다. 위 내용은 참고용
+
+- 커널 버퍼에 바이트가 있다면? - 즉시 복사 및 반환
+- 커널 버퍼에 바이트가 없다면?
+
+1. read 가 0 반환
+2. Poller 에 `OP_READ` 등록
+
+```java
+@Override
+public void registerReadInterest() {
+    getPoller().add(this, SelectionKey.OP_READ);
+}
+```
+
+3. 워커스레드 LOCK - `readLock.wait`, CPU 사용은 X & 스레드만 점유
+
+
+바이트를 더 보내줄 때까지 기다린다. `Content-Length` 만큼 읽을 때까지 반복이 된다.
+
+=> 즉, DispatcherServlet 에 진입한 후 본문을 읽으면서 워커 스레드 및 요청 시간이 지연된다.
+
+### 메트릭이 시간을 측정하는 시점
+
+그러면, 이 요청 시간은 언제 측정이 되는걸까?
+
+현재, Spring Web 에서는 `ServerHttpObservationFilter` 가 메트릭을 측정해준다.
+
+```java
+try (Observation.Scope scope = observation.openScope()) {
+    onScopeOpened(scope, request, response);
+    filterChain.doFilter(request, response);
+}
+catch (Exception ex) {
+    observation.error(unwrapServletException(ex));
+    response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+    throw ex;
+}
+finally {
+   Throwable error = fetchException(request);
+   if (error != null) {
+      observation.error(error);
+   }
+   observation.stop();
+}
+```
+
+필터에 진입하면 Observation 의 Scope 를 열고, `filterChain.doFilter` 로 뒷단(나머지 필터 + DispatcherServlet)을 실행한다. 에러가 있으면 Observation 에 기록하고, finally 에서 측정을 멈춘다. (`observation.stop`)
+
+즉, Tomcat 에서
+
+`RequestLine 및 헤더를 읽고 Filter 단에 전달할 때부터 측정` -> `다시, Filter 단에 돌아올 때까지 측정`
+
+을 측정한다.
+
+=> 즉, DispatcherServlet 에서 본문을 읽을 때 시간도 메트릭에 고스란히 저장된다!!
+
+그래서 이 지표 하나로는 '서버가 느린 것'과 '클라이언트 업로드가 느린 것'을 구분할 수 없다.
+
+### 그냥 presigned로 바꾸면 되지 않나 ?
+
+이 지점에서 흔한 정답은 서버가 본문을 받지 말고 presigned URL로만 클라이언트가 스토리지에 직접 올리게 강제 하는거다.
+
+서버 요청에서 이미지 바이트 읽지 않으니, 이 문제 자체가 사라진다.
+
+하지만, 우리에겐 못 쓰는 케이스가 있었다.
+
+특정 엔터프라이즈의 사내 네트워크가 S3 스토리지 호스트 및 PUT 메소드 둘 다 차단하고 있었다.
+presigned 업로드는 이중으로 막힌다. 그 대신, 우리 도메인으로 오는 POST 요청은 통과가 되는걸 확인했다.
+
+그래서 서버가 multipart POST를 동기적으로 받는 폴백 구조를 유지할 수밖에 없었다.
+
+## 측정기 구현
+
+그래서, 동기적으로 요청을 받을 때 '서버의 잘못인지', '클라이언트의 잘못인지' 를 구분해서 측정하는 측정기를 만들기로 결정했다.
+
+### Filter, Interceptor??
+
+그러면 이 로직의 시작은 Filter 에 있어야 할까, Interceptor 에 있어야 할까?
+
+이번에는 Filter 다. 아까도 말했듯, DispatcherServlet 의 상단 부분에서 멀티파트를 먼저 읽는다.
+
+```java
+processedRequest = checkMultipart(request);
+...
+
+HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+...
+if (!mappedHandler.applyPreHandle(processedRequest, response)) {
+    return;
+}
+mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+...
+```
+
+그렇기에, Filter에서부터 읽어야 Multipart 본문을 읽기 전 시간을 유의미하게 측정할 수 있다.
+
+```java
+public class FilterChainStartFilter extends OncePerRequestFilter {
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        setFilterStartTimestamp(request);
+        filterChain.doFilter(request, response);
+    }
+
+    private void setFilterStartTimestamp(HttpServletRequest req) {
+        var time = System.currentTimeMillis();
+        req.setAttribute(RequestConstant.FILTER_START_ATTR, time);
+    }
+}
+```
+
+```java
+public class FilterChainEndFilter extends OncePerRequestFilter {
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        setFilterEndTimestamp(request);
+        filterChain.doFilter(request, response);
+    }
+
+    private void setFilterEndTimestamp(HttpServletRequest req) {
+        var time = System.currentTimeMillis();
+        req.setAttribute(RequestConstant.FILTER_END_ATTR, time);
+    }
+}
+```
+
+```java
+public class WebConfig implements WebMvcConfigurer {
+
+    private static final int START_ORDER = 1;
+    // 마지막 필터의 값
+    private static final int LAST_ORDER = 5;
+
+    @Bean
+    public FilterRegistrationBean<FilterChainStartFilter> FilterChainStartFilterRegistrationBean() {
+        var registrationBean = new FilterRegistrationBean<FilterChainStartFilter>();
+        registrationBean.setFilter(new FilterChainStartFilter());
+        registrationBean.setOrder(START_ORDER);
+        return registrationBean;
+    }
+
+    @Bean
+    public FilterRegistrationBean<FilterChainEndFilter> filterChainEndFilterRegistrationBean() {
+        var registrationBean = new FilterRegistrationBean<FilterChainEndFilter>();
+        registrationBean.setFilter(new FilterChainEndFilter());
+        registrationBean.setOrder(LAST_ORDER);
+        return registrationBean;
+    }
+}
+```
+
+`필터의 맨 처음 시작 ~ 필터의 맨 마지막` 을 측정해 필터 로직에서 병목이나 문제가 없었는지 확인 가능하다.
+
+계산 구간은 필요에 따라, 추가로 더 계산하면 된다.
+
+- 컨트롤러 진입점을 측정하고 싶다면, 어노테이션 + AOP 로 진입점에서 계산
+- 요청이 다 끝날 때 측정하고 싶다면, 인터셉터의 afterCompletion에서 계산
+
+> 인터셉터 시간 측정 코드
+
+```java
+public class InterceptorChainStartInterceptor implements HandlerInterceptor {
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        request.setAttribute(INTERCEPTOR_START_ATTR, System.currentTimeMillis());
+        return true;
+    }
+}
+```
+
+```java
+public class WebConfig implements WebMvcConfigurer {
+
+    private final InterceptorChainStartInterceptor chainStartInterceptor;
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        WebMvcConfigurer.super.addInterceptors(registry);
+        registry.addInterceptor(chainStartInterceptor);
+    }
+}
+```
+
+### 시간 계산 코드
+
+```java
+@Slf4j
+@Component
+public class RequestTimingInterceptor implements HandlerInterceptor {
+
+    private static final long SLOW_THRESHOLD_MS = 3000;
+    private static final double KILO_BYTE = 1024.0;
+    private static final double SECOND = 1000.0;
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        checkSlowRequest(request);
+        return true;
+    }
+
+    private void checkSlowRequest(HttpServletRequest request) {
+        Long filterStartMs = (Long) request.getAttribute(RequestConstant.FILTER_START_ATTR);
+        Long filterEndMs = (Long) request.getAttribute(RequestConstant.FILTER_END_ATTR);
+        if (filterStartMs == null) return;
+        if (filterEndMs == null) return;
+
+        long now = System.currentTimeMillis();
+
+        long total = now - filterStartMs;
+        if (total <= SLOW_THRESHOLD_MS) return;
+
+
+        long filterChainMs = filterEndMs - filterStartMs;
+        // 본문을 읽는 시간 + DispatcherServlet 내부 작업(핸들러 매핑)
+        long bodyReadMs = now - filterEndMs;
+
+        int contentLength = request.getContentLength();
+
+        log.warn("총시간={}ms | 필터체인={}ms | 바디읽기={}ms | uri={} | 크기={} | 처리량={}", total, filterChainMs, bodyReadMs, request.getRequestURI(), formatSize(contentLength), formatThroughput(contentLength, bodyReadMs));
+    }
+
+    private static double toKbPerSec(int contentLength, long bodyReadMs) {
+        return (contentLength / KILO_BYTE) / (bodyReadMs / SECOND);
+    }
+
+    private static String formatThroughput(int contentLength, long bodyReadMs) {
+        if (bodyReadMs <= 0 || contentLength <= 0) {
+            return "N/A";
+        }
+        return "%.1fKB/s".formatted(toKbPerSec(contentLength, bodyReadMs));
+    }
+
+    private static String formatSize(int bytes) {
+        if (bytes < 0) return "unknown";
+        if (bytes < KILO_BYTE) return bytes + "B";
+        if (bytes < KILO_BYTE * KILO_BYTE) return "%.1fKB".formatted(bytes / KILO_BYTE);
+        return "%.1fMB".formatted(bytes / (KILO_BYTE * KILO_BYTE));
+    }
+}
+```
+
+이제 측정한 시간들을 조립만 하면 된다.
+
+- 필터의 시작 ~ 끝
+- 인터셉터 시작(현재)
+
+> 처리량은 적절히 계산하자.
+
+### 번외 : 실제 처리 시간
+
+메트릭에서, Body 읽는 시간 없는 순수 로직 처리 시간을 보고 싶다면?
+
+```java
+@Component
+@RequiredArgsConstructor
+public class RequestTimingInterceptor implements HandlerInterceptor {
+
+    private static final String PROCESSING_SAMPLE_ATTR = "__processingSample";
+
+    private final MeterRegistry meterRegistry;
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        checkSlowRequest(request);
+        request.setAttribute(PROCESSING_SAMPLE_ATTR, Timer.start(meterRegistry));
+        return true;
+    }
+
+     @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        if (!(request.getAttribute(PROCESSING_SAMPLE_ATTR) instanceof Timer.Sample sample)) {
+            return;
+        }
+        sample.stop(Timer.builder("app.request.processing")
+                .description("업로드 전송을 제외한 순수 서버 처리 시간")
+                .tag("uri", resolveUriTag(request))
+                .tag("method", request.getMethod())
+                .tag("status", String.valueOf(response.getStatus()))
+                .register(meterRegistry));
+    }
+
+    private static String resolveUriTag(HttpServletRequest request) {
+        Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        return (pattern != null) ? pattern.toString() : "UNKNOWN";
+    }
+}
+```
+
+Timer 로 `preHandle 때 기록 시작 -> afterCompletion 측정 종료`를 하면 된다. (So Easy)
+
+### 마무리
+
+이와 같은 코드를 기반으로
+
+```java
+WARN  RequestTimingInterceptor - 총시간=5621ms | 필터체인=0ms | 바디읽기=5621ms | uri=/api/request | 크기=132.3KB | 처리량=23.5KB/s
+WARN  RequestTimingInterceptor - 총시간=25126ms | 필터체인=0ms | 바디읽기=25126ms | uri=/api/request | 크기=132.3KB | 처리량=5.3KB/s
+WARN  RequestTimingInterceptor - 총시간=3699ms | 필터체인=1ms | 바디읽기=3698ms | uri=/api/request | 크기=4.2MB | 처리량=1156.3KB/s
+WARN  RequestTimingInterceptor - 총시간=46831ms | 필터체인=0ms | 바디읽기=46831ms | uri=/api/request | 크기=3.2KB | 처리량=0.1KB/s
+```
+
+느린 요청이 뭐가 문제였는지 확인할 수 있다.
+
+- filter 시간이 길다면, 서버의 잘못
+- throughput 이 낮다면, 클라이언트 또는 네트워크 경로에서 전송이 지연됐을 가능성 존재
+- (총 시간이 느려도) throughput 이 높다면, 서버의 잘못일 가능성 존재(이미지는 빨리 전달, `파싱, 임시파일, 매핑` 등등 느리게 동작)
+
+똑같이 10초 걸린 요청이라도, 지표를 구간으로 쪼개면 그 10초의 정체를 재현 없이 가려낼 수 있다.
+지표가 원인을 뭉개고 있을 때, 그 지표를 나눠서 원인을 되찾는 것 — 이번 측정기가 한 일이다.
+
+---
+
+### 번외 : 왜 해외 요청은 느릴까
+
+물론, 해외에서 서울까지 요청이 와야하므로 느린게 당연하긴 하다.
+근데, 너무 천차만별의 처리량이 찍히는게 궁금했다. (`0.1KB/s`, `1156.3KB/s`, `5.3KB/s`)
+
+그러면, 왜 다른지에 대해 가볍게나마 살펴봤다.
+
+> 물론, 현재 복잡한 인터넷 세계에서는 더 복잡하게 돌아간다.
+> 병목 링크 대역폭, congestion window, 프록시 등등
+> 이 내용은 기본적인 TCP 통신에 대해서만 정리한다.
+
+1. 해외 요청은 왜 이렇게 느린가 (23.5KB/s)
+2. 같은 132KB 가 왜 한 번은 5초, 한 번은 25초인가
+3. 3.2KB 가 왜 46초나 걸렸나 (0.1KB/s)
+
+셋 다 TCP 가 답을 갖고 있다.
+
+#### 1. 처리량은 RTT 가 정한다 (대역폭 X)
+
+- RTT : Round Trip Time, 왕복 시간, 네트워크 요청이 `시작점 -> 목적지 -> 시작점` 걸리는 시간
+- Window : 한 번에 주고받을 수 있는 최대 양
+
+TCP 는 데이터를 냅다 쏘지 않는다.
+'윈도우'만큼 보내고, "잘 받았다(ACK)"가 돌아올 때까지 기다린 뒤 다음을 보낸다.
+
+=> 즉, `처리량 ≈ 윈도우 ÷ RTT` 이다.
+
+| 경로     | RTT   | 처리량 (윈도우 64KB 가정) |
+| ------ | ----- | ----------------- |
+| 국내     | 10ms  | 6.4MB/s ≈ 51Mbps  |
+| 태평양 건너 | 250ms | 256KB/s ≈ 2Mbps   |
+
+같은 윈도우라도 RTT 가 25배면 속도도 25배 차이가 나게 된다. (회선이 상관없게 된다)
+ACK 왕복을 기다리는 시간이 속도를 묶는다.
+
+여기에 TCP 특성중 하나인 [slow-start](https://developer.mozilla.org/ko/docs/Glossary/TCP_slow_start) 가 얹힌다.
+EX) 풀스피드로 시작하지 않고, 매 RTT 마다 윈도우를 2배씩 키운다.
+
+- 국내(10ms): 몇십 ms 만에 풀스피드
+- 태평양(250ms): 한 번에 250ms → 일정치에 도달하는데만 수 초
+
+작은 업로드는 속도가 붙기도 전에 전송이 끝난다. (처리량이 작은 이유)
+
+#### 2. 같은 132KB 가 왜 5초도, 25초도 걸리나
+
+크기가 같은데 시간은 왜 다른가?
+
+전송 속도는 상수가 아니라, 매 전송마다 달라지는 값이다.
+그리고, 이 속도를 제어하는게 TCP 의 [혼잡 제어](https://developer.mozilla.org/ko/docs/Glossary/TCP_slow_start#%ED%98%BC%EC%9E%A1_%EC%A0%9C%EC%96%B4)다.
+
+패킷이 하나 유실되면 TCP 는 "내가 너무 빨리 보냈나 보다" 하고 윈도우를 반토막 낸 뒤 천천히 회복한다.
+
+유실이 된다는건
+
+- 무선(Wifi) 을 통한 데이터가 전파 간섭 및 신호 약화로 프레임이 깨진다
+- 라우터가 트래픽이 몰려, 큐가 가득차서 버린다
+
+가 일반적이다.
+
+게다가 132KB 같은 짧은 전송은 slow-start 가 끝나기도 전에 전송이 끝난다. (긴 전송은 어느정도 평균에 회귀)
+초반 몇 RTT 의 운에 통째로 좌우된다. 짧을수록 편차가 오히려 크다.
+
+=> 손실은 사실상 랜덤이다. 이번 전송은 깔끔하게, 저번 전송은 불운하게 처리될 수 있다.
+
+#### 3. 3.2KB 가 46초?
+
+3KB 는 TCP 패킷 몇 개면 끝이다.
+아무리 좁은 회선이라도 전송이 시작만 되면, 1 RTT 안에 도착한다.
+
+그러면, 어떤 경우에 46초가 발생할까??
+
+이 역시도 TCP 의 특성이다.
+
+- TCP 는 요청을 순서대로 보내는걸 보장하기 위해, 요청을 보내고 대기한다.
+- 응답(ACK) 이 오지 않으면, 기다렸다가 다시 보낸다.(재전송)
+- 계속 이 오지 않는다면, 재전송 대기 시간을 늘려가며 대기한다. (EX: 지수 백오프 대기)
+
+ >이 부분은 나도 정확히 모르겠지만?
+ >모바일 OS 는 배터리 절약을 위해 백그라운드 앱의 실행을 suspend(정지) 시킬 가능성이 있다고 한다.
+ >앱의 업로드 loop 가 도중에 중지. 이에 따른, 지수 백오프 증가 or 요청 유실
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/769b317f6ef44a37d1ee4b4829c21758.png)
+
+=> 처리량 0.1KB/s 는 느린게 아니라, 멈춤의 가능성일수 있다.
+
+네트워크 속도와 이와같은 흐름들 때문에 서버 로그에는 천차만별의 처리량이 찍히게 된다. 끝!

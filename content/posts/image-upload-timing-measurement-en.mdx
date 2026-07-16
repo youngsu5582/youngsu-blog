@@ -1,0 +1,518 @@
+---
+title: Is It the Server or the Client? — Implementing an Image Upload Timing Profiler
+date: "2026-07-16T00:00:00.000Z"
+description: A guide to separating the total request time of multipart image uploads into filter-chain time, body-read time, and pure server-processing time to identify the source of slowness.
+categories:
+  - Backend
+  - Performance
+tags:
+  - Spring
+  - multipart
+  - image upload
+  - performance measurement
+  - networking
+  - observability
+author: Lee Youngsu
+lang: en
+draft: true
+toc: true
+comments: true
+image: /assets/img/thumbnail/2026-07-16-image-upload-timing-measurement.png
+---
+
+> This English version was translated by Hermes Agent.
+
+## Is the server slow?
+
+A dashboard showed that the p99 response time for an image upload API had exceeded 10 seconds. The request came from overseas.
+This API receives images uploaded by users as `POST multipart/form-data` requests.
+
+That raises an awkward question.
+
+Is that 10 seconds caused by our code or server-side work (the database, external APIs, or heavy parsing), or is the server simply waiting while a user uploads a large image over a slow network? It was not clear.
+
+However, the latency metric we were looking at did not distinguish between these two cases.
+I thought that without knowing the cause, we would not be able to respond properly later.
+
+This post covers what happens when a file is uploaded, how the flow works over the network, and how to measure the time in code.
+
+## Why a slow upload gets mistaken for "server request time"
+
+When an HTTP server receives a request, it first reads only the Request Line and headers, then passes control to the application.
+
+This is intentional in the HTTP protocol: when the server only needs metadata for tasks such as authentication and authorization, routing and redirection, or rejecting a request based on its size (`Content-Length`), it avoids unnecessary loading.
+
+### When HTTP reads the body
+
+```
+POST /api/upload HTTP/1.1
+Content-Type: multipart/form-data; boundary=----X
+Content-Length: 20971520
+                             ← 빈 줄. 헤더 끝.
+<...body...>
+```
+
+The body remains in the socket and is read when the application requests it (`getParts()`, `getInputStream()`).
+
+For multipart requests, Spring MVC does this in `DispatcherServlet`:
+
+```java
+protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    HttpServletRequest processedRequest = request;
+    ...
+    boolean multipartRequestParsed = false;
+    try {
+        ModelAndView mv = null;
+        Exception dispatchException = null;
+
+        try {
+           processedRequest = checkMultipart(request);
+           multipartRequestParsed = (processedRequest != request);
+           ...
+    }
+    ...
+}
+```
+
+The body is read during the `checkMultipart` method.
+
+That body read is the problem. Once it is called, Tomcat's worker thread starts reading the body bytes directly from the socket.
+
+- An approximate flow for reading body bytes
+
+
+```abc
+1. request.getInputStream
+2. CoyoteInputStream
+3. IdentityInputFilter
+4. Http11InputBuffer
+5. NioChannel
+6. OS read() system call
+```
+
+The code that directly performs the read looks like this:
+
+```java
+// NioSocketWrapper#fillReadBuffer() — 블로킹 read 구현부
+
+synchronized (readLock) {
+    n = getSocket().read(buffer);
+    if (n == -1) {
+        throw new EOFException();
+    } else if (n == 0) {
+        if (!readBlocking) {
+            readBlocking = true;
+            registerReadInterest();
+        }
+        try {
+            if (timeout > 0) {
+                startNanos = System.nanoTime();
+                readLock.wait(timeout);
+            } else {
+                readLock.wait();
+            }
+        } catch (InterruptedException ignore) {
+       }
+    }
+}
+return n;
+```
+
+The following kind of code is involved.
+
+> The implementation may differ between classes. The code above is for reference.
+
+- If there are bytes in the kernel buffer, they are copied and returned immediately.
+- If there are no bytes in the kernel buffer:
+
+1. `read` returns 0
+2. Register `OP_READ` with the Poller
+
+```java
+@Override
+public void registerReadInterest() {
+    getPoller().add(this, SelectionKey.OP_READ);
+}
+```
+
+3. The worker thread waits on a LOCK: `readLock.wait`; it uses no CPU, but the thread remains occupied.
+
+
+It waits for more bytes to arrive. This repeats until the amount specified by `Content-Length` has been read.
+
+=> In other words, after entering `DispatcherServlet`, reading the body delays both the worker thread and the request time.
+
+### When the metric measures time
+
+So, when is this request time measured?
+
+In Spring Web, `ServerHttpObservationFilter` currently measures the metric.
+
+```java
+try (Observation.Scope scope = observation.openScope()) {
+    onScopeOpened(scope, request, response);
+    filterChain.doFilter(request, response);
+}
+catch (Exception ex) {
+    observation.error(unwrapServletException(ex));
+    response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+    throw ex;
+}
+finally {
+   Throwable error = fetchException(request);
+   if (error != null) {
+      observation.error(error);
+   }
+   observation.stop();
+}
+```
+
+When the filter is entered, it opens the Observation's Scope and runs the downstream components (the remaining filters and `DispatcherServlet`) through `filterChain.doFilter`. If an error occurs, it records it in the Observation, then stops the measurement in `finally` (`observation.stop`).
+
+In other words, in Tomcat it measures
+
+`from when the Request Line and headers are read and passed to the filters` -> `until control returns to the filters`
+
+That means the time spent reading the body in `DispatcherServlet` is stored in the metric in full as well.
+
+So this single metric cannot distinguish between a slow server and a slow client upload.
+
+### Why not just switch to presigned uploads?
+
+The common answer at this point is to stop having the server receive the body and require the client to upload directly to storage using a presigned URL.
+
+Because the server no longer reads the image bytes as part of the request, the problem itself disappears.
+
+However, we had a case where we could not use that approach.
+
+A particular enterprise's internal network blocked both the S3 storage host and the `PUT` method.
+Presigned uploads were blocked twice over. We confirmed that `POST` requests to our domain, however, were allowed through.
+
+As a result, we had no choice but to keep a fallback structure in which the server receives multipart `POST` requests synchronously.
+
+## Implementing the profiler
+
+So, when receiving requests synchronously, we decided to build a profiler that could distinguish whether the problem was on the server side or the client side.
+
+### Filter or interceptor?
+
+Should this logic start in a Filter or an Interceptor?
+
+This time, it is a Filter. As mentioned earlier, the multipart body is read near the top of `DispatcherServlet`.
+
+```java
+processedRequest = checkMultipart(request);
+...
+
+HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+...
+if (!mappedHandler.applyPreHandle(processedRequest, response)) {
+    return;
+}
+mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+...
+```
+
+Therefore, we need to start measuring in a Filter to measure the time before the multipart body is read in a meaningful way.
+
+```java
+public class FilterChainStartFilter extends OncePerRequestFilter {
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        setFilterStartTimestamp(request);
+        filterChain.doFilter(request, response);
+    }
+
+    private void setFilterStartTimestamp(HttpServletRequest req) {
+        var time = System.currentTimeMillis();
+        req.setAttribute(RequestConstant.FILTER_START_ATTR, time);
+    }
+}
+```
+
+```java
+public class FilterChainEndFilter extends OncePerRequestFilter {
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        setFilterEndTimestamp(request);
+        filterChain.doFilter(request, response);
+    }
+
+    private void setFilterEndTimestamp(HttpServletRequest req) {
+        var time = System.currentTimeMillis();
+        req.setAttribute(RequestConstant.FILTER_END_ATTR, time);
+    }
+}
+```
+
+```java
+public class WebConfig implements WebMvcConfigurer {
+
+    private static final int START_ORDER = 1;
+    // 마지막 필터의 값
+    private static final int LAST_ORDER = 5;
+
+    @Bean
+    public FilterRegistrationBean<FilterChainStartFilter> FilterChainStartFilterRegistrationBean() {
+        var registrationBean = new FilterRegistrationBean<FilterChainStartFilter>();
+        registrationBean.setFilter(new FilterChainStartFilter());
+        registrationBean.setOrder(START_ORDER);
+        return registrationBean;
+    }
+
+    @Bean
+    public FilterRegistrationBean<FilterChainEndFilter> filterChainEndFilterRegistrationBean() {
+        var registrationBean = new FilterRegistrationBean<FilterChainEndFilter>();
+        registrationBean.setFilter(new FilterChainEndFilter());
+        registrationBean.setOrder(LAST_ORDER);
+        return registrationBean;
+    }
+}
+```
+
+Measuring `from the very beginning of the filter to the very end of the filter` lets us check whether there was a bottleneck or problem in the filter logic.
+
+The measured intervals can be extended as needed.
+
+- To measure entry into the controller, calculate it at the entry point with an annotation and AOP.
+- To measure when the request is completely finished, calculate it in the interceptor's `afterCompletion`.
+
+> Interceptor timing code
+
+```java
+public class InterceptorChainStartInterceptor implements HandlerInterceptor {
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        request.setAttribute(INTERCEPTOR_START_ATTR, System.currentTimeMillis());
+        return true;
+    }
+}
+```
+
+```java
+public class WebConfig implements WebMvcConfigurer {
+
+    private final InterceptorChainStartInterceptor chainStartInterceptor;
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        WebMvcConfigurer.super.addInterceptors(registry);
+        registry.addInterceptor(chainStartInterceptor);
+    }
+}
+```
+
+### Time calculation code
+
+```java
+@Slf4j
+@Component
+public class RequestTimingInterceptor implements HandlerInterceptor {
+
+    private static final long SLOW_THRESHOLD_MS = 3000;
+    private static final double KILO_BYTE = 1024.0;
+    private static final double SECOND = 1000.0;
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        checkSlowRequest(request);
+        return true;
+    }
+
+    private void checkSlowRequest(HttpServletRequest request) {
+        Long filterStartMs = (Long) request.getAttribute(RequestConstant.FILTER_START_ATTR);
+        Long filterEndMs = (Long) request.getAttribute(RequestConstant.FILTER_END_ATTR);
+        if (filterStartMs == null) return;
+        if (filterEndMs == null) return;
+
+        long now = System.currentTimeMillis();
+
+        long total = now - filterStartMs;
+        if (total <= SLOW_THRESHOLD_MS) return;
+
+
+        long filterChainMs = filterEndMs - filterStartMs;
+        // 본문을 읽는 시간 + DispatcherServlet 내부 작업(핸들러 매핑)
+        long bodyReadMs = now - filterEndMs;
+
+        int contentLength = request.getContentLength();
+
+        log.warn("총시간={}ms | 필터체인={}ms | 바디읽기={}ms | uri={} | 크기={} | 처리량={}", total, filterChainMs, bodyReadMs, request.getRequestURI(), formatSize(contentLength), formatThroughput(contentLength, bodyReadMs));
+    }
+
+    private static double toKbPerSec(int contentLength, long bodyReadMs) {
+        return (contentLength / KILO_BYTE) / (bodyReadMs / SECOND);
+    }
+
+    private static String formatThroughput(int contentLength, long bodyReadMs) {
+        if (bodyReadMs <= 0 || contentLength <= 0) {
+            return "N/A";
+        }
+        return "%.1fKB/s".formatted(toKbPerSec(contentLength, bodyReadMs));
+    }
+
+    private static String formatSize(int bytes) {
+        if (bytes < 0) return "unknown";
+        if (bytes < KILO_BYTE) return bytes + "B";
+        if (bytes < KILO_BYTE * KILO_BYTE) return "%.1fKB".formatted(bytes / KILO_BYTE);
+        return "%.1fMB".formatted(bytes / (KILO_BYTE * KILO_BYTE));
+    }
+}
+```
+
+Now all that remains is to assemble the measured times.
+
+- From the beginning to the end of the filter chain
+- From the start of the interceptor to the present
+
+> Calculate throughput appropriately.
+
+### Aside: actual processing time
+
+What if we want to see the pure logic-processing time in the metric, excluding the time spent reading the body?
+
+```java
+@Component
+@RequiredArgsConstructor
+public class RequestTimingInterceptor implements HandlerInterceptor {
+
+    private static final String PROCESSING_SAMPLE_ATTR = "__processingSample";
+
+    private final MeterRegistry meterRegistry;
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        checkSlowRequest(request);
+        request.setAttribute(PROCESSING_SAMPLE_ATTR, Timer.start(meterRegistry));
+        return true;
+    }
+
+     @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        if (!(request.getAttribute(PROCESSING_SAMPLE_ATTR) instanceof Timer.Sample sample)) {
+            return;
+        }
+        sample.stop(Timer.builder("app.request.processing")
+                .description("업로드 전송을 제외한 순수 서버 처리 시간")
+                .tag("uri", resolveUriTag(request))
+                .tag("method", request.getMethod())
+                .tag("status", String.valueOf(response.getStatus()))
+                .register(meterRegistry));
+    }
+
+    private static String resolveUriTag(HttpServletRequest request) {
+        Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        return (pattern != null) ? pattern.toString() : "UNKNOWN";
+    }
+}
+```
+
+With `Timer`, simply start recording in `preHandle` and stop measuring in `afterCompletion`. (So Easy)
+
+### Conclusion
+
+Based on code like this, we can identify what was wrong with a slow request:
+
+```java
+WARN  RequestTimingInterceptor - 총시간=5621ms | 필터체인=0ms | 바디읽기=5621ms | uri=/api/request | 크기=132.3KB | 처리량=23.5KB/s
+WARN  RequestTimingInterceptor - 총시간=25126ms | 필터체인=0ms | 바디읽기=25126ms | uri=/api/request | 크기=132.3KB | 처리량=5.3KB/s
+WARN  RequestTimingInterceptor - 총시간=3699ms | 필터체인=1ms | 바디읽기=3698ms | uri=/api/request | 크기=4.2MB | 처리량=1156.3KB/s
+WARN  RequestTimingInterceptor - 총시간=46831ms | 필터체인=0ms | 바디읽기=46831ms | uri=/api/request | 크기=3.2KB | 처리량=0.1KB/s
+```
+
+- If the filter time is long, the problem is likely on the server side.
+- If throughput is low, the transfer may be delayed on the client side or somewhere along the network path.
+- Even if the total time is long, high throughput suggests the problem may be on the server side: the image arrived quickly, but parsing, temporary-file handling, mapping, or similar work was slow.
+
+Even for requests that each take the same 10 seconds, splitting the metric into intervals can reveal what those 10 seconds represent without reproducing the issue.
+When a metric blurs the cause, splitting it apart can recover that cause. That is what this profiler does.
+
+---
+
+### Aside: why are overseas requests slow?
+
+Of course, requests traveling from overseas to Seoul are naturally slower.
+Still, I was curious about why the measured throughput varied so widely (`0.1KB/s`, `1156.3KB/s`, `5.3KB/s`).
+
+I took a brief look at why they might differ.
+
+> Of course, the real internet is more complicated than this.
+> There are bottleneck-link bandwidth, congestion windows, proxies, and so on.
+> This section covers only the basics of TCP communication.
+
+1. Why are overseas requests so slow? (23.5KB/s)
+2. Why does the same 132KB take 5 seconds one time and 25 seconds another time?
+3. Why did 3.2KB take as long as 46 seconds? (0.1KB/s)
+
+TCP has an answer for all three.
+
+#### 1. Throughput is determined by RTT, not bandwidth
+
+- RTT: Round Trip Time, the time a network request takes to travel from the starting point to the destination and back.
+- Window: the maximum amount that can be sent and received at once.
+
+TCP does not simply send data as fast as possible.
+It sends up to the size of the window, waits for an acknowledgment (ACK) that it was received, and then sends more.
+
+=> In other words, `throughput ≈ window ÷ RTT`.
+
+| Path     | RTT   | Throughput (assuming a 64KB window) |
+| ------ | ----- | ----------------- |
+| Domestic     | 10ms  | 6.4MB/s ≈ 51Mbps  |
+| Across the Pacific | 250ms | 256KB/s ≈ 2Mbps   |
+
+Even with the same window, an RTT that is 25 times longer produces a 25-fold difference in speed. (The link itself stops being the limiting factor.)
+The time spent waiting for the ACK to make the round trip constrains the speed.
+
+On top of this, TCP has a feature called [slow start](https://developer.mozilla.org/ko/docs/Glossary/TCP_slow_start).
+For example, it does not start at full speed; it doubles the window on each RTT.
+
+- Domestic (10ms): reaches full speed in a few dozen milliseconds.
+- Across the Pacific (250ms): one RTT takes 250ms, so reaching a steady state alone takes several seconds.
+
+A small upload can finish before it has had time to build up speed. That is one reason its measured throughput is low.
+
+#### 2. Why does the same 132KB take 5 seconds one time and 25 seconds another time?
+
+Why does the time differ when the size is the same?
+
+Transfer speed is not a constant. It changes with every transfer.
+And TCP's [congestion control](https://developer.mozilla.org/ko/docs/Glossary/TCP_slow_start#%ED%98%BC%EC%9E%A1_%EC%A0%9C%EC%96%B4) controls that speed.
+
+When a packet is lost, TCP assumes, "I must have sent too quickly," cuts the window in half, and then recovers slowly.
+
+Common causes of packet loss include:
+
+- Data sent over wireless (Wi-Fi) can have corrupted frames because of radio interference or a weakened signal.
+- A router can become overloaded, fill its queue, and drop packets.
+
+In addition, a short transfer such as 132KB can finish before slow start is over. (Long transfers regress toward an average to some extent.)
+It is affected almost entirely by luck during the first few RTTs. The shorter the transfer, the larger the variation can be.
+
+=> Loss is effectively random. One transfer may be clean, while the previous one may have been unlucky.
+
+#### 3. 3.2KB taking 46 seconds?
+
+3KB is only a few TCP packets.
+Even over a very narrow link, once transmission starts, it should arrive within one RTT.
+
+So in what situation could 46 seconds occur?
+
+This is also a characteristic of TCP.
+
+- TCP sends and waits to guarantee that requests are delivered in order.
+- If an acknowledgment (ACK) does not arrive, it waits and sends the data again (retransmission).
+- If the ACK continues not to arrive, it keeps increasing the retransmission wait time (for example, using exponential backoff).
+
+> I do not know this part precisely myself, but
+> mobile operating systems may suspend background apps to save battery.
+> The app's upload loop can stop midway, which could cause exponential-backoff delays to grow or the request to be lost.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/769b317f6ef44a37d1ee4b4829c21758.png)
+
+=> A throughput of 0.1KB/s may indicate not a slow connection, but a pause.
+
+Because of network speed and flows like these, server logs can show widely varying throughput. The end!
