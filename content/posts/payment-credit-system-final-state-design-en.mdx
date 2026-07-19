@@ -1,0 +1,521 @@
+---
+title: Payment Credit System — Why I Designed for the Final State Before the Success Response
+date: "2026-07-19T00:00:00.000Z"
+description: The criteria and technical decisions I made while building a credit charging and refund system connected to real payments, with a focus on guaranteeing the final state.
+categories:
+  - Backend
+tags:
+  - payment
+  - credit
+  - msa
+  - kafka
+  - idempotency
+  - reliability
+image: /assets/img/thumbnail/2026-07-19-payment-credit-system-final-state-design.png
+author: Youngsoo Lee
+lang: en
+draft: false
+toc: true
+comments: true
+---
+
+> This post has been translated from Korean to English.
+
+## 1. Why Payment Credits Were Needed
+
+Our service has credits, a virtual currency that can be used for AI features.
+At first, we granted them for free, but as the number of users grew, so did the cost burden.
+
+In particular, to provide advanced video models that can cost several thousand won per call, we needed a paid credit feature that would grant credits after payment.
+
+At first, it looked like all we had to do was implement a `payment succeeds → credits increase` flow.
+We could create charging and refund APIs, connect them to the payment service, and be done.
+
+But as soon as real payments became involved, one concern led to another.
+
+- What should happen if the payment succeeds but applying the credits in our service fails?
+- What should happen if the same payment result arrives multiple times?
+- If a refund arrives immediately after a charge, could the processing order be reversed?
+- What happens when multiple requests modify the same user's credits concurrently?
+- What should happen if the credits are applied but the other service does not receive the completion callback?
+- Is it safe for an operator to run a failed job again?
+- Will we be able to explain later why the current state is correct?
+
+## 2. Our Team's Situation and My Role
+
+Other in-house MSA teams were responsible for PG payments and payment handling.
+Our team was responsible for managing credits after payment was completed: we received an order number and the amount of credit to change from another service.
+
+So I defined my role and responsibility around the following principle:
+`The payment service owns payment state, and our service owns credit state.`
+
+This scope mattered because we had to establish data ownership.
+
+[# Spring Camp 2025 [Track 1] 4. Practical Guide to Developing MSA Transactions (Yonguk Kim)](https://www.youtube.com/watch?v=0UiE9YJi_f4&t=959s)
+
+> The video explains that, for proper MSA development, we should establish the principle of data ownership and allow data to be modified only through the service that owns it.
+
+## 3. Design Goals and Direction
+
+Rather than starting implementation immediately, we decided what we would guarantee and how far those guarantees would extend.
+For sensitive logic involving money, I thought it was more important to decide which failures must never be allowed than to make something that merely "works reasonably well."
+
+First, we set the following four guarantees:
+
+1. Credits for a completed payment are eventually applied.
+2. Even if the same request arrives multiple times, the credits are applied only once.
+3. Failed work is not lost; it remains in a state that can be reprocessed.
+4. The current stage and cause of failure can be tracked during operation.
+
+=> The goal for an accepted request was to make sure it was applied somehow.
+I thought that if this trust could not be established in communication with another server, both sides would have many more things to account for.
+
+Before implementation, we defined the requirements as follows.
+
+- Process charges and refunds based on the received order number and requested credit amount
+	- Always process received requests
+	- Notify the other service of the processing result
+		- Reprocess notifications that fail
+- Process credit usage
+	- Deduct credits when they are used
+	- Restore credits when a service error occurs
+- Record charge and refund processing
+	- How credits were charged and deducted
+	- How credits were used and restored
+
+### 3.1 How Should Credit State Be Represented?
+
+I will briefly cover the data structure before explaining the rest.
+
+Credits are not represented by a single table. We split them into the frequently updated current balance and two immutable INSERT-ONLY histories (charge/deduction and use/restoration).
+
+I will explain why we split them this way later.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/6798d22100eb4cc7c323f591d37957ba.png)
+
+## 4. The Decision Process and Implementation Code
+
+From here, I will organize the individual concerns that led to these decisions.
+
+### Why Separate HTTP Requests from Asynchronous Processing?
+
+We decided to use HTTP for communication with the other teams.
+
+If we had exchanged credit charge and deduction operations through messages, retries and timeouts would have been easier to handle.
+However, at the time our service operated its own infrastructure for cost reasons, and it was difficult to immediately build an environment for exchanging messages with the other teams.
+
+Instead, we kept external communication over HTTP but did not try to finish all credit processing inside the request.
+We separated the flow so that the request was accepted quickly and the Kafka consumer handled the actual processing.
+
+```text
+HTTP request received
+  → Kafka event published
+  → Request accepted response
+  → Consumer processes credits
+  → Processing-complete callback
+```
+
+![Payment credit processing flow — separating request acceptance from final application](/assets/img/diagrams/payment-credit-processing-flow.png)
+
+> The HTTP request is accepted quickly, while credit application is handled by a Kafka consumer. Credits and processing history are finalized in a database transaction, and the completion callback is sent after commit.
+
+> All code in this post is for illustrative purposes. Class names and unnecessary details have been reconstructed differently from the actual implementation.
+
+```java
+public void charge(String requestId, String orderId, long amount) {
+    // Skip an already-processed request — idempotency (explained later)
+    if (processedRequests.existsByRequestId(requestId)) {
+        return;
+    }
+
+    // Prevent duplicate charging for the same order
+    validateNotAlreadyCharged(orderId);
+
+    // Validate and publish only — the consumer handles actual application
+    publishChargeEvent(requestId, orderId, amount);
+}
+```
+
+There were two reasons for putting only the message into Kafka and returning a response:
+
+- The broker was in the same region, so we could respond quickly.
+- Once the message entered the broker, it could be reprocessed even if a temporary error occurred.
+
+### The Gap Created by Separating Credit Application from Callback Notification
+
+Separating credit application and callbacks can create the following inconsistency.
+
+> Our server may apply the credits, while the other server fails to receive the completion callback.
+
+We had two options at this point.
+
+- Process the credits regardless of whether the callback was received.
+- If the callback is not received, roll back so that the credits are not processed.
+
+I chose the first option because I determined that our service owned the credit data.
+Not applying credits that we manage just because we failed to notify the other service did not fit that ownership boundary.
+
+Therefore, we established the following processing order:
+
+1. Finalize the credit application and processing history in a single database transaction.
+2. Mark the message as complete only after the transaction has committed.
+3. Send the callback asynchronously after that.
+4. If the callback fails, retry only the callback instead of rolling back the credits.
+
+The key point is that callback delivery is guarded so it runs only after commit.
+
+```java
+@Async
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void onProcessed(CreditProcessedEvent event) {
+    // Credit application has already been committed at this point — the callback only reports the result
+    try {
+        callbackClient.send(buildCallback(event));
+        callbackResults.markSuccess(event.requestId());
+    } catch (CallbackRejectedException e) {
+        // Rejected by the other side — isolate it as non-retryable
+        callbackResults.markRejected(event.requestId(), e);
+    } catch (Exception e) {
+        // Delivery failure (5xx/network) — record the state and let redelivery handle it. Do not roll back credits
+        callbackResults.markDeliveryFailed(event.requestId(), e);
+    }
+}
+```
+
+`AFTER_COMMIT` guarantees that the credit is applied first, and because `@Transactional` is not declared, we do not hold a database connection while communicating with the external API.
+
+This decision means that our state and the other service's state may temporarily diverge.
+In return, once our service's credit state is finalized, it remains finalized, and notification to the other service can be recovered separately.
+
+### Why Put Idempotency at Both the API and Consumer Layers?
+
+In a payment-related flow, we cannot assume that the same request will arrive at the API only once.
+
+- The payment side may send the request again if it does not receive a response.
+- An operator may manually rerun a failed job.
+- A scheduler may send the same item again.
+- The consumer may terminate after processing a message but before committing its offset.
+
+So we checked idempotency at two layers.
+
+#### API-Level Idempotency
+
+The purpose of idempotency at the API layer is to prevent unnecessary messages from piling up in the MQ.
+
+If processing history exists for the request's `Idempotency-Key`, we do not publish to Kafka and return the existing processing result.
+
+>  The API-level defense is the first check in `charge()` above:
+>  - `if (processedRequests.existsByRequestId(requestId))`
+
+#### Consumer-Level Idempotency
+
+Even after passing the API layer, the same message can enter the consumer again.
+
+```
+Order ID 123 request -> (before 123 is processed) -> Order ID 123 request again
+```
+
+There are two things we must prevent:
+
+- Applying the same request multiple times
+- Applying changes concurrently
+
+We prevented concurrent application through Kafka's structure. Credit operations are processed only through a Kafka consumer.
+
+- The message's destination partition is determined by its key.
+- The consumer processes messages sequentially within a partition.
+
+![image](https://d1apvpgu6ekv4q.cloudfront.net/0ff44a539fd4056b3b9c779bc16d2a69.png)
+
+With this setup, the case above works as follows:
+
+1. Since the request has not been processed yet, two messages accumulate.
+2. The consumer processes the messages one at a time, in order.
+3. When it reaches the second message, processing history already exists, so it completes the message without applying the credits again.
+
+```java
+@Transactional
+public void process(CreditRequestEvent event) {
+    // Consumer-level idempotency — existing history means the request was already applied
+    if (processedRequests.existsByRequestId(event.requestId())) {
+        return;
+    }
+
+    validate(event);
+    // Processing history and credit application are in one transaction
+    saveProcessedRequest(event);
+    var result = processorFor(event).process(event);
+
+    // Send the callback after commit — see the previous section
+    eventPublisher.publishEvent(result);
+}
+```
+
+By saving `processing history` and `credit application` in the same transaction:
+
+- If the process dies during processing, the history rolls back with it, so the request is processed again.
+- If it dies after commit, the history remains, so a redelivered message completes without applying the credits again.
+
+=> The request is processed idempotently!
+
+### How to Guarantee the Order of Charge and Refund Events
+
+We also had to consider that processing order could differ when charge and refund requests arrived almost simultaneously.
+
+```text
+Charge → (0.1 seconds later) → Refund
+```
+
+If the order were reversed and the refund were processed first, it would be a request to refund credits that had not been charged yet.
+
+We solved this through Kafka's structure as well.
+
+- Assign charge and refund requests to the same topic.
+- Set the order ID as the message key.
+
+```java
+// Charges and refunds use the same publishing path — same topic, same key rule
+sendCreditEvent(CreditRequestType.CHARGE, requestId, orderId, amount);
+sendCreditEvent(CreditRequestType.DEDUCT, requestId, orderId, amount);
+
+private void sendCreditEvent(CreditRequestType type, String requestId, String orderId, long amount) {
+    var event = CreditRequestEvent.of(type, requestId, orderId, amount);
+    // Order ID is the key — the same order goes to the same partition
+    kafkaTemplate.send(topic, orderId, event);
+}
+```
+
+Messages with the same key go to the same partition, and their arrival order is maintained within that partition.
+-> Therefore, the charge and refund order for the same order is guaranteed.
+
+> However, we must be precise about the scope of this guarantee.
+> Using the order ID as the key guarantees ordering for an order, but it does not serialize different orders belonging to the same user into one sequence. We did not need that here.
+> There was no ordering requirement between different orders, and concurrent balance modification was blocked by a separate mechanism (a lock).
+
+### Why Separate the Current Balance from the Change History?
+
+We did not make one credit table take on every role.
+
+- Charged credits: mutable state for quickly querying the currently valid credit balance
+- Charge/deduction history: immutable, INSERT-ONLY history of credits introduced through payments and refunds
+- Use/restoration history: immutable, INSERT-ONLY history (ledger) of credits deducted through feature usage and restored after errors
+
+At first, I considered calculating the balance by summing all histories without a separate charged-credit table.
+If the current state is calculated solely from history, there is no need to account for the possibility of inconsistency between a current-state table and the history.
+
+However, we had to consider credit expiration policies and the possibility of refunds over a long period.
+The period we decided on after discussion was five years.
+
+> Under [Article 64 of the Commercial Act](https://www.law.go.kr/법령/상법/제64조), I determined that claims arising from commercial transactions have a five-year statute of limitations, and that we had an obligation to provide refunds for up to five years after the purchase date.
+
+Calculating the balance by querying and summing years of history every time it was requested would be inefficient.
+
+We could also accumulate old data in a cache and calculate only recent changes, but considering the batch that fills the cache and refunds for old transactions, the complexity grew.
+
+So we changed direction. We kept the current balance as mutable state for fast reads, while using the following to make the value explainable and traceable:
+
+- Control the cases that are allowed to modify credits.
+- Save INSERT-ONLY history so that the state can be reconciled and traced.
+
+Instead, we had to consider the inherent problem of mutable state: concurrent modification.
+
+### Why Control Concurrency with a User-Level Lock?
+
+Credit-modifying operations can broadly be divided into `charge, deduction, and use`.
+If different requests modify the same user's payment credits concurrently, the balance calculation can become corrupted (a lost update).
+
+So we acquired a Redis lock based on the user identifier and allowed only one credit-modifying operation at a time.
+
+> This is different from the ordering unit mentioned earlier, which was the order number. Ordering protects the sequence within the same order, while the lock must protect a single user's balance. When a feature is used, it touches the entire credit balance rather than a particular order, so the lock had to be user-based.
+
+Idempotency and a lock may look similar, but they solve different problems.
+
+- Idempotency: the problem of the same request arriving twice
+- Lock: the problem of different requests modifying the same credit concurrently
+
+Neither one was sufficient by itself.
+We needed idempotency to block duplicates of the same request and a lock to control conflicts between different changes.
+
+### An Additional `active` Column
+
+However, the lock above had a limitation. The lock is released when the HTTP request ends.
+But the actual deduction takes place in the Kafka consumer.
+
+```
+1000 deduction request & response -> 400 credit usage -> Consumer processes 1000 deduction
+```
+
+If a user request arrived between the `deduction request` and `request processing`, the balance would still be 1000, so using 400 credits would succeed.
+The consumer would then deduct 1000, leaving a balance of -400. In other words, we would have double-spent the credits.
+
+Holding the user-level lock until the consumer finished processing would block all of the user's credit requests until processing completed, which I judged would create a very poor user experience.
+
+We therefore needed a lock that lived longer than the request, so we added a persistent active flag to the database.
+
+```
+1000 deduction request -> Deactivate credits for the order ID -> Response -> Consumer processes 1000 deduction
+```
+
+Available-credit queries now consider only active credits, so a request to use 400 credits cannot see the credits whose deduction is in progress.
+Because the flag applies to only one order's credit, it does not block the user's other credit operations.
+
+```java
+@UserCreditLock  // User-level distributed lock
+public void deduct(String requestId, String orderId, long amount) {
+    // Skip an already-processed request — idempotency
+    if (processedRequests.existsByRequestId(requestId)) {
+        return;
+    }
+
+    var credit = findCreditOrThrow(orderId);
+    credit.validateUsable(amount);   // Validate active state + sufficient deduction balance
+
+    // Deactivate at acceptance time
+    credit.deactivate();
+    creditRepository.save(credit);
+
+    try {
+        publishDeductEvent(requestId, orderId, amount);
+    } catch (Exception e) {
+        credit.activate();
+        creditRepository.save(credit);
+        throw e;
+    }
+}
+```
+
+1. If the request was already processed, skip it through idempotency.
+2. Validate the credit — block duplicate deductions for consistency and verify that the amount is sufficient.
+3. Deactivate the credit.
+4. Publish the message to Kafka — reactivate it if publishing fails.
+
+Deactivation happens inside the lock.
+The credit is already locked when the lock is released, so there is no moment when protection is lost.
+(The flag takes over responsibility when the lock ends.)
+
+At this point, I intentionally did not use a transaction.
+
+#### Why I Did Not Use a Transaction
+
+With a transaction, the `try-catch` block might seem unnecessary. "If publishing fails, we can just restore `active`, right?"
+That is true if we look only at the failure path. The problem is the success path.
+
+```
+1. BEGIN transaction
+2. Save active=false
+3. Publish message to Kafka
+4. COMMIT transaction
+```
+
+Publishing to Kafka is also an external call that does not participate in the database transaction.
+If we publish inside the transaction, the message reaches the outside world before the transaction commits.
+If the consumer reads the credit before the commit, it reads the old, unlocked state!! ⭐️
+
+This breaks the premise that `the credit must be locked when the event is received`, and in the worst case the transaction commit could overwrite the deduction performed by the consumer.
+
+So we reversed the order. We commit the lock first and publish afterward.
+With this order there is no rollback, so if publishing fails, we explicitly release the lock ourselves.
+
+There were other options as well.
+
+- Publish after the transaction commits (`AFTER_COMMIT` + `@TransactionalEventListener`)
+
+This solves the ordering problem. However, a publishing failure becomes separated from the HTTP response.
+If we defer it to a listener, there is no way to tell the caller that "the commit succeeded but publishing failed."
+Because the commit has already happened, rollback is no longer possible, and the compensating code also disappears.
+
+- The Outbox pattern
+
+Write the event to the database in the same transaction, then have a separate publisher send it after commit, including retries and so on.
+This is the textbook approach for preventing event loss. However, it also brings infrastructure such as a table and scheduler.
+
+Since restoring a single flag was enough for recovery, I thought adding Outbox code that the existing team did not have would be excessive.
+So I chose the current structure: commit first without a transaction, and explicitly restore the state when publishing fails.
+
+## 5. What I Learned
+
+### Idempotency, Ordering, and Locks Are Different Problems
+
+- Idempotency prevents duplicates of the same request.
+- A Kafka key maintains event ordering within the defined scope.
+- A lock prevents different requests from modifying the same credit state concurrently.
+
+The scope of each mechanism was different too.
+
+- Idempotency — request (`requestId`)
+- Processing order — order (`orderId`)
+- Lock — user
+- `active` — one order's credit
+
+![Scope of idempotency, ordering, and the lock](/assets/img/diagrams/payment-credit-invariants.svg)
+
+> Even when problems look similar, we use different mechanisms according to the invariant we need to protect.
+
+The unit for each mechanism emerged naturally from the invariant it protected.
+
+Trying to solve similar-looking problems with one mechanism creates gaps.
+I learned that we must first distinguish which failures and conflicts we are trying to prevent, and only then choose the mechanism.
+
+### Derived State Should Be Kept with Its Evidence
+
+The current-balance table is necessary for fast queries.
+But if we keep only an UPDATED state, it is difficult to explain why that value is correct.
+
+So we stored INSERT-ONLY history alongside the current balance.
+The balance is not the source; it is a summary of the history, and the summary can be checked against the source at any time.
+Periodic automatic verification (a consistency scheduler) is also possible.
+
+### Some Problems Need Agreement Before Code
+
+When an error occurs while our service is processing credit usage, we restore the user's credits. (Errors are frequent given the nature of LLM features.)
+On the other hand, because the other service has a refund obligation, it must prevent users with remaining credits from withdrawing or being removed from a membership.
+
+Each policy is reasonable on its own. But when combined, they create a problem.
+
+1. The user spends all of their credits.
+2. Because the remaining credit is 0, the other service allows the user to withdraw.
+3. An error occurs during usage, so our service restores the credits.
+4. Credits remain on an account that has already been withdrawn.
+
+This problem could not be completely solved by adding a condition on only one side. So we agreed on the responsibility with the other service.
+The other service makes the decision while credits are being processed, while we provide the information needed for that decision.
+
+Therefore, when our service reports the remaining credit, we also agreed to report the amount of credit currently being processed.
+
+```json
+{
+    "totalCredit": 1000,
+    "remainCredit": 600,
+    // Credit currently being processed
+    "processingCredit": 400
+}
+```
+
+I learned that we must first confirm and agree on the business policies and responsibility boundaries between services.
+Even when each service works correctly, the combined flow can still break.
+
+## 6. Closing
+
+Building a payment credit system was not simply a matter of connecting charge and deduction APIs.
+It was the work of finding possible state divergences one by one and turning them into an operable system.
+
+The questions that kept branching out in Chapter 1 were resolved as follows:
+
+- Even if credit application fails: messages remain in the broker and can be reprocessed.
+- Even if the same result arrives twice: dual idempotency at the API and consumer layers.
+- Even if charge and refund arrive almost simultaneously: partition ordering based on the order ID key.
+- Even if the other server is down or notification fails: apply our state first, separate the states, and redeliver.
+- Even if the same credits are touched concurrently: a user-level lock and the `active` flag.
+- Even if the current state diverges: a structure that can be verified from history.
+- Even if policies between services conflict: agreement on responsibilities and contracts rather than code alone.
+
+Some of these considerations were not part of the initial design, and some were things I had overlooked.
+I discovered ideas such as the `transaction I intentionally did not use` and the `active column that closes the gap in the lock` while building the system.
+
+There is no perfect design from the start.
+Instead, the habit of continually asking, “What happens with this failure?” gradually made the system more robust.
+
+And the answer to that question was usually not a single correct answer, but a choice:
+“What failures are we willing to accept, and which failures must never be allowed?”
+
+Choose the best option when one exists; when it does not, choose the lesser evil rather than the worst one. That judgment itself is design.
