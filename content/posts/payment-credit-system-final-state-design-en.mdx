@@ -115,9 +115,11 @@ HTTP request received
   → Processing-complete callback
 ```
 
-![Payment credit processing flow — separating request acceptance from final application](/assets/img/diagrams/payment-credit-processing-flow.png)
-
 > The HTTP request is accepted quickly, while credit application is handled by a Kafka consumer. Credits and processing history are finalized in a database transaction, and the completion callback is sent after commit.
+
+> The diagram below shows the overall flow of the concerns considered in this design.
+
+![Payment credit processing flow — separating request acceptance from final application](/assets/img/diagrams/payment-credit-processing-flow.png)
 
 > All code in this post is for illustrative purposes. Class names and unnecessary details have been reconstructed differently from the actual implementation.
 

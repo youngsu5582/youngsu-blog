@@ -114,9 +114,11 @@ HTTP 요청 수신
   → 처리 완료 콜백
 ```
 
-![결제 크레딧 처리 흐름 — 요청 접수와 최종 반영을 분리하다](/assets/img/diagrams/payment-credit-processing-flow.png)
-
 > HTTP 요청은 빠르게 접수하고, 크레딧 반영은 Kafka Consumer에서 처리한다. 크레딧과 처리 이력은 DB 트랜잭션으로 확정한 뒤, 커밋 이후 완료 콜백을 전송한다.
+
+> 아래 그림은 이번 설계에서 고려한 내용과 처리 흐름을 전체적으로 보여준다.
+
+![결제 크레딧 처리 흐름 — 요청 접수와 최종 반영을 분리하다](/assets/img/diagrams/payment-credit-processing-flow.png)
 
 > 이 글의 코드는 모두 예시용이다. 클래스명과 불필요한 요소는 실제와 다르게 재구성했다.
 
