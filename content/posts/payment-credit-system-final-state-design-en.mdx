@@ -447,11 +447,7 @@ The scope of each mechanism was different too.
 - Lock — user
 - `active` — one order's credit
 
-![Scope of idempotency, ordering, and the lock](/assets/img/diagrams/payment-credit-invariants.svg)
-
-> Even when problems look similar, we use different mechanisms according to the invariant we need to protect.
-
-The unit for each mechanism emerged naturally from the invariant it protected.
+The scope of each mechanism followed naturally from the invariant it protects.
 
 Trying to solve similar-looking problems with one mechanism creates gaps.
 I learned that we must first distinguish which failures and conflicts we are trying to prevent, and only then choose the mechanism.
