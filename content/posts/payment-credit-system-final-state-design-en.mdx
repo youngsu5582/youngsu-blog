@@ -97,6 +97,8 @@ I will explain why we split them this way later.
 
 From here, I will organize the individual concerns that led to these decisions.
 
+![Payment credit processing flow — separating request acceptance from final application](/assets/img/diagrams/payment-credit-processing-flow.png)
+
 ### Why Separate HTTP Requests from Asynchronous Processing?
 
 We decided to use HTTP for communication with the other teams.
@@ -114,12 +116,6 @@ HTTP request received
   → Consumer processes credits
   → Processing-complete callback
 ```
-
-> The HTTP request is accepted quickly, while credit application is handled by a Kafka consumer. Credits and processing history are finalized in a database transaction, and the completion callback is sent after commit.
-
-> The diagram below shows the overall flow of the concerns considered in this design.
-
-![Payment credit processing flow — separating request acceptance from final application](/assets/img/diagrams/payment-credit-processing-flow.png)
 
 > All code in this post is for illustrative purposes. Class names and unnecessary details have been reconstructed differently from the actual implementation.
 
