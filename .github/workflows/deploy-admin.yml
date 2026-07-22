@@ -1,0 +1,48 @@
+name: Deploy Blog Admin
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: blog-admin-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Admin on homeserver
+    runs-on: [self-hosted, linux, blog-admin]
+    timeout-minutes: 30
+    steps:
+      - name: Check out the triggering commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fast-forward the homeserver runtime checkout
+        env:
+          BLOG_RUNTIME_DIR: /home/yeongsu/docker/youngsu-blog
+        run: |
+          set -Eeuo pipefail
+          test -d "$BLOG_RUNTIME_DIR/.git"
+
+          if ! git -C "$BLOG_RUNTIME_DIR" diff --quiet || \
+             ! git -C "$BLOG_RUNTIME_DIR" diff --cached --quiet || \
+             test -n "$(git -C "$BLOG_RUNTIME_DIR" ls-files --others --exclude-standard)"; then
+            echo "Blog runtime checkout is dirty; refusing automatic Admin deployment." >&2
+            git -C "$BLOG_RUNTIME_DIR" status --short
+            exit 1
+          fi
+
+          git -C "$BLOG_RUNTIME_DIR" fetch --prune origin main
+          git -C "$BLOG_RUNTIME_DIR" merge --ff-only origin/main
+
+      - name: Deploy and verify Blog Admin
+        run: |
+          set -Eeuo pipefail
+          /home/yeongsu/projects/homelab-infra/scripts/deploy-youngsu-blog-admin.sh
