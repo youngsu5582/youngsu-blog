@@ -46,3 +46,77 @@ jobs:
         run: |
           set -Eeuo pipefail
           /home/yeongsu/projects/homelab-infra/scripts/deploy-youngsu-blog-admin.sh
+
+  notify:
+    name: Notify Slack
+    if: ${{ always() }}
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Blog Admin deployment notification to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          AUTHOR: ${{ github.event.head_commit.author.name }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        run: |
+          set -Eeuo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo '::warning::SLACK_WEBHOOK_URL is not configured; Blog Admin Slack notification was skipped.'
+            exit 0
+          fi
+
+          SHORT_SHA="${SHA:0:7}"
+          TITLE=$(printf '%s' "${COMMIT_MSG:-}" | head -n1)
+          [ -z "$TITLE" ] && TITLE="(manual dispatch: ${SHORT_SHA})"
+          [ -z "${AUTHOR:-}" ] && AUTHOR="$ACTOR"
+
+          STARTED=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}" --jq '.run_started_at' 2>/dev/null || true)
+          if [ -n "$STARTED" ]; then
+            ELAPSED=$(( $(date +%s) - $(date -d "$STARTED" +%s) ))
+            DURATION="$((ELAPSED/60))m $((ELAPSED%60))s"
+          else
+            DURATION="n/a"
+          fi
+
+          case "$DEPLOY_RESULT" in
+            success) STATUS=':white_check_mark: *Blog Admin 배포 성공*'; COLOR='#2eb886' ;;
+            failure) STATUS=':x: *Blog Admin 배포 실패*'; COLOR='#d00000' ;;
+            cancelled) STATUS=':warning: *Blog Admin 배포 취소*'; COLOR='#f2c744' ;;
+            *) STATUS=":grey_question: *Blog Admin 배포 상태: ${DEPLOY_RESULT}*"; COLOR='#808080' ;;
+          esac
+
+          RUN_URL="${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}"
+          COMMIT_URL="${SERVER_URL}/${REPO}/commit/${SHA}"
+          payload=$(jq -n \
+            --arg color "$COLOR" --arg status "$STATUS" \
+            --arg repo "$REPO" --arg branch "$BRANCH" \
+            --arg title "$TITLE" --arg short "$SHORT_SHA" --arg commit "$COMMIT_URL" \
+            --arg author "$AUTHOR" --arg actor "$ACTOR" --arg event "$EVENT" \
+            --arg duration "$DURATION" --arg run "$RUN_URL" \
+            '{attachments:[{color:$color,blocks:[
+              {type:"header",text:{type:"plain_text",text:"🚀 Blog Admin 홈서버 배포",emoji:true}},
+              {type:"section",text:{type:"mrkdwn",text:($status + "\n*<" + $commit + "|" + $short + ">* " + $title)}},
+              {type:"section",fields:[
+                {type:"mrkdwn",text:("*Repo*\n" + $repo)},
+                {type:"mrkdwn",text:("*Branch*\n" + $branch)},
+                {type:"mrkdwn",text:("*Author*\n" + $author)},
+                {type:"mrkdwn",text:("*Trigger*\n" + $actor + " · " + $event)},
+                {type:"mrkdwn",text:("*걸린 시간*\n" + $duration)},
+                {type:"mrkdwn",text:("*Runner*\n`blog-admin`")}
+              ]},
+              {type:"actions",elements:[{type:"button",text:{type:"plain_text",text:"▶ Run 로그 보기"},url:$run}]}
+            ]}]}')
+
+          curl -fsS -X POST \
+            -H 'Content-type: application/json' \
+            --data "$payload" \
+            "$SLACK_WEBHOOK_URL"
