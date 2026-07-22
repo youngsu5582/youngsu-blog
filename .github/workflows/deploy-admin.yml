@@ -76,7 +76,13 @@ jobs:
 
           SHORT_SHA="${SHA:0:7}"
           TITLE=$(printf '%s' "${COMMIT_MSG:-}" | head -n1)
+          if [ -z "$TITLE" ]; then
+            TITLE=$(gh api "repos/${REPO}/commits/${SHA}" --jq '.commit.message' 2>/dev/null | head -n1 || true)
+          fi
           [ -z "$TITLE" ] && TITLE="(manual dispatch: ${SHORT_SHA})"
+          if [ -z "${AUTHOR:-}" ]; then
+            AUTHOR=$(gh api "repos/${REPO}/commits/${SHA}" --jq '.commit.author.name // .author.login // empty' 2>/dev/null || true)
+          fi
           [ -z "${AUTHOR:-}" ] && AUTHOR="$ACTOR"
 
           STARTED=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}" --jq '.run_started_at' 2>/dev/null || true)
