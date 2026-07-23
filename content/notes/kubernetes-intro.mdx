@@ -1,0 +1,79 @@
+---
+title: 쿠버네티스
+date: "Thu Jul 23 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: 쿠버네티스의 진입점
+categories:
+  - 인프라
+  - 쿠버네티스
+tags:
+  - kubernetes
+  - infra
+  - devops
+---
+
+## Kubernetes
+
+### 왜 필요한가
+
+Kubernetes 는 단순히 컨테이너를 실행하고 관리해주는 도구가 아니다.
+사내, 여러 팀과 서비스가 컨테이너를 운영할 때
+배포·확장·네트워크·권한·관측·장애등의 대응방식을 공통된 모델로 다루기 위한 플랫폼 이다.
+
+이런 점을 기반으로, 플랫폼 팀도 배포 방식, 보안 정책, 관측 도구등 일관되게 제공 및 관측할 수 있다.
+
+즉 핵심 가치는 컨테이너 실행 및 관리 자체보다, 다양한 워크로드 및 운영 도구를 일관성 있는 '하나의 운영 모델로 통합' 역시도 큰 장점이다.
+
+> 우리 조직도 이러한 방향으로 기존 워크로드를 EKS 로 이전하려 한다.
+
+### Desired State
+
+직역하면, 원하는 상태.
+쿠버네티스는 원하는 상태를 계속 체크한다.
+
+- 문제가 생기면? : 자동으로 조치한다.(self-healing)
+
+- 원하는 상태? : 얼마나 많은 서버가 구동되야 하는지, 자원을 얼마나 사용하는지, 몇 번 포트나 네트워크에서 서비스하는 지 등등
+
+### 선언형
+
+쿠버네티스는 YAML 이나 JSON 문법을 사용해서 명시적으로 설정한다.
+
+> kubectl 을 통해 cli 기반 조작하는 방식도 있지만,
+> 반복 가능한 운영 및 버전 기록을 위해 선언형을 주로 사용한다.
+
+```yaml
+apiVersion: apps/v1        # Deployment는 apps/v1 API 그룹에 속함
+kind: Deployment           # 리소스 종류
+metadata:
+  name: hello-nginx        # 이 Deployment의 이름 (kubectl에서 참조할 이름)
+  labels:
+    app: hello-nginx       # 이 리소스 자체에 붙는 라벨(관리·조회용)
+spec:
+  replicas: 2              # 유지할 파드 개수 (원하는 상태). 하나 죽으면 자동으로 다시 띄움
+  selector:
+    matchLabels:
+      app: hello-nginx     # 이 Deployment가 "관리할 파드"를 고르는 기준 라벨
+  template:                # 파드를 찍어낼 "틀(template)"
+    metadata:
+      labels:
+        app: hello-nginx   # 생성될 파드에 붙는 라벨 (위 selector와 매칭됨)
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80       # 컨테이너가 사용하는 포트(외부 노출X)
+          resources:                  # 리소스 요청/제한
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+```
+
+- apiVersion + kind 를 통해 다양한 리소스를 명시할 수 있다.
+(Deployment, Service, ConfigMap, Secret, HPA 등등)
+
+- 리소스의 spec 을 명시할 수 있다.
+(port, cpu, memory 등등)
