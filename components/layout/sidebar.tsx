@@ -17,7 +17,12 @@ export function Sidebar() {
     process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_ADMIN_UI_ENABLED === "true";
 
   return (
-    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 theme-sidebar" aria-label="사이드바 네비게이션">
+    <div
+      className="site-sidebar hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 theme-sidebar"
+      role="complementary"
+      aria-label="사이드바 네비게이션"
+      data-site-sidebar
+    >
       <div className="flex flex-col h-full px-5 py-8">
         {/* Profile */}
         <div className="flex flex-col items-center text-center mb-8">
@@ -142,6 +147,6 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-    </aside>
+    </div>
   );
 }

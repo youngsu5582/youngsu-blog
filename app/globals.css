@@ -322,7 +322,7 @@
   /* Hide interactive and navigation elements */
   nav,
   footer,
-  aside,
+  [data-site-sidebar],
   .sidebar,
   [role="navigation"],
   [data-sidebar],
