@@ -18,7 +18,7 @@ export function Sidebar() {
 
   return (
     <div
-      className="site-sidebar hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 theme-sidebar"
+      className="site-sidebar theme-sidebar"
       role="complementary"
       aria-label="사이드바 네비게이션"
       data-site-sidebar

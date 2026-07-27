@@ -63,7 +63,7 @@ export default function RootLayout({
         <ThemeProvider>
           <div className="relative min-h-screen">
             <Sidebar />
-            <div className="lg:pl-64">
+            <div className="site-shell">
               <Topbar />
               <main id="main-content" className="max-w-6xl mx-auto px-6 py-10 lg:px-10">
                 {children}

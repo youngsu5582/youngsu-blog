@@ -298,6 +298,31 @@
   }
 }
 
+/* ===== Site Layout Fallbacks ===== */
+/*
+ * Keep the primary layout independent from Tailwind's responsive utility
+ * generation. Some browser content/CSS blockers can leave `.hidden` loaded
+ * while dropping the matching `lg:flex` rule, which hides the sidebar on a
+ * desktop viewport. These explicit rules preserve the intended breakpoint.
+ */
+.site-sidebar {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .site-sidebar {
+    display: flex !important;
+    width: 16rem;
+    flex-direction: column;
+    position: fixed;
+    inset-block: 0;
+  }
+
+  .site-shell {
+    padding-left: 16rem;
+  }
+}
+
 /* ===== Print Styles ===== */
 @media print {
   /* Reset to print-friendly colors */
