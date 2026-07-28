@@ -5,7 +5,6 @@ import {
   getAllNotes,
   getAllLibraryItems,
   getAllCategories,
-  getAllTags,
   getAllSeries,
   getAlternatePost,
   getUrlSlug,
@@ -49,7 +48,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const notes = getAllNotes();
   const libraryItems = getAllLibraryItems();
   const categories = getAllCategories();
-  const tags = getAllTags();
   const series = getAllSeries();
   const taxonomyContent = [...posts, ...articles, ...notes];
   const latestPostDate = latestDateForContent(posts);
@@ -112,14 +110,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }));
 
-  // Tag pages
-  const tagUrls = tags.map((tag) => ({
-    url: `${siteConfig.url}/tags/${encodeURIComponent(tag.name)}`,
-    lastModified: latestDateForTaxonomy(tag.name, "tags", taxonomyContent),
-    changeFrequency: "weekly" as const,
-    priority: 0.6,
-  }));
-
   // Series pages
   const seriesUrls = series.map((item) => ({
     url: `${siteConfig.url}/series/${item.slug}${item.lang === "en" ? "?lang=en" : ""}`,
@@ -180,12 +170,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.8,
     },
-    {
-      url: `${siteConfig.url}/tags`,
-      lastModified: latestSiteDate,
-      changeFrequency: "weekly",
-      priority: 0.7,
-    },
     // NOTE: /search(사이트 내 검색 결과 페이지)는 색인 대상이 아니므로 sitemap에서 제외
     {
       url: `${siteConfig.url}/series`,
@@ -231,7 +215,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...noteUrls,
     ...libraryUrls,
     ...categoryUrls,
-    ...tagUrls,
     ...seriesUrls,
   ];
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
 import type { Metadata } from "next";
+import { siteConfig } from "@/config/site";
 
 interface CategoryPageProps {
   params: Promise<{ category: string }>;
@@ -18,10 +19,28 @@ export async function generateStaticParams() {
   }));
 }
 
-export async function generateMetadata({ params }: CategoryPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: CategoryPageProps): Promise<Metadata> {
   const { category } = await params;
+  const query = await searchParams;
   const decoded = decodeURIComponent(category);
-  return { title: `${decoded} 카테고리` };
+  const lang = query.lang === "en" ? "en" : "ko";
+  const parent = query.parent ? decodeURIComponent(query.parent) : undefined;
+  const categoryUrl = `${siteConfig.url}/categories/${encodeURIComponent(decoded)}${lang === "en" ? "?lang=en" : ""}`;
+
+  return {
+    title: lang === "en" ? `${decoded} category` : `${decoded} 카테고리`,
+    description:
+      lang === "en" ? `Posts, articles, and notes in the ${decoded} category.` : `${decoded} 카테고리의 글과 아티클, 노트를 모아봅니다.`,
+    alternates: { canonical: categoryUrl },
+    ...(parent ? { robots: { index: false, follow: true } } : {}),
+    openGraph: {
+      title: lang === "en" ? `${decoded} category` : `${decoded} 카테고리`,
+      description:
+        lang === "en" ? `Posts, articles, and notes in the ${decoded} category.` : `${decoded} 카테고리의 글과 아티클, 노트를 모아봅니다.`,
+      url: categoryUrl,
+      type: "website",
+    },
+  };
 }
 
 export default async function CategoryPage({ params, searchParams }: CategoryPageProps) {
