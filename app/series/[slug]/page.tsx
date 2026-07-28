@@ -44,23 +44,29 @@ export async function generateMetadata({
 
   const description =
     series.description ?? `${series.name} 연재 글 ${series.posts.length}편을 순서대로 모았습니다.`;
+  const canonical = `${siteConfig.url}/series/${slug}${lang === "en" ? "?lang=en" : ""}`;
+  const koreanSeries = getSeriesBySlug(slug, "ko");
+  const englishSeries = getSeriesBySlug(slug, "en");
+  const languageAlternates = koreanSeries && englishSeries
+    ? {
+        ko: `${siteConfig.url}/series/${slug}`,
+        en: `${siteConfig.url}/series/${slug}?lang=en`,
+        "x-default": `${siteConfig.url}/series/${slug}`,
+      }
+    : undefined;
 
   return {
     title: `${series.name} 시리즈`,
     description,
     alternates: {
-      canonical: `${siteConfig.url}/series/${slug}`,
-      languages: {
-        ko: `${siteConfig.url}/series/${slug}`,
-        en: `${siteConfig.url}/series/${slug}?lang=en`,
-        "x-default": `${siteConfig.url}/series/${slug}`,
-      },
+      canonical,
+      ...(languageAlternates ? { languages: languageAlternates } : {}),
     },
     openGraph: {
       title: `${series.name} 시리즈`,
       description,
       type: "website",
-      url: `${siteConfig.url}/series/${slug}`,
+      url: canonical,
     },
   };
 }

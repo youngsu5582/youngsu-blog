@@ -3,11 +3,8 @@ import Link from "next/link";
 import { ChevronRight, FolderOpen } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
 import { FadeOnScroll } from "@/components/common/fade-on-scroll";
-
-export const metadata = {
-  title: "카테고리",
-  description: "카테고리별 글 모아보기",
-};
+import { siteConfig } from "@/config/site";
+import type { Metadata } from "next";
 
 interface CategoryNode {
   name: string;
@@ -44,6 +41,24 @@ function buildCategoryTree(posts: Array<{ categories: string[] }>) {
 
 interface CategoriesPageProps {
   searchParams: Promise<{ lang?: string }>;
+}
+
+export async function generateMetadata({ searchParams }: CategoriesPageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const lang = params.lang === "en" ? "en" : "ko";
+  const canonical = lang === "en" ? `${siteConfig.url}/categories?lang=en` : `${siteConfig.url}/categories`;
+
+  return {
+    title: lang === "en" ? "Categories" : "카테고리",
+    description: lang === "en" ? "Browse posts by category." : "카테고리별 글 모아보기",
+    alternates: { canonical },
+    openGraph: {
+      title: lang === "en" ? "Categories" : "카테고리",
+      description: lang === "en" ? "Browse posts by category." : "카테고리별 글 모아보기",
+      url: canonical,
+      type: "website",
+    },
+  };
 }
 
 export default async function CategoriesPage({ searchParams }: CategoriesPageProps) {

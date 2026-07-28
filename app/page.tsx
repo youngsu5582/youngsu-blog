@@ -8,6 +8,15 @@ import { AnimateIn } from "@/components/common/animate-in";
 import { SectionDivider } from "@/components/common/section-divider";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: siteConfig.name,
+  description: siteConfig.description,
+  alternates: {
+    canonical: "/",
+  },
+};
 
 export default function Home() {
   const recentPosts = getAllPosts("ko").slice(0, 5);

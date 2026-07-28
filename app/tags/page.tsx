@@ -2,10 +2,18 @@ import { getAllTags } from "@/lib/content";
 import { TagBubbles } from "@/components/tags/tag-bubbles";
 import { LangToggle } from "@/components/common/lang-toggle";
 import { FadeOnScroll } from "@/components/common/fade-on-scroll";
+import type { Metadata } from "next";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "태그",
   description: "태그별 글 모아보기",
+  alternates: {
+    canonical: "/tags",
+  },
+  robots: {
+    index: false,
+    follow: true,
+  },
 };
 
 interface TagsPageProps {

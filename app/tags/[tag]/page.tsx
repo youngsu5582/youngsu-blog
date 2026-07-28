@@ -12,6 +12,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
 import type { Metadata } from "next";
+import { siteConfig } from "@/config/site";
 
 interface TagPageProps {
   params: Promise<{ tag: string }>;
@@ -29,10 +30,15 @@ export async function generateMetadata({ params }: TagPageProps): Promise<Metada
   const { tag } = await params;
   const decoded = decodeURIComponent(tag);
   const canonicalTag = getCanonicalTagName(decoded) ?? decoded;
+  const canonical = `${siteConfig.url}/tags/${encodeURIComponent(canonicalTag)}`;
   return {
     title: `#${canonicalTag}`,
-    alternates: { canonical: `/tags/${encodeURIComponent(canonicalTag)}` },
-    robots: { index: false, follow: true },
+    description: `${canonicalTag} 태그가 붙은 글과 아티클, 노트를 모아봅니다.`,
+    alternates: { canonical },
+    robots: {
+      index: false,
+      follow: true,
+    },
   };
 }
 

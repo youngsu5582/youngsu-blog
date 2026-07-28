@@ -8,7 +8,6 @@ import { Topbar } from "@/components/layout/topbar";
 import { Footer } from "@/components/layout/footer";
 import { Analytics } from "@/components/common/analytics";
 import { generateWebSiteSchema, renderJsonLd } from "@/lib/json-ld";
-import { buildRootLanguageAlternates } from "@/lib/seo";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -30,7 +29,6 @@ export const metadata: Metadata = {
         { url: "/feed-en.xml", title: `${siteConfig.name} - English` },
       ],
     },
-    languages: buildRootLanguageAlternates(),
   },
 };
 
