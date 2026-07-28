@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
 import type { Metadata } from "next";
+import { siteConfig } from "@/config/site";
 
 interface TagPageProps {
   params: Promise<{ tag: string }>;
@@ -21,7 +22,16 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: TagPageProps): Promise<Metadata> {
   const { tag } = await params;
   const decoded = decodeURIComponent(tag);
-  return { title: `#${decoded}` };
+  const canonical = `${siteConfig.url}/tags/${encodeURIComponent(decoded)}`;
+  return {
+    title: `#${decoded}`,
+    description: `${decoded} 태그가 붙은 글과 아티클, 노트를 모아봅니다.`,
+    alternates: { canonical },
+    robots: {
+      index: false,
+      follow: true,
+    },
+  };
 }
 
 export default async function TagPage({ params, searchParams }: TagPageProps) {
