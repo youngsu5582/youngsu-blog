@@ -1,5 +1,12 @@
 import { notFound } from "next/navigation";
-import { getAllTags, getContentByTag, getUrlSlug, calcReadingTimeFromBody, getAlternatePost } from "@/lib/content";
+import {
+  getAllTags,
+  getCanonicalTagName,
+  getContentByTag,
+  getUrlSlug,
+  calcReadingTimeFromBody,
+  getAlternatePost,
+} from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -21,20 +28,26 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: TagPageProps): Promise<Metadata> {
   const { tag } = await params;
   const decoded = decodeURIComponent(tag);
-  return { title: `#${decoded}` };
+  const canonicalTag = getCanonicalTagName(decoded) ?? decoded;
+  return {
+    title: `#${canonicalTag}`,
+    alternates: { canonical: `/tags/${encodeURIComponent(canonicalTag)}` },
+    robots: { index: false, follow: true },
+  };
 }
 
 export default async function TagPage({ params, searchParams }: TagPageProps) {
   const { tag } = await params;
   const sp = await searchParams;
   const decoded = decodeURIComponent(tag);
+  const canonicalTag = getCanonicalTagName(decoded) ?? decoded;
   const lang = (sp.lang as "ko" | "en") || "ko";
 
-  const { posts, articles, notes } = getContentByTag(decoded, lang);
+  const { posts, articles, notes } = getContentByTag(canonicalTag, lang);
   const totalCount = posts.length + articles.length + notes.length;
 
   // Check if tag exists in any language
-  const allContent = getContentByTag(decoded);
+  const allContent = getContentByTag(canonicalTag);
   const existsInAnyLang = allContent.posts.length + allContent.articles.length + allContent.notes.length > 0;
   if (!existsInAnyLang) {
     notFound();
@@ -48,10 +61,10 @@ export default async function TagPage({ params, searchParams }: TagPageProps) {
             <ArrowLeft className="h-3.5 w-3.5" />
             전체 태그
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight theme-heading">#{decoded}</h1>
+          <h1 className="text-3xl font-bold tracking-tight theme-heading">#{canonicalTag}</h1>
           <p className="text-muted-foreground mt-3 text-sm">{totalCount}개의 콘텐츠</p>
         </div>
-        <LangToggle currentLang={lang} basePath={`/tags/${encodeURIComponent(decoded)}`} />
+        <LangToggle currentLang={lang} basePath={`/tags/${encodeURIComponent(canonicalTag)}`} />
       </div>
 
       {totalCount === 0 ? (

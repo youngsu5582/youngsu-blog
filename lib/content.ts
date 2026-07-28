@@ -50,14 +50,16 @@ export function getPostsByCategory(category: string, lang?: "ko" | "en") {
 }
 
 export function getPostsByTag(tag: string, lang?: "ko" | "en") {
-  return getAllPosts(lang).filter((post: Post) => post.tags.includes(tag));
+  const canonicalTag = getCanonicalTagName(tag) ?? tag;
+  return getAllPosts(lang).filter((post: Post) => post.tags.includes(canonicalTag));
 }
 
 /** 태그로 전 컬렉션 검색 (posts + articles + notes) */
 export function getContentByTag(tag: string, lang?: "ko" | "en") {
-  const postResults = getPostsByTag(tag, lang);
-  const articleResults = getAllArticles().filter((a: Article) => a.tags.includes(tag));
-  const noteResults = getAllNotes().filter((n: Note) => n.tags.includes(tag));
+  const canonicalTag = getCanonicalTagName(tag) ?? tag;
+  const postResults = getPostsByTag(canonicalTag, lang);
+  const articleResults = getAllArticles().filter((a: Article) => a.tags.includes(canonicalTag));
+  const noteResults = getAllNotes().filter((n: Note) => n.tags.includes(canonicalTag));
   return { posts: postResults, articles: articleResults, notes: noteResults };
 }
 
@@ -207,6 +209,12 @@ export function getAllTags(lang?: "ko" | "en") {
   return Array.from(tags.entries())
     .sort((a, b) => b[1] - a[1])
     .map(([name, count]) => ({ name, count }));
+}
+
+/** Resolve legacy case variants to the tag spelling used by the current URL. */
+export function getCanonicalTagName(tag: string, lang?: "ko" | "en") {
+  const normalized = tag.trim().toLocaleLowerCase();
+  return getAllTags(lang).find(({ name }) => name.toLocaleLowerCase() === normalized)?.name;
 }
 
 // Articles
