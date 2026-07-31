@@ -38,8 +38,9 @@ function requireEnv(value: string | undefined, name: string) {
 
 export function getUploadStorageConfig(env: Env = process.env): UploadStorageConfig {
   const storage = (env.ADMIN_UPLOAD_STORAGE || "local").toLowerCase();
+  const isR2 = storage === "r2";
 
-  if (storage !== "s3") {
+  if (storage !== "s3" && !isR2) {
     return {
       kind: "local",
       uploadDir: path.join(process.cwd(), "public/assets/img/uploads"),
@@ -47,22 +48,62 @@ export function getUploadStorageConfig(env: Env = process.env): UploadStorageCon
     };
   }
 
-  const bucket = envValue(env, "S3_BUCKET", "S3_BUCKET_NAME", "AWS_S3_BUCKET");
-  const region = envValue(env, "S3_REGION", "AWS_REGION", "AWS_DEFAULT_REGION");
-  const accessKeyId = envValue(env, "S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID");
-  const secretAccessKey = envValue(env, "S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY");
-  const publicBaseUrl = envValue(env, "S3_PUBLIC_BASE_URL", "CLOUDFLARE_IMAGE_BASE_URL", "ADMIN_UPLOAD_PUBLIC_BASE_URL");
+  const bucket = isR2
+    ? envValue(env, "R2_BUCKET", "S3_BUCKET", "S3_BUCKET_NAME", "AWS_S3_BUCKET")
+    : envValue(env, "S3_BUCKET", "S3_BUCKET_NAME", "AWS_S3_BUCKET");
+  const region = isR2
+    ? envValue(env, "R2_REGION", "S3_REGION", "AWS_REGION", "AWS_DEFAULT_REGION") || "auto"
+    : envValue(env, "S3_REGION", "AWS_REGION", "AWS_DEFAULT_REGION");
+  const accessKeyId = isR2
+    ? envValue(env, "R2_ACCESS_KEY_ID", "S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID")
+    : envValue(env, "S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID");
+  const secretAccessKey = isR2
+    ? envValue(env, "R2_SECRET_ACCESS_KEY", "S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY")
+    : envValue(env, "S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY");
+  const publicBaseUrl = isR2
+    ? envValue(
+        env,
+        "R2_PUBLIC_BASE_URL",
+        "S3_PUBLIC_BASE_URL",
+        "CLOUDFLARE_IMAGE_BASE_URL",
+        "ADMIN_UPLOAD_PUBLIC_BASE_URL",
+      )
+    : envValue(
+        env,
+        "S3_PUBLIC_BASE_URL",
+        "CLOUDFLARE_IMAGE_BASE_URL",
+        "ADMIN_UPLOAD_PUBLIC_BASE_URL",
+      );
+  const accountId = envValue(env, "R2_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_ID");
+  const endpoint =
+    envValue(env, "R2_ENDPOINT", "S3_ENDPOINT", "AWS_ENDPOINT_URL_S3") ||
+    (isR2 && accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined);
+  const uploadPrefix = isR2
+    ? envValue(env, "R2_UPLOAD_PREFIX", "S3_UPLOAD_PREFIX", "ADMIN_UPLOAD_PREFIX") ||
+      DEFAULT_S3_UPLOAD_PREFIX
+    : envValue(env, "S3_UPLOAD_PREFIX", "ADMIN_UPLOAD_PREFIX") || DEFAULT_S3_UPLOAD_PREFIX;
 
   return {
     kind: "s3",
-    bucket: requireEnv(bucket, "S3_BUCKET"),
-    region: requireEnv(region, "S3_REGION"),
-    accessKeyId: requireEnv(accessKeyId, "S3_ACCESS_KEY_ID"),
-    secretAccessKey: requireEnv(secretAccessKey, "S3_SECRET_ACCESS_KEY"),
-    endpoint: envValue(env, "S3_ENDPOINT", "AWS_ENDPOINT_URL_S3"),
+    bucket: requireEnv(bucket, isR2 ? "R2_BUCKET/S3_BUCKET" : "S3_BUCKET"),
+    region: requireEnv(region, isR2 ? "R2_REGION/S3_REGION" : "S3_REGION"),
+    accessKeyId: requireEnv(
+      accessKeyId,
+      isR2 ? "R2_ACCESS_KEY_ID/S3_ACCESS_KEY_ID" : "S3_ACCESS_KEY_ID",
+    ),
+    secretAccessKey: requireEnv(
+      secretAccessKey,
+      isR2 ? "R2_SECRET_ACCESS_KEY/S3_SECRET_ACCESS_KEY" : "S3_SECRET_ACCESS_KEY",
+    ),
+    endpoint: isR2 ? requireEnv(endpoint, "R2_ENDPOINT/R2_ACCOUNT_ID") : endpoint,
     forcePathStyle: envValue(env, "S3_FORCE_PATH_STYLE") === "true",
-    uploadPrefix: envValue(env, "S3_UPLOAD_PREFIX", "ADMIN_UPLOAD_PREFIX") || DEFAULT_S3_UPLOAD_PREFIX,
-    publicBaseUrl: normalizeBaseUrl(requireEnv(publicBaseUrl, "S3_PUBLIC_BASE_URL")),
+    uploadPrefix,
+    publicBaseUrl: normalizeBaseUrl(
+      requireEnv(
+        publicBaseUrl,
+        isR2 ? "R2_PUBLIC_BASE_URL/S3_PUBLIC_BASE_URL" : "S3_PUBLIC_BASE_URL",
+      ),
+    ),
   };
 }
 
@@ -85,7 +126,7 @@ export function resolveUploadObjectKey(prefix: string, filename: string, now = n
       .replaceAll("${year}", String(now.getUTCFullYear()))
       .replaceAll("${month}", String(now.getUTCMonth() + 1).padStart(2, "0"))
       .replaceAll("${day}", String(now.getUTCDate()).padStart(2, "0"))
-      .replaceAll("${basename}", basename)
+      .replaceAll("${basename}", basename),
   );
 
   return expandedPrefix ? `${expandedPrefix}/${filename}` : filename;
@@ -98,7 +139,12 @@ export function buildUploadPublicUrl(publicBaseUrl: string, objectKey: string) {
     .join("/")}`;
 }
 
-async function uploadToLocal(config: Extract<UploadStorageConfig, { kind: "local" }>, filename: string, buffer: Buffer, originalName: string): Promise<UploadedFile> {
+async function uploadToLocal(
+  config: Extract<UploadStorageConfig, { kind: "local" }>,
+  filename: string,
+  buffer: Buffer,
+  originalName: string,
+): Promise<UploadedFile> {
   if (!fs.existsSync(config.uploadDir)) {
     fs.mkdirSync(config.uploadDir, { recursive: true });
   }
@@ -113,7 +159,13 @@ async function uploadToLocal(config: Extract<UploadStorageConfig, { kind: "local
   };
 }
 
-async function uploadToS3(config: Extract<UploadStorageConfig, { kind: "s3" }>, filename: string, buffer: Buffer, contentType: string, originalName: string): Promise<UploadedFile> {
+async function uploadToS3(
+  config: Extract<UploadStorageConfig, { kind: "s3" }>,
+  filename: string,
+  buffer: Buffer,
+  contentType: string,
+  originalName: string,
+): Promise<UploadedFile> {
   const objectKey = resolveUploadObjectKey(config.uploadPrefix, filename);
   const client = new S3Client({
     region: config.region,
@@ -132,7 +184,7 @@ async function uploadToS3(config: Extract<UploadStorageConfig, { kind: "s3" }>, 
       Body: buffer,
       ContentType: contentType,
       CacheControl: "public, max-age=31536000, immutable",
-    })
+    }),
   );
 
   return {
@@ -152,7 +204,13 @@ export async function uploadAdminImage(params: {
   const config = params.config || getUploadStorageConfig();
 
   if (config.kind === "s3") {
-    return uploadToS3(config, params.filename, params.buffer, params.contentType, params.originalName);
+    return uploadToS3(
+      config,
+      params.filename,
+      params.buffer,
+      params.contentType,
+      params.originalName,
+    );
   }
 
   return uploadToLocal(config, params.filename, params.buffer, params.originalName);

@@ -1,6 +1,7 @@
 /**
- * Image upload handler for textarea editors
- * Handles both clipboard paste and drag-and-drop image uploads
+ * Image upload handler for textarea editors.
+ * Handles clipboard paste and drag-and-drop image uploads without replacing
+ * edits made while an upload is in flight.
  */
 
 export interface ImageUploadOptions {
@@ -9,9 +10,8 @@ export interface ImageUploadOptions {
   onUploadError?: (error: string) => void;
 }
 
-/**
- * Upload an image file to the server
- */
+const UPLOAD_PLACEHOLDER_PREFIX = "<!-- image-upload:";
+
 async function uploadImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("files", file);
@@ -21,159 +21,112 @@ async function uploadImage(file: File): Promise<string> {
     body: formData,
   });
 
-  if (!response.ok) {
-    throw new Error("업로드 실패");
-  }
-
-  const data = await response.json();
-  if (!data.success || !data.files || data.files.length === 0) {
-    throw new Error(data.error || "업로드 실패");
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.success || !data.files?.length) {
+    throw new Error(data?.error || "업로드 실패");
   }
 
   return data.files[0].path;
 }
 
-/**
- * Insert markdown image syntax at cursor position in textarea
- */
-function insertImageMarkdown(textarea: HTMLTextAreaElement, imageUrl: string) {
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const text = textarea.value;
-
-  const before = text.substring(0, start);
-  const after = text.substring(end);
-  const imageMarkdown = `![image](${imageUrl})`;
-
-  const newText = before + imageMarkdown + after;
-  const newCursorPos = start + imageMarkdown.length;
-
-  // Update textarea value
-  textarea.value = newText;
-
-  // Restore cursor position
-  textarea.setSelectionRange(newCursorPos, newCursorPos);
-  textarea.focus();
-
-  // Trigger change event for React
-  const event = new Event("input", { bubbles: true });
-  textarea.dispatchEvent(event);
+function setTextareaValue(textarea: HTMLTextAreaElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+  valueSetter?.call(textarea, value);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/**
- * Handle paste event for image upload
- */
-export function handlePaste(
-  e: ClipboardEvent,
+function insertAtSelection(textarea: HTMLTextAreaElement, value: string): string {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const token = `${UPLOAD_PLACEHOLDER_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}-->`;
+  const placeholder = `${token}${value}`;
+  const before = textarea.value.slice(0, start);
+  const after = textarea.value.slice(end);
+
+  setTextareaValue(textarea, before + placeholder + after);
+  const cursor = start + placeholder.length;
+  textarea.setSelectionRange(cursor, cursor);
+  textarea.focus();
+  return placeholder;
+}
+
+function replaceToken(textarea: HTMLTextAreaElement, token: string, replacement: string): boolean {
+  const currentValue = textarea.value;
+  const tokenStart = currentValue.indexOf(token);
+  if (tokenStart < 0) return false;
+
+  const nextValue =
+    currentValue.slice(0, tokenStart) + replacement + currentValue.slice(tokenStart + token.length);
+  setTextareaValue(textarea, nextValue);
+  const cursor = tokenStart + replacement.length;
+  textarea.setSelectionRange(cursor, cursor);
+  textarea.focus();
+  return true;
+}
+
+async function handleImageFile(
+  file: File,
   textarea: HTMLTextAreaElement,
-  options: ImageUploadOptions = {}
-): void {
-  const items = e.clipboardData?.items;
-  if (!items) return;
+  options: ImageUploadOptions,
+) {
+  const token = insertAtSelection(textarea, " (이미지 업로드 중...) ");
+  options.onUploadStart?.();
 
-  for (const item of Array.from(items)) {
-    if (item.type.startsWith("image/")) {
-      e.preventDefault();
-
-      const file = item.getAsFile();
-      if (!file) continue;
-
-      // Show loading indicator
-      const loadingText = " (이미지 업로드 중...) ";
-      const start = textarea.selectionStart;
-      const originalValue = textarea.value;
-
-      textarea.value =
-        originalValue.substring(0, start) +
-        loadingText +
-        originalValue.substring(start);
-
-      options.onUploadStart?.();
-
-      // Upload image
-      uploadImage(file)
-        .then((imageUrl) => {
-          // Remove loading text and insert markdown
-          textarea.value = originalValue;
-          textarea.setSelectionRange(start, start);
-          insertImageMarkdown(textarea, imageUrl);
-          options.onUploadComplete?.(imageUrl);
-        })
-        .catch((error) => {
-          // Remove loading text on error
-          textarea.value = originalValue;
-          textarea.setSelectionRange(start, start);
-          options.onUploadError?.(error.message || "업로드 실패");
-        });
-
-      break; // Only handle first image
+  try {
+    const imageUrl = await uploadImage(file);
+    const inserted = replaceToken(textarea, token, `![image](${imageUrl})`);
+    if (!inserted) {
+      options.onUploadError?.("업로드는 완료됐지만 본문에서 업로드 위치가 삭제되었습니다");
+      return;
     }
+    options.onUploadComplete?.(imageUrl);
+  } catch (error) {
+    replaceToken(textarea, token, "");
+    options.onUploadError?.(error instanceof Error ? error.message : "업로드 실패");
   }
 }
 
-/**
- * Handle drag over event
- */
+export function handlePaste(
+  e: ClipboardEvent,
+  textarea: HTMLTextAreaElement,
+  options: ImageUploadOptions = {},
+): void {
+  const imageItem = Array.from(e.clipboardData?.items || []).find((item) =>
+    item.type.startsWith("image/"),
+  );
+  if (!imageItem) return;
+
+  const file = imageItem.getAsFile();
+  if (!file) return;
+
+  e.preventDefault();
+  void handleImageFile(file, textarea, options);
+}
+
 export function handleDragOver(e: DragEvent): void {
   e.preventDefault();
   e.stopPropagation();
 }
 
-/**
- * Handle drop event for image upload
- */
 export function handleDrop(
   e: DragEvent,
   textarea: HTMLTextAreaElement,
-  options: ImageUploadOptions = {}
+  options: ImageUploadOptions = {},
 ): void {
   e.preventDefault();
   e.stopPropagation();
 
-  const files = e.dataTransfer?.files;
-  if (!files || files.length === 0) return;
-
-  const imageFile = Array.from(files).find((file) =>
-    file.type.startsWith("image/")
+  const imageFile = Array.from(e.dataTransfer?.files || []).find((file) =>
+    file.type.startsWith("image/"),
   );
-
   if (!imageFile) return;
 
-  // Show loading indicator
-  const loadingText = " (이미지 업로드 중...) ";
-  const start = textarea.selectionStart;
-  const originalValue = textarea.value;
-
-  textarea.value =
-    originalValue.substring(0, start) +
-    loadingText +
-    originalValue.substring(start);
-
-  options.onUploadStart?.();
-
-  // Upload image
-  uploadImage(imageFile)
-    .then((imageUrl) => {
-      // Remove loading text and insert markdown
-      textarea.value = originalValue;
-      textarea.setSelectionRange(start, start);
-      insertImageMarkdown(textarea, imageUrl);
-      options.onUploadComplete?.(imageUrl);
-    })
-    .catch((error) => {
-      // Remove loading text on error
-      textarea.value = originalValue;
-      textarea.setSelectionRange(start, start);
-      options.onUploadError?.(error.message || "업로드 실패");
-    });
+  void handleImageFile(imageFile, textarea, options);
 }
 
-/**
- * Attach image upload handlers to a textarea
- */
 export function attachImageUploadHandlers(
   textarea: HTMLTextAreaElement | null,
-  options: ImageUploadOptions = {}
+  options: ImageUploadOptions = {},
 ): () => void {
   if (!textarea) return () => {};
 
@@ -181,14 +134,13 @@ export function attachImageUploadHandlers(
   const dragOverHandler = (e: DragEvent) => handleDragOver(e);
   const dropHandler = (e: DragEvent) => handleDrop(e, textarea, options);
 
-  textarea.addEventListener("paste", pasteHandler as any);
-  textarea.addEventListener("dragover", dragOverHandler as any);
-  textarea.addEventListener("drop", dropHandler as any);
+  textarea.addEventListener("paste", pasteHandler);
+  textarea.addEventListener("dragover", dragOverHandler);
+  textarea.addEventListener("drop", dropHandler);
 
-  // Return cleanup function
   return () => {
-    textarea.removeEventListener("paste", pasteHandler as any);
-    textarea.removeEventListener("dragover", dragOverHandler as any);
-    textarea.removeEventListener("drop", dropHandler as any);
+    textarea.removeEventListener("paste", pasteHandler);
+    textarea.removeEventListener("dragover", dragOverHandler);
+    textarea.removeEventListener("drop", dropHandler);
   };
 }
