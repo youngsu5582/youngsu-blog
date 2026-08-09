@@ -1,0 +1,705 @@
+---
+title: Why S3 Upload Retries Did Nothing
+date: "2026-07-28T00:00:00.000Z"
+description: "An analysis of why an S3 upload that failed with UnknownHostException did not recover after retries, following the behavior of the AWS SDK and the JVM DNS negative cache."
+categories:
+  - Backend
+  - Networking
+tags:
+  - Java
+  - JVM
+  - DNS
+  - AWS SDK
+  - S3
+  - retry
+  - troubleshooting
+author: Lee Youngsu
+lang: en
+draft: false
+toc: true
+comments: true
+image: /assets/img/thumbnail/2026-08-09-s3-upload-retry-dns-cache.png
+---
+> This English version was translated by Hermes Agent.
+
+# Why S3 Upload Retries Did Nothing
+
+### 3-line summary
+
+- The S3 upload failed with `UnknownHostException`.
+- The JVM caches the failed DNS lookup result for 10 seconds. The retries were trapped inside that window and only reread the cached failure.
+- Even with the same `UnknownHostException`, a failure that takes several seconds and one that finishes immediately can have different causes. Elapsed time is the first clue to examine.
+
+---
+
+## S3 uploads failed in large numbers
+
+There was code that called an external API to create an image and uploaded it to object storage.
+One day, exceptions began pouring out of the code.
+
+```
+java.lang.IllegalStateException: S3 파일 업로드 중 오류 발생
+  ...
+Caused by: software.amazon.awssdk.core.exception.SdkClientException:
+  Unable to execute HTTP request: <bucket>.s3.<region>.amazonaws.com
+Caused by: java.net.UnknownHostException: <bucket>.s3.<region>.amazonaws.com
+```
+
+`UnknownHostException`. It means that the server address could not be resolved through DNS.
+It was not a permission error (403) or a missing bucket (404); the failure happened before an HTTP request was even sent.
+
+What was unsettling was that every preceding step had succeeded.
+
+- The external API call succeeded after 22 seconds of polling
+- The image format conversion also succeeded
+
+The process was alive and well, and there was nothing unusual in the resource metrics.
+
+## Tracing the cause
+
+We were recording a TimeLog to understand where each job was being delayed.
+Based on it, we began tracing the cause.
+
+### Clue 1 — The first request took a long time; the second was short
+
+Looking at the logs for the jobs where the error occurred:
+
+> - Image upload logic flow
+> 
+> If uploading the first extension fails, try again with the original extension.
+> That is why the upload interval (`s3UploadStart`, `s3UploadEnd`) is recorded twice.
+
+> Each upload calls `putObject`.
+> In the table below, `first attempt` and `original retry` are the two application-level `putObject` calls.
+> AWS SDK internal retries operate separately within each call.
+
+```json
+{
+  "topic": "reformatEnd",
+  "eventTime": "2026-07-28T11:45:26.4250"
+},
+{
+  "topic": "s3UploadStart",
+  "eventTime": "2026-07-28T11:45:26.4250"
+},
+{
+  "topic": "s3UploadEnd",
+  "eventTime": "2026-07-28T11:45:31.4130"
+},
+{
+  "topic": "s3UploadStart",
+  "eventTime": "2026-07-28T11:45:31.4140"
+},
+{
+  "topic": "s3UploadEnd",
+  "eventTime": "2026-07-28T11:45:31.6260"
+}
+```
+
+```
+리포맷 종료   26.4250
+업로드 시작   26.4250
+업로드 종료   31.4130   →  4.988초    첫 시도 (jpg)
+업로드 시작   31.4140
+업로드 종료   31.6260   →  0.212초    원본 이미지 시도 (png)
+```
+
+We also pulled out and measured two other jobs that failed at the same time. (Different kinds of jobs, each on a different thread.)
+
+| Job | Upload start | Upload end | First attempt | Original retry |
+| :-: | -----: | -----: | -----: | -----: |
+|  A  | 25.861 | 31.487 | 5.626 sec | 0.286 sec |
+|  B  | 26.425 | 31.413 | 4.988 sec | 0.212 sec |
+|  C  | 26.617 | 31.412 | 4.795 sec | 0.526 sec |
+
+All three jobs took around 5 seconds on the first attempt and under 0.5 seconds on the second.
+And when the start and end times are placed side by side, something unusual appears.
+
+```
+25.861 ─────────────────────────→ 31.487
+       26.425 ──────────────────→ 31.413
+             26.617 ────────────→ 31.412
+       └ 756ms 벌어져 시작            └ 75ms 안에 종료
+```
+
+The earliest start, A, and the latest start, C, were 756 ms apart, but their end times were clustered within about 75 ms.
+They did not each wait independently for 5 seconds. (The end times are all around `31.4x`.)
+
+=> The first request took a long time, and the second request finished quickly.
+
+### Clue 2 — Requests that failed immediately
+
+We looked at more failed jobs that started uploading later in the same time period.
+
+| Job | Upload start | First attempt | Original retry |
+| :-: | -----: | -----: | -----: |
+| A | 25.861 | 5.626 sec | 0.286 sec |
+| B | 26.425 | 4.988 sec | 0.212 sec |
+| C | 26.617 | 4.795 sec | 0.526 sec |
+| D | 31.660 | 0.185 sec | 0.440 sec |
+| E | 35.190 | 0.399 sec | 0.313 sec |
+
+D and E also failed with the same `UnknownHostException`. But they did not wait 5 seconds.
+Both attempts finished within 0.5 seconds. It was the same exception, but the elapsed times differed by an order of magnitude.
+
+When the upload start times are placed side by side, the dividing point becomes visible.
+
+```
+25.861 ══════════════════▶ 31.487   A  ┐
+26.425 ═════════════════▶ 31.413    B  ├ 첫 시도가 5초 (답을 기다렸다)
+26.617 ════════════════▶ 31.412     C  ┘
+                         │
+                    31.4x 여기서 무슨 일이 있었다
+                         │
+                         31.660 ▶ 32.286     D  ┐
+                             35.190 ▶ 35.904 E  ┴ 두 시도 다 0.5초 미만
+```
+
+A, B, and C started uploading before 31.4 seconds, while D and E started afterward.
+The behavior before and after 31.4 seconds diverged.
+
+This is the same phenomenon as A, B, and C having short second attempts of 0.2–0.5 seconds. (They were in the same state as after the first attempt.)
+If they failed without asking, we could infer that they had retrieved the answer from somewhere.
+
+=> After the failure at 31.4 seconds, subsequent requests failed immediately.
+
+### Clue 3 - An error that occurred for only 10 seconds
+
+Looking at the time period when the logs were generated:
+
+```
+첫 오류 시점이 보장된 로그 - 11:45:31.413
+...
+오류 발생 로그 - 11:45:34.117
+...
+오류 발생 로그 - 11:45:37.332
+...
+재성공 시점이 보장된 로그 - 11:45:41.402
+```
+
+Every S3 upload request failed from 11:45:31 to 11:45:41.
+After that, the errors stopped, as if nothing had happened. ☠️
+
+=> `UnknownHostException` occurred for approximately 10 seconds.
+
+Putting it together:
+
+```
+t=0     업로드 시작, DNS 질의 전송
+t≈5초   응답 없음 → resolver 타임아웃 → `UnknownHostException`
+        이 실패가 기록되는 순간 JVM이 negative cache에 저장
+t≈5~15초
+        SDK 재시도는 실제 DNS 질의 없이 캐시된 실패를 읽고 즉시 종료
+t≈15초  negative cache 만료 → 실제 DNS 질의 재개 → 성공
+```
+
+That was the picture.
+
+### Hypothesis about the cause
+
+Based on the clues above, we hypothesized:
+`When a DNS request in the AWS SDK fails, the AWS SDK caches the result and does not send another query!`
+
+- After the first DNS request was delayed, subsequent requests were handled as immediate failures
+- Requests failed only for a specified period, then began succeeding
+
+## Where does an S3 request descend into DNS?
+
+We followed the S3 SDK code with the clues in hand. There was no need to add separate instrumentation.
+The entire path was already visible in the error stack trace.
+
+If we organize the `Caused by` chain of `UnknownHostException` from top to bottom:
+(AOP proxies and application frames are omitted.)
+
+```
+DefaultS3Client.putObject:11169
+  └ RetryableStage.execute:56                                        ← 재시도 루프
+      └ RetryableStage.executeRequest:93
+          └ ApiCallAttemptMetricCollectionStage.execute:55
+              └ TimeoutExceptionHandlingStage.execute:79
+                  └ ApiCallAttemptTimeoutTrackingStage.execute:74
+                      └ MakeHttpRequestStage.executeHttpRequest:79    ← 여기부터 HTTP
+                          └ ApacheHttpClient.execute:254
+                              └ InternalHttpClient.doExecute:185
+                                  └ ProtocolExec.execute:186
+                                      └ MainClientExec.execute:236
+                                          └ MainClientExec.establishRoute:393   ← 커넥션 개설
+                                              └ PoolingHttpClientConnectionManager.connect:376
+                                                  └ DefaultHttpClientConnectionOperator.connect:112
+                                                      └ SystemDefaultDnsResolver.resolve:45
+                                                          └ InetAddress.getAllByName:1688
+```
+
+A single `putObject` descends this far. We checked five meaningful points in the path.
+
+> httpclient 4.5.14 · AWS SDK 2.30.2 · based on JDK 21.
+> The measurement environment used the `azul/zulu-openjdk-alpine:21.0.8` image and the Alpine/musl resolver.
+> DNS timeout durations can vary depending on the JDK, libc, `/etc/resolv.conf`, and how the resolver responds.
+> The line numbers quoted below may shift slightly between patch versions.
+
+### 1. Retry loop — `RetryableStage`
+
+```java
+while (true) {
+    try {
+        retryableStageHelper.startingAttempt();
+        // 아래 전부를 다시 탄다
+        Response<OutputT> response = executeRequest(retryableStageHelper, context);   
+        retryableStageHelper.recordAttemptSucceeded();
+        return response;
+    } catch (SdkExceptionWithRetryAfterHint | SdkException | IOException e) {
+        ...
+        Optional<Duration> backoffDelay = retryableStageHelper.tryRefreshToken(suggestedDelay);
+        if (backoffDelay.isPresent()) {
+           // 호출 스레드를 직접 재운다
+            TimeUnit.MILLISECONDS.sleep(delay.toMillis());
+        } else {
+            throw retryableStageHelper.retryPolicyDisallowedRetryException();
+        }
+    }
+}
+```
+
+Because `executeRequest` traverses the entire pipeline below it, every retry descends again to the DNS lookup point.
+
+### 2. Checking whether the connection is alive — `MainClientExec`
+
+```java
+// 커넥션이 닫혀 있을 때만 개설한다.
+// 풀에서 꺼낸 소켓이 살아 있으면 조건이 false 라서 블록 전체를 건너뛴다.
+if (!managedConn.isOpen()) {
+    this.log.debug("Opening connection " + route);
+    try {
+        establishRoute(proxyAuthState, managedConn, route, request, context);   
+    } catch (final TunnelRefusedException ex) {
+	    ...
+    }
+}
+```
+
+`establishRoute` is called only when the connection is closed.
+-> If a live socket from the pool is reused, the DNS lookup below it does not happen at all.
+
+> A DNS lookup does not happen every time; it happens only when a new connection is established.
+> -> This is why the incident was intermittent.
+
+### 3. The line that calls DNS — `DefaultHttpClientConnectionOperator.connect`
+
+```java
+// 여기서 DNS
+final InetAddress[] addresses = host.getAddress() != null
+        ? new InetAddress[] { host.getAddress() }
+        : this.dnsResolver.resolve(host.getHostName());
+final int port = this.schemePortResolver.resolve(host);
+
+// 받은 주소를 순회한다.
+// 이 환경에서는 S3 호스트명이 여러 주소로 해석될 수 있다.
+for (int i = 0; i < addresses.length; i++) {              
+    final InetAddress address = addresses[i];
+    final boolean last = i == addresses.length - 1;
+
+    Socket sock = sf.createSocket(context);
+
+    final InetSocketAddress remoteAddress = new InetSocketAddress(address, port);
+    try {
+	    // 하나라도 붙으면 성공
+        sock = sf.connectSocket(connectTimeout, sock, host, remoteAddress, localAddress, context);
+        conn.bind(sock);
+        return;                                           
+    } catch (final SocketTimeoutException ex) {
+        if (last) { throw new ConnectTimeoutException(ex, host, addresses); }
+    } catch (final ConnectException ex) {
+        if (last) { throw new HttpHostConnectException(ex, host, addresses); }
+    } catch (final NoRouteToHostException ex) {
+        if (last) { throw ex; }
+    }
+    // 세 예외 모두 마지막이 아니면 던지지 않고 다음 주소로 넘어간다
+}
+```
+
+It tries the received addresses one by one and throws an exception if they all fail.
+
+### 4. DNS Resolve — `SystemDefaultDnsResolver`
+
+Finally, the class that performs DNS resolution!
+
+```java
+public class SystemDefaultDnsResolver implements DnsResolver {
+
+    public static final SystemDefaultDnsResolver INSTANCE = new SystemDefaultDnsResolver();
+
+    @Override
+    public InetAddress[] resolve(final String host) throws UnknownHostException {
+        return InetAddress.getAllByName(host);
+    }
+
+}
+```
+
+One singleton field and one method. That is the entire class.
+This is where the HTTP client and the JDK meet.
+At this point, you might think, "Huh? There is nothing about caching here; it's just a single function?"
+
+### 5. Where DNS addresses come from — `InetAddress`
+
+Now it is time to look at `getAllByName` in `java.net.InetAddress`.
+
+Looking at the `getAllByName0` implementation:
+
+```java
+// look-up or remove from cache
+Addresses addrs;
+if (useCache) {
+	// 있으면 CachedLookup 이 들어온다
+    addrs = cache.get(host);          
+}
+...
+if (addrs == null) {
+    // 없으면 실제 조회할 객체를 만들어 캐시에 꽂는다
+    Addresses oldAddrs = cache.putIfAbsent(host, addrs = new NameServiceAddresses(host));
+    // putIfAbsent 경쟁에서 진 경우(경쟁에서 이긴 요소를 사용)
+    if (oldAddrs != null) {           
+        addrs = oldAddrs;
+    }
+}
+
+// 위에서 정해진 구현체가 실행된다
+return addrs.get().clone();           
+```
+
+`addrs` is an interface (`Addresses`).
+The code that runs next depends on what is in the cache.
+
+| Cache state | `addrs` implementation | What happens |
+|---|---|---|
+| No entry | `NameServiceAddresses` | Actually asks DNS |
+| Entry exists | `CachedLookup` | Uses the stored value without asking |
+
+#### The path that actually asks — `NameServiceAddresses.get`
+
+This is the key point.
+
+```java
+public InetAddress[] get() throws UnknownHostException {
+    Addresses addresses;
+    // only one thread is doing lookup to name service
+    // for particular host at any time.
+    lookupLock.lock();
+    try {
+        addresses = cache.putIfAbsent(host, this);
+        if (addresses == null) { addresses = this; }
+        if (addresses == this) {
+            InetAddress[] inetAddresses;
+            UnknownHostException ex;
+            int cachePolicy;
+            try {
+                // 실제 질의, native code (여기서 5초)
+                inetAddresses = getAddressesFromNameService(host);
+                ex = null;
+                // 성공 → positive TTL 가져온다.
+                cachePolicy = InetAddressCachePolicy.get();
+            } catch (UnknownHostException uhe) {
+	            // 주소를 null 로 처리
+                inetAddresses = null;                                     
+                ex = uhe;
+                // 실패 → negative TTL 가져온다.
+                cachePolicy = InetAddressCachePolicy.getNegative();       
+            }
+            // 캐시 사용하지 않게 설정한 경우
+            if (cachePolicy == InetAddressCachePolicy.NEVER) {
+                cache.remove(host, this);
+            } else {
+	            // 만료 시각 계산
+                long now = System.nanoTime();
+                long expiryTime = now + 1000_000_000L * cachePolicy;      
+                CachedLookup cachedLookup = new CachedLookup(host, inetAddresses, expiryTime);
+                // 실패도 캐시에 들어간다 !!
+                cache.replace(host, this, cachedLookup);                  
+            }
+            if (inetAddresses == null || inetAddresses.length == 0) {
+                throw ex == null ? new UnknownHostException(host) : ex;
+            }
+            return inetAddresses;
+        }
+    } finally {
+        lookupLock.unlock();
+    }
+    return addresses.get();
+}
+```
+
+Two things emerge here.
+
+- When a lookup fails, the address is set to `null`, the TTL is changed to `getNegative()`, and a `CachedLookup` is created and placed in the cache.
+- Successes and failures are cached through the same path.
+
+```java
+/**
+ * A cached result of a name service lookup. The result can be either valid
+ * addresses or invalid (ie a failed lookup) containing no addresses.
+ */
+private static class CachedLookup implements Addresses, Comparable<CachedLookup> {
+    final String host;
+    volatile InetAddress[] inetAddresses;
+    volatile long expiryTime;
+
+    @Override
+    public InetAddress[] get() throws UnknownHostException {
+        if (inetAddresses == null) {
+            throw new UnknownHostException(host);   // 988
+        }
+        return inetAddresses;
+    }
+}
+```
+
+The code that reads and throws the failure is shown above. It uses the cache configured earlier.
+
+```
+NameServiceAddresses.get:1143   inetAddresses = null   → 캐시에 저장
+                                        ↓
+CachedLookup.get:988            if (inetAddresses == null) throw   → 즉시 실패
+```
+
+#### Where it crosses into native code — `getAddressesFromNameService`
+
+When the cache is empty, the component that actually asks is `PlatformResolver`. The Java code ends here.
+
+```
+InetAddress.getAllByName()
+  → JVM 프로세스 내 캐시 확인          ← 위에서 본 부분
+    → (미스) PlatformResolver → 네이티브 lookupAllHostAddr
+      → getaddrinfo
+        → /etc/resolv.conf 의 nameserver
+          → UDP:53 → 리졸버
+```
+
+```java
+public Stream<InetAddress> lookupByName(String host, LookupPolicy policy)
+        throws UnknownHostException {
+    validate(host);
+    InetAddress[] addrs;
+    // 이 호출은 블로킹이라고 JVM 에 알린다
+    long comp = Blocker.begin();                        
+    try {
+	    // 네이티브 — 자바의 끝
+        addrs = impl.lookupAllHostAddr(host, policy);    
+    } finally {
+        Blocker.end(comp);
+    }
+    return Arrays.stream(addrs);
+}
+```
+
+Below `impl.lookupAllHostAddr` is C code, which calls `getaddrinfo`.
+
+If no response arrives, it waits until the timeout. Conversely, if the resolver quickly returns "that name does not exist" (NXDOMAIN), it can finish immediately.
+The libc determines how many seconds the timeout lasts.
+
+The 4.988 / 4.795 / 5.626 seconds we saw earlier came from here.
+
+> Retry strategies differ between libc implementations, so measure directly in the image you use.
+
+In this measurement environment, a failure that took several seconds suggests that it was likely a timeout while waiting for the resolver response, rather than simply an incorrect name.
+
+## Inferring the clues
+
+Based on the above, we can infer the explanations for the clues.
+
+### Why clue 1 occurred
+
+Only one thread looks up a given hostname at a time.
+In clue 1, A, B, and C started 756 ms apart but finished together within 75 ms because of this lock.
+
+While the first thread to arrive waited 5 seconds, the others queued in front of the lock,
+and when the lock was released, they read the failure already placed in the cache and finished all at once.
+
+They did not each wait 5 seconds; the three shared the wait for one lookup.
+
+### Why clue 2 occurred
+
+In clue 2, D and E failed in 0.2 seconds because of caching.
+A, B, and C put the failure into the cache at 31.4 seconds,
+and D and E, which started afterward, encountered `CachedLookup` and threw immediately without asking.
+
+The reason A, B, and C had short second attempts was the same. (After the first attempt ended, they were in the same state as D and E.)
+
+### What about clue 3?
+
+Then what is the reason for clue 3?
+
+#### How the JVM caches DNS
+
+The JVM has three DNS cache policies.
+They exist as security properties in `$JAVA_HOME/conf/security/java.security`.
+
+| Property | Meaning | Default |
+| ----------------------------------- | ------------------ | --------------------- |
+| `networkaddress.cache.ttl`          | How many seconds to cache a successful lookup | Implementation default: 30 seconds |
+| `networkaddress.cache.negative.ttl` | How many seconds to cache a failed lookup | 10 seconds |
+| `networkaddress.cache.stale.ttl`    | Whether to use an expired name when refresh fails | 0 (disabled, new in JDK 21) |
+
+#### Checking the actual configuration values
+
+If there is a running container, you can enter it and check immediately.
+
+```
+docker exec <container-id> sh -c \
+  'grep -n "networkaddress.cache" $JAVA_HOME/conf/security/java.security'
+```
+
+If there is not:
+
+```
+docker run --rm <image> sh -c \
+  'grep -n "networkaddress.cache" $JAVA_HOME/conf/security/java.security'
+```
+
+- Run Docker based on the image
+- `--rm`: automatically clean up resources after the check is complete
+
+#### Why clue 3 occurred
+
+The direct reason `the error lasted for about 10 seconds` was this `negative.ttl`.
+
+When we opened the `java.security` from the actual container image used by our service, the configuration was as follows.
+
+```
+#networkaddress.cache.ttl=-1
+#networkaddress.cache.stale.ttl=0
+networkaddress.cache.negative.ttl=10      ← 10초로 활성
+```
+
+Putting it together:
+
+```
+t=0     업로드 시작, DNS 질의 전송
+t≈5초   resolver 타임아웃 → `UnknownHostException`
+        이 실패가 기록되는 순간 JVM이 negative cache에 저장
+t≈5~15초
+        SDK 재시도는 실제 DNS 질의 없이 캐시된 실패를 읽고 즉시 종료
+t≈15초  negative cache 만료 → 실제 DNS 질의 재개 → 성공
+```
+
+The fact that recovery to successful requests occurred almost exactly in line with the negative cache TTL
+is strong evidence that the direct reason the incident continued was the JVM's failure cache.
+
+However, this fact alone does not let us conclude that the VPC Resolver or the network path was always healthy.
+Why the initial DNS lookup failed is a separate subject that must be observed independently.
+
+### The JVM does not follow the DNS TTL
+
+Then what happens if DNS responds with a TTL different from the value configured in the JVM?
+
+Regardless of the TTL in the DNS response, the JVM ignores it and follows
+`networkaddress.cache.ttl` (30 seconds by default).
+
+```java
+// CachePolicy 에 설정된 값 사용
+inetAddresses = getAddressesFromNameService(host);
+cachePolicy = InetAddressCachePolicy.get();
+```
+
+```java
+public final class InetAddressCachePolicy {  
+  
+    // Controls the cache policy for successful lookups only  
+    private static final String cachePolicyProp = "networkaddress.cache.ttl";  
+    private static final String cachePolicyPropFallback =  
+        "sun.net.inetaddr.ttl";  
+  
+    // Controls the cache stale policy for successful lookups only  
+    private static final String cacheStalePolicyProp =  
+        "networkaddress.cache.stale.ttl";  
+    private static final String cacheStalePolicyPropFallback =  
+        "sun.net.inetaddr.stale.ttl";  
+  
+    // Controls the cache policy for negative lookups only  
+    private static final String negativeCachePolicyProp =  
+        "networkaddress.cache.negative.ttl";
+    ...
+}
+```
+
+> There is a fallback path to `sun.net.inetaddr.xxx`.
+
+The JVM delegates to the OS resolver, so it cannot always know the DNS response TTL directly. Behavior may differ by implementation.
+→ In fact, it did not ignore it; it simply cannot know it directly.
+
+To know the TTL, you must issue the query yourself and parse the response packet.
+
+### Where should the setting be placed?
+
+`networkaddress.cache.*` is a security property, not a system property.
+Therefore, a command like the following does not apply.
+
+```
+-Dnetworkaddress.cache.negative.ttl=0     ← 조용히 무효
+```
+
+What happens if you check directly?
+
+```
+System.getProperty()   = 0      ← 시스템 프로퍼티에는 저장됨
+Security.getProperty() = null   ← 보안 프로퍼티는 비어있음
+effective negative     = 10     ← 아무 일도 일어나지 않았다
+```
+
+There is no error or warning. The value goes into the wrong drawer, and nobody reads it.
+This confusion is also documented in [JDK-8323089](https://bugs.openjdk.org/browse/JDK-8323089).
+
+```
+Many users are setting networkaddress.cache.ttl as a system property [1].
+This has no effect - this is a security property, and is only read from java.security file.
+```
+
+To inject it under its official name:
+
+- Modify the `java.security` file
+- Override it with `-Djava.security.properties=<file>`
+
+These steps are required.
+
+Why is it a security property?
+
+The details are documented in the `InetAddress` Javadoc.
+
+> By default, when a security manager is installed, in order to protect against
+> DNS spoofing attacks, the result of positive host name resolutions are cached forever.
+
+The cache duration for successful lookups is not a performance consideration but a security one.
+The idea was that holding on to an address for a long time would help prevent DNS spoofing attacks, and the setting was placed in `java.security`.
+The failure cache is based on a different rationale, but it lives in the same file.
+
+SecurityManager is said to be a mechanism from the era when untrusted code was loaded and run in the JVM.
+(It was used to check permissions when executing external code such as Java applets.)
+
+This SecurityManager was deprecated in JDK 17 and permanently disabled in JDK 24.
+However, the properties still work as before.
+
+## Conclusion
+
+That concludes the analysis. The flow of this incident was as follows.
+
+```
+1. DNS 응답 한 번을 놓쳤다.
+2. JVM 이 실패를 negative cache에 10초 캐싱한다.
+3. S3 업로드 재시도는 10초 안에 끝나, 같은 캐시만 다시 읽고 처리했다.
+```
+
+If an `UnknownHostException` occurs, check the elapsed time first.
+
+- If it took several seconds? -> Possibly a timeout
+- If it finished immediately? -> Possibly a cache hit or a nonexistent domain (NXDOMAIN)
+
+That is one way to think about it.
+We also discovered that this kind of intermittent error caused many otherwise normal requests to fail.
+
+- Lookup lock: only one thread looks up a given hostname at a time (serializing requests)
+- Cache: the failure is cached by the JVM process, not by a thread, so it is shared by everyone
+	- Retry: no retries during the caching period
+
+One failed lookup is amplified across the entire JVM process for 10 seconds.
+Even when the JVM and all resource metrics are perfectly normal!!!! ☠️
+
+How to fix this will be covered in the next post.
