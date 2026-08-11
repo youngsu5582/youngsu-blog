@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, RefObject } from "react";
+import React, { useEffect, RefObject, useRef } from "react";
 import {
   Bold,
   Italic,
@@ -20,6 +20,8 @@ interface MarkdownToolbarProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
   onChange: (value: string) => void;
+  onImageUpload?: (file: File) => Promise<string>;
+  onImageUploadError?: (error: string) => void;
 }
 
 type SelectionResult = {
@@ -30,7 +32,9 @@ type SelectionResult = {
   afterSelection: string;
 };
 
-export function MarkdownToolbar({ textareaRef, value, onChange }: MarkdownToolbarProps) {
+export function MarkdownToolbar({ textareaRef, value, onChange, onImageUpload, onImageUploadError }: MarkdownToolbarProps) {
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const pendingImageSelectionRef = useRef<{ start: number; end: number } | null>(null);
   // Get current selection info
   const getSelection = (): SelectionResult | null => {
     const textarea = textareaRef.current;
@@ -149,7 +153,48 @@ export function MarkdownToolbar({ textareaRef, value, onChange }: MarkdownToolba
     }
   };
   const handleImage = () => {
-    insertText("![alt](url)", 2); // Select "alt"
+    if (!onImageUpload) {
+      insertText("![alt](url)", 2); // Select "alt"
+      return;
+    }
+
+    const selection = getSelection();
+    pendingImageSelectionRef.current = selection
+      ? { start: selection.start, end: selection.end }
+      : null;
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !onImageUpload) return;
+
+    try {
+      const imageUrl = await onImageUpload(file);
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      const selection = pendingImageSelectionRef.current;
+      const start = selection?.start ?? textarea.selectionStart;
+      const end = selection?.end ?? textarea.selectionEnd;
+      const altText = file.name.replace(/\\.[^.]+$/, "").replace(/[\\[\\]\\n]/g, " ").trim() || "image";
+      const imageMarkdown = `![${altText}](${imageUrl})`;
+      const newText = value.substring(0, start) + imageMarkdown + value.substring(end);
+      onChange(newText);
+
+      setTimeout(() => {
+        const currentTextarea = textareaRef.current;
+        if (!currentTextarea) return;
+        const cursor = start + imageMarkdown.length;
+        currentTextarea.focus();
+        currentTextarea.setSelectionRange(cursor, cursor);
+      }, 0);
+    } catch (error) {
+      onImageUploadError?.(error instanceof Error ? error.message : "이미지 업로드 실패");
+    } finally {
+      pendingImageSelectionRef.current = null;
+    }
   };
   const handleHeading2 = () => insertAtLineStart("## ");
   const handleHeading3 = () => insertAtLineStart("### ");
@@ -188,7 +233,18 @@ export function MarkdownToolbar({ textareaRef, value, onChange }: MarkdownToolba
   }, [value, textareaRef]);
 
   return (
-    <div
+    <>
+      {onImageUpload && (
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          aria-label="이미지 파일 업로드"
+          onChange={handleImageFileChange}
+        />
+      )}
+      <div
       role="toolbar"
       aria-label="마크다운 편집 도구"
       className="flex items-center justify-between gap-2 border-b border-border/40 bg-muted/30 px-3 py-2"
@@ -219,7 +275,8 @@ export function MarkdownToolbar({ textareaRef, value, onChange }: MarkdownToolba
         단축키: Cmd/Ctrl+B · Cmd/Ctrl+K
       </span>
     </div>
-  );
+    </>
+    );
 }
 
 interface ToolbarButtonProps {

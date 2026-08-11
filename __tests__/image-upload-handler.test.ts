@@ -1,65 +1,46 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { handlePaste } from "@/components/admin/image-upload-handler";
+import { handlePaste, type ImageUploadOptions } from "@/components/admin/image-upload-handler";
 
 describe("image upload handler", () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it("replaces only its own placeholder and preserves edits made during upload", async () => {
-    let resolveUpload!: (response: Response) => void;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        () =>
-          new Promise<Response>((resolve) => {
-            resolveUpload = resolve;
-          }),
-      ),
-    );
-
-    const textarea = document.createElement("textarea");
-    textarea.value = "앞 문장";
-    document.body.appendChild(textarea);
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-
-    const item = {
-      type: "image/png",
-      getAsFile: () =>
-        new File([new Uint8Array([137, 80, 78, 71])], "capture.png", { type: "image/png" }),
-    } as unknown as DataTransferItem;
-    const event = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
-    Object.defineProperty(event, "clipboardData", { value: { items: [item] } });
-
-    handlePaste(event, textarea);
-    expect(event.defaultPrevented).toBe(true);
-    expect(textarea.value).toContain("이미지 업로드 중");
-
-    textarea.value += "\n사용자가 업로드 중 추가한 문장";
-    resolveUpload(
-      new Response(
-        JSON.stringify({
-          success: true,
-          files: [{ path: "https://img.example.com/capture.webp" }],
-        }),
-        { status: 200 },
-      ),
-    );
-    await vi.waitFor(() =>
-      expect(textarea.value).toContain("https://img.example.com/capture.webp"),
-    );
-
-    expect(textarea.value).toContain("앞 문장");
-    expect(textarea.value).toContain("사용자가 업로드 중 추가한 문장");
-    expect(textarea.value).not.toContain("이미지 업로드 중");
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it("does not intercept normal text paste", () => {
+  it("paste upload이 완료되면 React state callback에 Markdown을 전달한다", async () => {
+    const file = new File(["png"], "image.png", { type: "image/png" });
+    const onContentChange = vi.fn();
+    const options = {
+      onContentChange,
+    } as ImageUploadOptions & { onContentChange: (value: string) => void };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          files: [{ path: "https://assets.example.test/blog/image.png" }],
+        }),
+      })
+    );
+
     const textarea = document.createElement("textarea");
-    const event = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
-    Object.defineProperty(event, "clipboardData", { value: { items: [{ type: "text/plain" }] } });
+    textarea.value = "본문";
+    textarea.setSelectionRange(2, 2);
+    const preventDefault = vi.fn();
+    const event = {
+      clipboardData: {
+        items: [{ type: "image/png", getAsFile: () => file }],
+      },
+      preventDefault,
+    } as unknown as ClipboardEvent;
 
-    handlePaste(event, textarea);
-
-    expect(event.defaultPrevented).toBe(false);
+    handlePaste(event, textarea, options);
+    await vi.waitFor(() => {
+      expect(onContentChange).toHaveBeenCalledWith(
+        "본문![image](https://assets.example.test/blog/image.png)"
+      );
+    });
+    expect(preventDefault).toHaveBeenCalled();
   });
 });
