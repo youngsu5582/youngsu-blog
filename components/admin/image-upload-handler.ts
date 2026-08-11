@@ -7,12 +7,13 @@ export interface ImageUploadOptions {
   onUploadStart?: () => void;
   onUploadComplete?: (imageUrl: string) => void;
   onUploadError?: (error: string) => void;
+  onContentChange?: (value: string) => void;
 }
 
 /**
  * Upload an image file to the server
  */
-async function uploadImage(file: File): Promise<string> {
+export async function uploadAdminImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("files", file);
 
@@ -36,28 +37,32 @@ async function uploadImage(file: File): Promise<string> {
 /**
  * Insert markdown image syntax at cursor position in textarea
  */
-function insertImageMarkdown(textarea: HTMLTextAreaElement, imageUrl: string) {
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const text = textarea.value;
-
-  const before = text.substring(0, start);
-  const after = text.substring(end);
+function insertImageMarkdown(
+  textarea: HTMLTextAreaElement,
+  imageUrl: string,
+  options: ImageUploadOptions,
+  originalValue: string,
+  start: number,
+  end: number
+) {
   const imageMarkdown = `![image](${imageUrl})`;
-
-  const newText = before + imageMarkdown + after;
+  const newText = originalValue.substring(0, start) + imageMarkdown + originalValue.substring(end);
   const newCursorPos = start + imageMarkdown.length;
 
-  // Update textarea value
-  textarea.value = newText;
+  if (options.onContentChange) {
+    options.onContentChange(newText);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+    return;
+  }
 
-  // Restore cursor position
+  // Fallback for callers that do not use a controlled React textarea.
+  textarea.value = newText;
   textarea.setSelectionRange(newCursorPos, newCursorPos);
   textarea.focus();
-
-  // Trigger change event for React
-  const event = new Event("input", { bubbles: true });
-  textarea.dispatchEvent(event);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /**
@@ -78,31 +83,32 @@ export function handlePaste(
       const file = item.getAsFile();
       if (!file) continue;
 
-      // Show loading indicator
-      const loadingText = " (이미지 업로드 중...) ";
+      // Keep the controlled textarea in React state; only mutate the DOM for legacy callers.
       const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
       const originalValue = textarea.value;
 
-      textarea.value =
-        originalValue.substring(0, start) +
-        loadingText +
-        originalValue.substring(start);
+      if (!options.onContentChange) {
+        const loadingText = " (이미지 업로드 중...) ";
+        textarea.value =
+          originalValue.substring(0, start) +
+          loadingText +
+          originalValue.substring(end);
+      }
 
       options.onUploadStart?.();
 
       // Upload image
-      uploadImage(file)
+      uploadAdminImage(file)
         .then((imageUrl) => {
-          // Remove loading text and insert markdown
-          textarea.value = originalValue;
-          textarea.setSelectionRange(start, start);
-          insertImageMarkdown(textarea, imageUrl);
+          insertImageMarkdown(textarea, imageUrl, options, originalValue, start, end);
           options.onUploadComplete?.(imageUrl);
         })
         .catch((error) => {
-          // Remove loading text on error
-          textarea.value = originalValue;
-          textarea.setSelectionRange(start, start);
+          if (!options.onContentChange) {
+            textarea.value = originalValue;
+            textarea.setSelectionRange(start, start);
+          }
           options.onUploadError?.(error.message || "업로드 실패");
         });
 
@@ -139,31 +145,32 @@ export function handleDrop(
 
   if (!imageFile) return;
 
-  // Show loading indicator
-  const loadingText = " (이미지 업로드 중...) ";
+  // Keep the controlled textarea in React state; only mutate the DOM for legacy callers.
   const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
   const originalValue = textarea.value;
 
-  textarea.value =
-    originalValue.substring(0, start) +
-    loadingText +
-    originalValue.substring(start);
+  if (!options.onContentChange) {
+    const loadingText = " (이미지 업로드 중...) ";
+    textarea.value =
+      originalValue.substring(0, start) +
+      loadingText +
+      originalValue.substring(end);
+  }
 
   options.onUploadStart?.();
 
   // Upload image
-  uploadImage(imageFile)
+  uploadAdminImage(imageFile)
     .then((imageUrl) => {
-      // Remove loading text and insert markdown
-      textarea.value = originalValue;
-      textarea.setSelectionRange(start, start);
-      insertImageMarkdown(textarea, imageUrl);
+      insertImageMarkdown(textarea, imageUrl, options, originalValue, start, end);
       options.onUploadComplete?.(imageUrl);
     })
     .catch((error) => {
-      // Remove loading text on error
-      textarea.value = originalValue;
-      textarea.setSelectionRange(start, start);
+      if (!options.onContentChange) {
+        textarea.value = originalValue;
+        textarea.setSelectionRange(start, start);
+      }
       options.onUploadError?.(error.message || "업로드 실패");
     });
 }

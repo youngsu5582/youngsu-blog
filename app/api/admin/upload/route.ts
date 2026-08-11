@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { uploadAdminImage, type UploadedFile } from "@/lib/admin-upload-storage";
-import { buildSafeUploadName, validateImageBuffer, validateImageUpload } from "@/lib/admin-upload-validation";
+import {
+  buildSafeUploadName,
+  validateImageBuffer,
+  validateImageUpload,
+} from "@/lib/admin-upload-validation";
 
 type RejectedFile = { name: string; error: string };
+
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
@@ -19,7 +25,10 @@ export async function POST(req: Request) {
     for (const file of files) {
       const metadataValidation = validateImageUpload(file);
       if (!metadataValidation.valid) {
-        rejectedFiles.push({ name: file.name, error: metadataValidation.error || "업로드할 수 없는 파일입니다" });
+        rejectedFiles.push({
+          name: file.name,
+          error: metadataValidation.error || "업로드할 수 없는 파일입니다",
+        });
         continue;
       }
 
@@ -27,7 +36,10 @@ export async function POST(req: Request) {
       const buffer = Buffer.from(bytes);
       const contentValidation = validateImageBuffer(buffer, file.type);
       if (!contentValidation.valid) {
-        rejectedFiles.push({ name: file.name, error: contentValidation.error || "이미지 파일 내용이 올바르지 않습니다" });
+        rejectedFiles.push({
+          name: file.name,
+          error: contentValidation.error || "이미지 파일 내용이 올바르지 않습니다",
+        });
         continue;
       }
 
@@ -54,6 +66,9 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("Upload error:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: "이미지 업로드 중 서버 오류가 발생했습니다" },
+      { status: 500 },
+    );
   }
 }

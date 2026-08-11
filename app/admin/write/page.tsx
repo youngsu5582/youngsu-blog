@@ -5,7 +5,7 @@ import { Loader2, Save, FileText, BookOpen, StickyNote, Library, Eye, EyeOff, X,
 import { TagInput } from "@/components/admin/tag-input";
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
 import { handleMarkdownIndentKeyDown } from "@/components/admin/markdown-editor-keyboard";
-import { attachImageUploadHandlers } from "@/components/admin/image-upload-handler";
+import { attachImageUploadHandlers, uploadAdminImage } from "@/components/admin/image-upload-handler";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -216,6 +216,7 @@ export default function WritePage() {
   // Attach image upload handlers to textarea
   useEffect(() => {
     const cleanup = attachImageUploadHandlers(textareaRef.current, {
+      onContentChange: setContent,
       onUploadStart: () => {
         setResult({ success: true, message: "이미지 업로드 중..." });
       },
@@ -897,7 +898,16 @@ export default function WritePage() {
               {content.length.toLocaleString()}자 · 약 {Math.max(1, Math.ceil(content.length / 500))}분
             </span>
           </div>
-          <MarkdownToolbar textareaRef={textareaRef} value={content} onChange={setContent} />
+          <MarkdownToolbar
+            textareaRef={textareaRef}
+            value={content}
+            onChange={setContent}
+            onImageUpload={uploadAdminImage}
+            onImageUploadError={(error) => {
+              setResult({ success: false, message: error });
+              setTimeout(() => setResult(null), 3000);
+            }}
+          />
           <textarea
             ref={textareaRef}
             value={content}

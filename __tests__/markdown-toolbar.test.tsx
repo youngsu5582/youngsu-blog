@@ -1,17 +1,28 @@
 import React, { useRef, useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
 
-function ToolbarHarness({ initialValue = "본문" }: { initialValue?: string }) {
+function ToolbarHarness({
+  initialValue = "본문",
+  onImageUpload,
+}: {
+  initialValue?: string;
+  onImageUpload?: (file: File) => Promise<string>;
+}) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState(initialValue);
 
   return (
     <div>
       <textarea ref={textareaRef} value={value} onChange={(e) => setValue(e.target.value)} />
-      <MarkdownToolbar textareaRef={textareaRef} value={value} onChange={setValue} />
+      <MarkdownToolbar
+        textareaRef={textareaRef}
+        value={value}
+        onChange={setValue}
+        onImageUpload={onImageUpload}
+      />
     </div>
   );
 }
@@ -41,5 +52,26 @@ describe("MarkdownToolbar", () => {
     fireEvent.click(screen.getByRole("button", { name: "굵게" }));
 
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("이미지 버튼으로 선택한 파일을 업로드하고 커서 위치에 Markdown을 삽입한다", async () => {
+    const onImageUpload = vi.fn().mockResolvedValue("https://assets.example.test/blog/diagram.png");
+
+    render(<ToolbarHarness onImageUpload={onImageUpload} />);
+
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    textarea.focus();
+    textarea.setSelectionRange(2, 2);
+
+    fireEvent.click(screen.getByRole("button", { name: "이미지 삽입" }));
+    const file = new File(["png"], "diagram.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("이미지 파일 업로드"), {
+      target: { files: [file] },
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("본문![diagram](https://assets.example.test/blog/diagram.png)");
+    });
+    expect(onImageUpload).toHaveBeenCalledWith(file);
   });
 });
