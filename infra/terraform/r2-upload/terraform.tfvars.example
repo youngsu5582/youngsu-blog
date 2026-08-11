@@ -1,6 +1,6 @@
 cloudflare_account_id = "[CLOUDFLARE_ACCOUNT_ID]"
 cloudflare_zone_id    = "[CLOUDFLARE_ZONE_ID]"
 bucket_name           = "youngsu-blog-images"
-image_domain          = "img.youngsu5582.today"
+image_domain          = "assets.youngsu5582.today"
 location              = "apac"
 min_tls               = "1.2"

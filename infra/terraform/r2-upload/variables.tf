@@ -17,7 +17,7 @@ variable "bucket_name" {
 variable "image_domain" {
   description = "Public custom domain used in Markdown image URLs."
   type        = string
-  default     = "img.youngsu5582.today"
+  default     = "assets.youngsu5582.today"
 }
 
 variable "location" {
