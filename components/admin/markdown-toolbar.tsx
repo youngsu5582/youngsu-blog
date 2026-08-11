@@ -178,7 +178,7 @@ export function MarkdownToolbar({ textareaRef, value, onChange, onImageUpload, o
       const selection = pendingImageSelectionRef.current;
       const start = selection?.start ?? textarea.selectionStart;
       const end = selection?.end ?? textarea.selectionEnd;
-      const altText = file.name.replace(/\\.[^.]+$/, "").replace(/[\\[\\]\\n]/g, " ").trim() || "image";
+      const altText = file.name.replace(/\.[^.]+$/, "").replace(/[\[\]\n]/g, " ").trim() || "image";
       const imageMarkdown = `![${altText}](${imageUrl})`;
       const newText = value.substring(0, start) + imageMarkdown + value.substring(end);
       onChange(newText);
