@@ -95,9 +95,11 @@ export default function EditPage() {
   // Textarea ref for markdown toolbar
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Attach image upload handlers to textarea
+  // Attach image upload handlers after the editor textarea has mounted.
+  // Selecting an item first renders the loading state, so depending only on
+  // selectedItem can run this effect while textareaRef.current is still null.
   useEffect(() => {
-    if (!selectedItem) return;
+    if (!selectedItem || loadingContent) return;
 
     const cleanup = attachImageUploadHandlers(textareaRef.current, {
       onContentChange: setBody,
@@ -115,7 +117,7 @@ export default function EditPage() {
     });
 
     return cleanup;
-  }, [selectedItem]);
+  }, [selectedItem, loadingContent]);
 
   // Auto-save function
   const performAutoSave = useCallback(() => {
