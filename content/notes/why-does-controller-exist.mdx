@@ -1,0 +1,317 @@
+---
+title: Good Code - 컨트롤러는 왜 있는가
+date: "2026-08-17T00:00:00.000Z"
+description: 요청의 전송 형식이 바뀌어도 서비스와 공용 DTO를 흔들지 않도록, 컨트롤러 전용 DTO와 변환 경계를 설계한 이유를 정리했다.
+categories:
+  - Good Code
+tags:
+  - clean-code
+  - controller
+  - layered-architecture
+author: 이영수
+lang: ko
+draft: true
+toc: true
+comments: true
+---
+
+# 컨트롤러는 왜 있는가
+
+3줄 요약
+
+- 계층의 값은 평소에 안 보이고 한쪽만 바뀔 때 드러난다. 전송 형식이 Multipart 에서 JSON part 로 바뀌었는데 도메인 요구는 그대로일 때 같은 경우다.
+- `fileKey`(같은 요청 안의 part 이름표)를 공용 DTO 에 얹으면 서비스가 서블릿 요청을 알아야 하고, 시간에 따라 의미가 바뀌는 필드가 도메인 타입에 남는다.
+- 컨트롤러가 전용 타입으로 받아 조립하면 서비스 시그니처도 공용 타입도 안 건드린다. 대가는 타입이 둘로 늘어나는 것 하나뿐이고, 그건 어디가 아플지 아는 비용이다.
+
+---
+
+Controller - Service - Repository. 서버 개발자라면, 이렇게 코드를 짤 것이다.
+그런데 컨트롤러를 왜 따로 두는지 물으면 답이 잘 안 나온다.
+
+- 관심사 분리가 됩니다
+- 서비스를 재사용할 수 있습니다
+- 테스트하기 좋습니다
+
+틀린 말은 아닌데 실제로 와닿지 않는다. 대부분의 컨트롤러는 서비스를 호출하는 껍데기이기 때문이다.
+
+```java
+@PutMapping
+public ResponseEntity<ResponseDto> update(UpdateRequestDto dto) {
+    return ResponseEntity.ok(service.update(dto));
+}
+```
+
+한 줄이다. 이걸 위해 클래스를 하나 더 만드는 게 무슨 의미인지 체감하기 어려울 수도 있다.
+재사용한다고 했지만 그 서비스를 부르는 컨트롤러는 하나뿐이고, 앞으로도 하나일 것만 같다.
+
+계층의 값은 평소에 안 보인다. 바뀔 때 보인다. 그것도 아무 변경이 아니라, 한쪽만 바뀔 때.
+
+## 한쪽만 바뀌는 요구사항
+
+파일과 구조화된 본문을 함께 Multipart 로 받는 API 가 있다.
+
+```java
+@PutMapping(value = "", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<ResponseDto> update(@ModelAttribute UpdateRequestDto dto) {
+    return ResponseEntity.ok(service.update(dto));
+}
+```
+
+```
+imageList[0].uuid
+imageList[0].file.url
+imageList[0].file.file              (binary)
+imageList[0].file.metadata.width
+imageList[0].file.metadata.height
+sceneList[0].title
+...
+```
+
+멀티파트는 필드 하나가 part 하나다. 항목이 늘면 part 수가 그대로 따라 늘어난다. (imageList 하나당 part 가 5개)
+어느 날 서버가 요청을 거부했다. 요청당 part 개수에 최대 상한이 있었기 때문이다.
+
+-> 상한을 올리는 건 시간을 버는 것뿐이라, 본문 전체를 JSON part 하나에 담기로 했다.
+
+```java
+private static final String JSON_PART_NAME = "data";
+
+@PutMapping(value = "", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<ResponseDto> update(
+        @RequestPart(value = JSON_PART_NAME, required = false) UpdateJsonRequestDto data,
+        MultipartHttpServletRequest request) {
+    return ResponseEntity.ok(service.update(toRequestDto(data, request)));
+}
+```
+
+```
+data              application/json   { title, imageList[], sceneList[] }
+image-file-0      binary
+```
+
+이때 JSON 에는 바이너리를 직접 실을 수 없으니, "내 파일은 저 part 다" 라고 가리켜줘야 한다.
+
+```json
+{ "imageList": [ { "file": { "fileKey": "image-file-0" } } ] }
+```
+
+-> Spring 은 `MultipartHttpServletRequest.getFile(String key)` 로, 이름을 주면 해당 part 를 찾아준다.
+
+여기서 중요한 건 로직 자체가 아니라, 무엇이 바뀌었고 무엇이 안 바뀌었는지다.
+
+- 도메인 요구: 안 바뀜. 여전히 "리소스를 수정한다"
+- 전송 형식: 완전히 바뀜. Multipart -> JSON part + Binary part
+
+이런 변경이 계층을 나눈 의미를 보여준다.
+
+## 서비스에서 담당하면
+
+서비스에서, 이 로직을 처리해야 한다고 생각하면?
+가장 먼저 떠오르는 방법은 기존 DTO 에 필드를 하나 더하는 것이다.
+
+```java
+public class FileRequestDto {
+    private String url;           // 업로드 완료 후 url
+    private MultipartFile file;   // 직접 업로드
+    private String fileKey;       // 추가 — 같은 요청 안의 part 이름
+    private FileMetadata metadata;
+}
+```
+
+`url` / `file` / `fileKey` 는 "파일이 어디서 오는가" 라는 같은 축처럼 보인다.
+자연스러워 보이고, 실제로 동작한다.
+
+문제는 `fileKey` 만으로는 아무것도 못 한다는 데 있다.
+저건 이름표일 뿐이라, 실제 바이트를 얻으려면 요청 객체에서 그 이름의 part 를 찾아야 한다.
+
+```java
+public ResponseDto update(UpdateRequestDto dto, MultipartHttpServletRequest request) {
+    for (var item : dto.getImageList()) {
+        var file = item.getFile();
+        if (file.getFile() == null && StringUtils.hasText(file.getFileKey())) {
+            file.setFile(request.getFile(file.getFileKey()));
+        }
+    }
+    ...
+}
+```
+
+서비스 시그니처에 `MultipartHttpServletRequest` 를 추가해야 한다.
+
+이 한 줄이 의미하는 건 작지 않다.
+
+- 이 서비스는 이제 HTTP 요청 없이는 호출할 수 없다. 배치에서도, 다른 서비스에서도, 테스트에서도 서블릿 요청을 만들어야 한다.
+- 도메인 로직을 읽으려면 멀티파트를 알아야 한다. "리소스를 수정한다" 를 이해하러 왔다가 part 이름 규약을 읽고 있다.
+- 전송 형식이 바뀌면(예: presigned 로 통일 or 병행하기로 결정) 또 서비스를 열어서 고쳐야 한다.
+
+`request` 를 안 넘기려면? 컨트롤러에서 DTO 에 미리 치환해두는 방법도 있다.
+
+```java
+// 컨트롤러에서 치환한 뒤 서비스에선 그대로 사용
+item.getFile().setFile(part);   // fileKey 는 그대로 남아 있다
+```
+
+DTO 에는 `fileKey` 와 `file` 이 같은 것을 가리킨 채 둘 다 살아 있다.
+서비스에서 이 객체를 받은 사람은 치환 전인지 후인지 타입으로 알 수 없다.
+
+```java
+public class FileRequestDto {
+    ...
+
+    // fileKey 를 통해 파일을 설정했으면 존재
+    // fileKey 를 통해 설정하지 않았으면, null
+    private MultipartFile file;
+
+    // file 을 세팅한 후에는 사용하지 않는 값
+    private String fileKey;
+}
+```
+
+시간에 따라 의미가 바뀌는 필드가 도메인 타입에 남는다.
+=> 공용 DTO 에 필드를 얹은 대가는 또 추가로 청구된다.
+
+- 이 DTO 는 업로드를 다루는 모든 API 에 전파된다. 그 API 들의 스펙 문서에 영원히 `null` 인 필드가 하나씩 늘어난다.
+- `@AllArgsConstructor` 의 인자 수가 바뀐다. 위치 인자로 이 DTO 를 만들던 코드가 깨진다. (이번 작업과 아무 상관 없는 기능의 테스트들)
+- 이 DTO 를 상속해 필드를 손으로 복사하는 하위 클래스가 있으면, 새 필드는 거기서 말없이 빠진다.
+
+```java
+// URL 이든, File 이든 미리 byte 로 로딩한 DTO
+private LoadedFileRequestDto(FileRequestDto source, byte[] loadedBytes) {
+    setUrl(source.getUrl());
+    setFile(source.getFile());
+    setMetadata(source.getMetadata());
+    // 새로 추가한 필드는 여기 없다
+}
+```
+
+## 컨트롤러가 막아서면
+
+`fileKey` 가 언제까지 살아있는지 부터 명확히 정리하자.
+
+역직렬화된 직후 값이 있고, 그 이름으로 실제 part 를 찾아 붙이면 역할이 끝난다.
+그 뒤로는 아무도 안 쓴다. 수명이 요청 경계에서 끝난다.
+
+![image](https://assets.youngsu5582.today/blog/2026/08/17/1786969708213-image.png)
+
+서비스가 받는 타입을 재사용하지 않는다. 전송 형식이 다르면 타입도 다르게 선언한다.
+
+이 글에 나오는 타입은 넷이고, 규칙은 하나다. **`Json` 이 붙으면 컨트롤러가 받는 타입, 없으면 서비스가 받는 타입.**
+
+|  | 요청 전체 | 파일 하나 |
+| --- | --- | --- |
+| 컨트롤러가 받음 | `UpdateJsonRequestDto` | `FileJsonRequestDto` |
+| 서비스가 받음 | `UpdateRequestDto` | `FileRequestDto` |
+
+### 컨트롤러를 위한 DTO
+
+```java
+public class FileJsonRequestDto {
+    private String url;
+    private String fileKey;          // 여기에만 있다
+    private FileMetadata metadata;
+
+    public FileRequestDto toFileRequest(@Nullable MultipartFile resolvedPart) {
+        return FileRequestDto.builder()
+                .url(url)
+                .file(resolvedPart)
+                .metadata(metadata)
+                .build();
+    }
+}
+```
+
+조립은 컨트롤러가 한다.
+
+```java
+private UpdateRequestDto toRequestDto(UpdateJsonRequestDto data,
+                                      MultipartHttpServletRequest request) {
+    var imageList = data.getImageList().stream()
+            .map(item -> ImageItemRequestDto.builder()
+                    .uuid(item.getUuid())
+                    .file(toFileRequest(item.getFile(), request))
+                    .build())
+            .toList();
+    return UpdateRequestDto.builder()
+            .title(data.getTitle())
+            .imageList(imageList)
+            .build();
+}
+
+private FileRequestDto toFileRequest(FileJsonRequestDto file,
+                                     MultipartHttpServletRequest request) {
+    if (file == null) {
+        return null;
+    }
+    if (!StringUtils.hasText(file.getFileKey())) {
+        return file.toFileRequest(null);
+    }
+    MultipartFile part = request.getFile(file.getFileKey());
+    if (part == null) {
+        throw new MissingPartException("첨부 파일 part 를 찾을 수 없습니다: " + file.getFileKey());
+    }
+    return file.toFileRequest(part);
+}
+```
+
+치환이 아니라 조립이다.
+받은 객체를 고치지 않고 새로 만든다. 그래서 "변환 전인지 후인지" 라는 상태가 존재하지 않는다.
+`FileJsonRequestDto` 는 항상 변환 전이고, `FileRequestDto` 는 항상 변환 후다. 타입이 곧 시점이다.
+
+실패도 그 자리에서 판정한다.
+`request.getFile(key)` 는 그 이름의 part 가 없으면 `null` 을 돌려준다.
+그냥 넘기면 url 도 file 도 없는 객체가 되어, 한참 뒤 파일을 읽는 시점에 터진다. 원인에서 가장 먼 곳에서.
+
+그리고 이 판정은 도메인 규칙이 아니다. "가리킨 part 가 없으면 400" 은 HTTP 계약이다.
+서비스나 DTO 안에 숨어 있으면 전역 핸들러가 의도와 다르게 처리해도 알아채기 어렵다.
+
+덕분에 남는 게 셋이다.
+
+- 서비스 시그니처가 그대로다. `update` 는 여전히 HTTP 없이 호출할 수 있고, 기존 테스트도 그대로 돈다.
+- 공용 타입을 안 건드린다. 다른 API 의 스펙도, 생성자 인자 수도, 손복사 목록도 그대로다.
+- 전송 형식이 또 늘어도 서비스는 모른다. 새 형식이 생기면 그걸 받는 타입과 변환을 하나 더 만들면 된다.
+
+## 치르는 값
+
+공짜는 아니다. 같은 모양의 타입이 둘이 됐다.
+
+```java
+public class FileRequestDto {
+    private String url;
+    private MultipartFile file;
+    private FileMetadata metadata;
+    ...
+}
+
+public class FileJsonRequestDto {
+    private String url;
+    private String fileKey;
+    private FileMetadata metadata;
+    ...
+}
+```
+
+필드를 하나 추가하면 두 곳을 고쳐야 하고, 잊어도 컴파일러가 잡아주지 않는다.
+변환 메서드에서 조용히 빠질 뿐이다.
+
+그래도 이쪽을 택한 건, 두 비용이 청구되는 방식이 다르기 때문이다.
+
+- 공용 타입에 필드를 얹는 비용 — 그 타입을 쓰는 모든 곳에 영향이 간다. 전부 파악해야 한다.
+- 타입을 가르는 비용 — 변환 메서드 한 곳이 담당한다. 어디인지 이미 안다.
+
+후자는 잊었을 때 어디를 봐야 하는지 알고, 전자는 어디가 아플지 모른다.
+
+## 마무리
+
+그래서, 컨트롤러는 무엇인가??
+
+서비스가 담는 건 무엇을 하는가다. 컨트롤러가 담는 건 어떻게 들어오는가다.
+`fileKey` 는 후자에 속한다. 그래서 컨트롤러 밖으로 나가지 않게 막았다.
+
+여러 컨트롤러가 한 서비스를 부르는 건 온전한 재사용이 아니다.
+HTTP 가 바뀌어도 서비스가 열리지 않는 것, 서블릿 요청 없이도 호출되는 것. 그게 재사용이라고 생각한다.
+
+전송 형식과 방식은 어떻게든 바뀔 수 있다. 폼이 JSON 이 됐듯, JSON 도 다른 게 될 가능성은 존재한다.
+또는, Spring 에서 더 깔끔하게 본문을 받게 새로운 객체나 어노테이션이 나올 수도 있다.
+
+그때 그 변경을 컨트롤러에서 멈춰 세우는 게 계층을 나눈 이유다.
+아무 생각없이 `Controller - Service - Repository` 를 만들더라도
+이와 같은 상황이 찾아오면 한번즈음은 계층을 생각해보자.
