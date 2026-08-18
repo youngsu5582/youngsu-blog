@@ -37,6 +37,7 @@ export const siteConfig = {
     "www.aladin.co.kr",
     "image.yes24.com",
     "d1apvpgu6ekv4q.cloudfront.net",
+    "assets.youngsu5582.today",
   ],
 };
 
