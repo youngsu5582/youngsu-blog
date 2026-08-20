@@ -1,0 +1,56 @@
+---
+title: Next.js Image
+date: "2026-08-18T00:00:00.000Z"
+description: Next.js 에서 제공해주는 Image 에 대해 간결히 설명한다.
+categories:
+  - Blog
+tags:
+  - nextjs
+  - image-optimization
+  - ssr
+author: 이영수
+lang: ko
+draft: true
+toc: true
+comments: true
+---
+
+`next/image` 는 원본 이미지를 브라우저에 그대로 전달하지 않고, 필요한 크기로 변환해 전달하게 해주는 Next.js 기능이다.
+
+- 자동 리사이즈 : 모바일·태블릿·데스크톱 화면에 맞는 폭을 선택해 원본보다 작은 이미지를 전송
+- 이미지 포맷 : 브라우저가 지원하는 효율적 포맷으로 변환해 전송(기본 WebP 동작 중심)
+- 캐싱 : 첫 요청 때 가져와 최적화된 결과를 캐시하고, 이후 같은 크기&요청에는 캐시된 결과 재사용
+
+이외에도 lazy loading, 레이아웃 밀림 완화 등도 해준다.
+
+이게 꽤나 신기한데
+
+```typescript
+<Image src="https://cdn.내도메인.com/photo.jpg" width={400} height={300} />
+```
+
+와 같이 명시를 하면
+HTML에는 이렇게 렌더링된다.
+
+```html
+<img src="/_next/image?url=https%3A%2F%2Fcdn.내도메인.com%2Fphoto.jpg&w=640&q=75">
+```
+
+즉, Vercel 인프라가 처리해준다.
+(애초에 내 코드 조차 Vercel 머신에서 돌고 있다.)
+
+추가로, `next/image` 를 사용해주기 위해선 Next Image 허용 목록에 넣어줘야 한다.
+넣어주지 않으면, Vercel 이 외부 이미지 도메인을 허용하지 않아서 400을 반환한다.
+
+```typescript
+imageDomains: [
+  // ...
+  // 외부 이미지 도메인을 명시
+  "images.youngsu5582.today", 
+],
+```
+
+## 참고
+
+- [Next.js Image Optimization](https://nextjs.org/docs/app/getting-started/images)
+- [Next.js Image Component](https://nextjs.org/docs/app/api-reference/components/image)
