@@ -1,0 +1,94 @@
+---
+title: GoodCode ENUM Set 을 지정할 때 EnumSet.of 와 Set.of 를 쓸때 차이점
+date: "Sat Aug 22 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: ENUM 을 초기화 지정할 때, ENUM.of 와 Set.of 의 기묘한 차이점
+categories:
+  - Good Code
+tags:
+  - java
+  - enum
+  - hashcode
+  - collection
+---
+
+# ENUM 을 Set 에 넣을때 주의할 점
+
+## 요약
+
+- Set.of 의 순회 순서는 JVM 마다 달라질 수 있다.
+- EnumSet.of 는 해시가 아닌, ordinal 비트 기반이므로 항상 동일하다.
+
+---
+
+```java
+enum Permission { READ, WRITE, DELETE }
+
+private final Set<Permission> allowed =
+        Set.of(Permission.READ, Permission.WRITE, Permission.DELETE);
+```
+
+이 필드를 포함한 객체를 바이트 단위로 해싱하고 ETag 를 만든다고 해보자.
+
+이때, 직렬화 결과는 인스턴스마다 달라질 수 있다.
+이유는 순서가 해싱 결과에 영향을 주기 때문이다.
+
+그러면, 왜 순서에 따라 흔들리는 걸까?
+
+### Set.of
+
+Set.of 는 3개 이상일때
+`java.util.ImmutableCollections` 를 사용해서 SetN 을 생성한다.
+
+이 Set 은 넣을때, 읽을때 다르게 작동한다.
+
+- 넣을 때 : 원소의 hashCode 로 넣을 칸 결정
+- 읽을 때 : 몇 번째부터, 어느 방향인지는 seed 라는 SALT 가 결정
+
+```java
+// java.util.ImmutableCollections
+long color = 0x243F_6A88_85A3_08D3L;  // 고정 상수
+long seed  = System.nanoTime();       // ← 실행마다 다르다. 원인은 이거 하나
+SALT32L    = (int)((color * seed) >> 16) & 0xFFFF_FFFFL;
+REVERSE    = (SALT32L & 1) == 0;      // 홀짝으로 걷는 방향까지 뒤집는다
+```
+
+와 같이, 내부에 값을 달라지게 해주는 seed  존재
+
+> "iteration order will vary between JVM runs."
+> 순서에 기대는 코드를 기대하지 못하게 되어있다.
+
+### EnumSet.of
+
+EnumSet 은 원소를 저장하지 않는다.
+
+- 넣을 때 : ordinal 이 비트 위치 결정
+
+```java
+elements |= (1L << e.ordinal());
+```
+-> 낮은 비트부터 떼어내므로 결과는 항상 오름차순이다.
+
+- 읽을 때 : 남은 비트 중 가장 낮은 것부터
+- 삽입 순서에도 상관이 없다.
+
+```java
+EnumSet.of(A, C, B) == EnumSet.of(C, B, A) == EnumSet.of(B, A, C)
+```
+어떻게 만들든 비트벡터로 정규화되기 때문이다.
+
+### 개선안
+
+```java
+private final Set<Permission> allowed = Collections.unmodifiableSet(
+        EnumSet.of(Permission.READ, Permission.WRITE, Permission.DELETE));
+```
+
+메모리, 속도, 순서 안정성이 전부 우위기도 하고
+ENUM 의 Set 임을 더 명시적으로 드러낼 수 있다.
+
+---
+
+평소에 잘 드러나지 않고, 아무렇지 않게 `Set.of`, `EnumSet.of` 를 사용했을수 있다.
+이런 사소함이 로직을 의도와 다르게 동작하게 할 수 있다.
+
+항상, 디테일을 신경쓰는게 좋은거 같다.
