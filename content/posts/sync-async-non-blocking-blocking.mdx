@@ -1,0 +1,308 @@
+---
+title: Sync, Async, Non-Blocking, Blocking
+date: "Fri Aug 28 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: 동기·비동기와 블로킹·논블로킹을 두 축으로 나누어 이해하고, Java와 Reactor 예시로 실행 스레드의 관점을 정리한다.
+categories:
+  - 백엔드
+  - 자바
+tags:
+  - async
+  - sync
+  - non-blocking
+  - blocking
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+---
+
+# Sync, Async, Non-Blocking, Blocking
+
+> 동기와 비동기는 **완료를 누가 이어서 처리하는가**를 설명하고, 블로킹과 논블로킹은 **호출한 쪽에 제어권을 언제 돌려주는가**를 설명한다.
+
+## 3줄 요약
+
+1. **Blocking / Non-Blocking**은 호출된 작업이 제어권을 즉시 돌려주는지의 관점이다.
+2. **Sync / Async**는 작업이 끝난 뒤 다음 처리를 호출자가 직접 이어가는지, 완료 알림을 받아 처리하는지의 관점이다.
+3. 네 가지 조합은 모두 가능하며, 특히 `Async`라고 해서 내부 작업까지 자동으로 `Non-Blocking`이 되는 것은 아니다.
+
+---
+
+## 두 축을 먼저 분리하기
+
+네 용어는 자주 한 묶음처럼 사용되지만, 사실 서로 다른 질문에 답한다.
+
+| 구분 | 판단 기준 | 핵심 질문 |
+| --- | --- | --- |
+| Blocking / Non-Blocking | 제어권 | 호출한 스레드가 작업이 끝날 때까지 기다리는가? |
+| Sync / Async | 완료 처리의 주체 | 다음 처리를 호출자가 직접 이어가는가, 완료 알림을 받아 처리하는가? |
+
+예를 들어 `CompletableFuture`를 사용했다고 해서 항상 비동기·논블로킹인 것은 아니다. 작업을 다른 스레드에 넘겼더라도 호출자가 `join()`으로 결과를 기다리면 호출한 스레드는 블로킹된다. 반대로 네트워크 작업이 논블로킹이어도, 완료 후의 로직을 현재 흐름에서 직접 호출한다면 동기적인 방식으로 볼 수 있다.
+
+## Blocking과 Non-Blocking
+
+### Blocking: 제어권을 돌려주지 않는 호출
+
+가장 단순한 예시는 동기적인 외부 API 호출이다.
+
+```java
+String result = api.call();
+System.out.println(result);
+```
+
+`api.call()`이 끝날 때까지 다음 줄로 이동할 수 없다. 호출된 함수가 작업이 끝날 때까지 호출자에게 제어권을 돌려주지 않는 것이다.
+
+주문 처리로 표현하면 다음과 같다.
+
+```text
+주문
+  → 주문 처리
+  → 처리 중 대기
+  → 결과 수신
+  → 결과 기반 처리
+```
+
+이때 호출한 스레드는 대기 시간 동안 해당 요청에 묶인다. 대기 중 CPU를 계속 사용하는 것은 아니지만, 스레드 자체는 다른 요청을 처리하지 못한다.
+
+```java
+Optional<User> user = userRepository.findById(id);
+```
+
+JPA나 JDBC를 이용한 DB 조회는 일반적으로 DB 응답을 기다리는 동안 호출 스레드가 멈춘다. 전통적인 톰캣 요청 처리 모델에서는 HTTP 요청 하나가 워커 스레드 하나를 점유하므로, 오래 걸리는 I/O가 많아질수록 동시에 처리할 수 있는 요청 수에도 영향을 준다.
+
+### Non-Blocking: 제어권을 빠르게 돌려주는 호출
+
+논블로킹은 작업이 아직 끝나지 않았더라도 호출된 함수가 제어권을 돌려주는 방식이다.
+
+```java
+while (true) {
+    Result result = check();
+
+    if (result.isReady()) {
+        break;
+    }
+
+    doOtherWork();
+}
+```
+
+`check()`가 아직 결과를 준비하지 못했더라도 즉시 반환한다고 가정하자. 호출한 스레드는 결과만 기다리는 대신 다른 작업을 수행할 수 있다.
+
+```text
+처리 요청
+  → 상태 확인: 아직 준비되지 않음
+  → 다른 작업
+  → 상태 확인: 아직 준비되지 않음
+  → 다른 작업
+  → 상태 확인: 완료
+  → 결과 기반 처리
+```
+
+다만 `check()` 자체가 내부에서 결과를 기다린다면 이 코드는 논블로킹이 아니다. 논블로킹 여부는 함수 이름이나 반환 타입이 아니라, 실제로 호출한 쪽에 언제 제어권을 돌려주는지로 판단해야 한다.
+
+또한 단순한 반복 확인은 **busy-wait**가 될 수 있다. 결과가 없어도 계속 루프를 돌면 CPU를 사용한다. 이를 줄이기 위해 운영체제와 네트워크 프레임워크는 `epoll` 같은 이벤트 통지 방식을 활용한다. 이벤트가 발생했을 때만 후속 처리를 실행하면, 결과를 기다리는 동안 불필요하게 CPU를 소비하지 않을 수 있다.
+
+## Sync와 Async
+
+### Sync: 호출자가 완료를 직접 이어서 처리
+
+동기 방식에서는 호출자가 작업의 완료를 기준으로 다음 로직을 실행한다.
+
+```java
+Result result = service.execute();
+doSomething(result);
+```
+
+`execute()`가 반환한 뒤 호출자가 `doSomething(result)`를 직접 호출한다. 실행 순서가 코드에 드러나고, 스택 트레이스가 자연스럽게 이어지며, `try-catch`를 이용한 예외 처리도 비교적 직관적이다.
+
+```text
+작업 요청
+  → 완료 확인
+  → 다음 작업
+```
+
+여기서 동기라는 말은 반드시 블로킹이라는 뜻은 아니다. 논블로킹 방식으로 상태를 확인하거나 이벤트를 처리하더라도, 호출자가 완료 시점과 다음 처리를 직접 관리한다면 동기적인 완료 처리로 볼 수 있다.
+
+### Async: 완료 알림을 받아 후속 처리
+
+비동기 방식에서는 작업을 시작한 뒤, 완료되었을 때 실행할 로직을 등록한다.
+
+```java
+CompletableFuture
+    .supplyAsync(() -> generateImage())
+    .thenAccept(result -> save(result));
+```
+
+이미지 생성을 시작한 뒤 호출자는 다른 일을 할 수 있다. 이미지 생성이 완료되면 등록해 둔 후속 로직이 실행되어 결과를 저장한다.
+
+```text
+작업 요청
+  → 다른 작업
+  → 다른 작업
+  → 완료 알림
+  → 완료 처리
+```
+
+비동기 방식에서는 호출 스택이 끊겨 보일 수 있고, `ThreadLocal` 같은 스레드 기반 상태가 자연스럽게 전달되지 않을 수 있다. 리액티브 프로그래밍에서는 필요한 컨텍스트를 별도로 전파하고, 비동기 경계에서 예외·취소·타임아웃을 명시적으로 다뤄야 한다.
+
+## 네 가지 조합
+
+네 가지 조합은 모두 가능하다. 실무에서 자주 만나는 예시는 다음과 같다.
+
+### Sync + Blocking
+
+```java
+Optional<User> user = userRepository.findById(id);
+```
+
+호출자는 조회 결과를 반환받을 때까지 기다리고, DB 작업 중 호출 스레드도 대기한다.
+
+- 호출자는 완료를 직접 이어서 처리한다.
+- 호출 스레드는 작업이 끝날 때까지 묶인다.
+- 일반적인 톰캣 + JDBC/JPA 요청 처리에서 흔히 볼 수 있다.
+
+### Sync + Non-Blocking
+
+```java
+channel.configureBlocking(false);
+
+int count = channel.read(buffer);
+
+if (count == 0) {
+    // 아직 데이터 없음
+}
+```
+
+`SocketChannel`이 논블로킹 모드로 설정돼 있다는 전제의 예시다. `read()`가 데이터가 도착할 때까지 기다리지 않고 현재 상태를 반환하므로, 호출자는 결과를 직접 확인하고 다음 처리를 결정할 수 있다.
+
+- 완료 처리 주체는 호출자다.
+- 작업이 준비되지 않아도 호출 스레드는 계속 실행할 수 있다.
+- 폴링 또는 이벤트 상태 확인 모델에서 나타난다.
+
+### Async + Blocking
+
+`Async`와 `Blocking`은 서로 모순되는 조합이 아니다. 다만 **어느 스레드의 관점인지**를 구분해야 한다.
+
+```java
+CompletableFuture<List<User>> future =
+    CompletableFuture.supplyAsync(
+        () -> jdbcTemplate.query("SELECT ...", userRowMapper),
+        blockingIoExecutor
+    );
+```
+
+호출 스레드의 관점에서는 JDBC 작업을 워커 스레드에 넘기고 즉시 반환하므로 비동기처럼 보인다. 그러나 워커 스레드는 JDBC 쿼리가 끝날 때까지 블로킹된다.
+
+여기서 `blockingIoExecutor`는 블로킹 I/O를 처리하기 위한 별도 Executor를 의미한다. 블로킹 작업을 이벤트 루프나 다른 중요한 워커 풀에서 실행하지 않도록 실행 자원을 분리하는 것이 핵심이다.
+
+```text
+호출 스레드: 작업 전달 → 다른 작업 수행
+워커 스레드: JDBC Query → DB 응답 대기 → 결과 반환
+```
+
+따라서 다음처럼 구분해야 한다.
+
+- 호출 스레드: Async + Non-Blocking
+- 워커 스레드: Sync + Blocking
+
+또 다른 예시는 다음과 같다.
+
+```java
+future.thenAccept(result -> use(result)); // 완료 처리는 콜백
+future.join();                             // 호출 스레드는 결과를 기다림
+```
+
+콜백을 등록한 부분은 비동기 방식이지만, `join()`을 호출한 순간 호출 스레드는 블로킹된다. 비동기 API를 사용했다는 사실만으로 전체 실행 흐름이 논블로킹이 되는 것은 아니다.
+
+그리고 단순히 `supplyAsync()`로 블로킹 작업을 감싸고 곧바로 결과를 가져오는 것은 주의해야 한다.
+
+```java
+CompletableFuture<Result> future =
+    CompletableFuture.supplyAsync(() -> call());
+
+Result result = future.get();
+```
+
+호출 스레드가 결국 `get()`에서 기다린다면, 워커 스레드를 하나 더 사용하면서 작업을 넘기고 결과를 다시 받아오는 비용만 추가될 수 있다. 목적 없이 블로킹 작업을 다른 스레드로 옮기는 것은 논블로킹으로의 전환이 아니다.
+
+### Async + Non-Blocking
+
+```java
+Mono<User> user =
+    webClient.get()
+        .uri("/users/1")
+        .retrieve()
+        .bodyToMono(User.class);
+```
+
+Reactor Netty를 사용하는 `WebClient`에서는 요청을 등록한 뒤 응답을 기다리는 동안 이벤트 루프가 다른 연결의 이벤트를 처리할 수 있는 구조를 사용한다.
+
+```text
+1. EventLoop 스레드가 소켓에 요청을 등록한다.
+2. 응답을 기다리지 않고 다른 Channel의 이벤트를 처리한다.
+3. 외부 API 응답이 도착하면 I/O 이벤트가 발생한다.
+4. EventLoop가 등록된 후속 처리를 실행한다.
+```
+
+Netty에서는 하나의 EventLoop 스레드가 여러 Channel을 담당할 수 있다. 그래서 EventLoop 안에서 DB 조회, 파일 읽기, `future.get()`처럼 오래 걸리는 블로킹 작업을 수행하면 안 된다. 하나의 연결만 느려지는 것이 아니라, 같은 이벤트 루프가 담당하는 다른 연결도 함께 지연될 수 있기 때문이다.
+
+논블로킹이라고 해서 실행 중 CPU 작업이 완전히 사라지는 것은 아니다. 예를 들어 커널 버퍼에서 사용자 버퍼로 데이터를 복사하는 작업은 필요하다. 다만 네트워크 응답 전체를 기다리는 것과 달리, 복사에는 처리해야 할 데이터 크기에 비례하는 유한한 작업 시간이 걸린다. 이 차이를 구분해야 한다.
+
+## 실전에서 기억할 기준
+
+### Blocking 자체보다 스레드 점유가 문제다
+
+블로킹 중인 스레드는 보통 CPU를 계속 사용하지 않는다. 문제는 요청 하나가 스레드 하나를 점유한다는 점이다.
+
+스레드가 늘어나면 다음 비용도 함께 증가한다.
+
+- 스레드 스택 메모리
+- 스케줄링 비용
+- 컨텍스트 스위칭
+- 동시 요청 수 증가에 따른 연결·메모리 관리 비용
+
+따라서 “블로킹은 나쁘다”라고 단순화하기보다, 어떤 스레드가 얼마나 오래 점유되는지와 전체 동시성 상한에 어떤 영향을 주는지를 봐야 한다.
+
+### Non-Blocking도 공짜는 아니다
+
+논블로킹 폴링은 잘못 작성하면 busy-wait가 되어 CPU를 계속 사용할 수 있다. 부분 읽기·부분 쓰기가 발생하는 환경에서는 아직 처리하지 못한 데이터를 직접 관리하고, 다음 이벤트에서 이어서 처리해야 한다.
+
+### Async 경계를 명시적으로 관리한다
+
+비동기 코드는 다음 항목을 명확히 해야 한다.
+
+- 완료 시 후속 처리를 누가 실행하는가
+- 예외가 어느 단계에서 전달되는가
+- 취소와 타임아웃을 어떻게 처리하는가
+- 컨텍스트와 인증 정보가 비동기 경계를 넘어가는가
+- 블로킹 작업이 이벤트 루프나 제한된 워커 풀을 점유하지 않는가
+
+## 마무리
+
+동기·비동기와 블로킹·논블로킹을 구분할 때는 하나의 사분면에 억지로 끼워 맞추기보다, 두 질문을 따로 확인하는 편이 정확하다.
+
+```text
+Blocking / Non-Blocking
+→ 호출한 쪽에 제어권을 언제 돌려주는가?
+
+Sync / Async
+→ 작업 완료 후 다음 처리를 누가 이어가는가?
+```
+
+특히 다음 두 문장을 기억하면 된다.
+
+1. `Async`는 작업 완료를 콜백이나 이벤트로 이어서 처리한다는 뜻이지, 내부 작업이 논블로킹이라는 뜻은 아니다.
+2. `Non-Blocking`은 호출 스레드를 기다리게 하지 않는다는 뜻이지, 시스템 어디에서도 대기나 비용이 발생하지 않는다는 뜻은 아니다.
+
+## 참고 자료
+
+- [Java `CompletableFuture` 공식 API 문서](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/CompletableFuture.html)
+- [Project Reactor Reference Guide](https://projectreactor.io/docs/core/release/reference/)
+- [Netty `EventLoop` API 문서](https://netty.io/4.1/api/io/netty/channel/EventLoop.html)
+
+## 발행 전 확인할 것
+
+- [ ] 글의 제목과 영문 용어 표기를 최종 결정할 것
+- [ ] `CompletableFuture` 예시에서 예외·취소·타임아웃 처리 예시를 추가할지 결정할 것
+- [ ] 실제 블로그의 코드 스타일에 맞춰 `Optional<User>`와 `blockingIoExecutor` 예시를 조정할 것
