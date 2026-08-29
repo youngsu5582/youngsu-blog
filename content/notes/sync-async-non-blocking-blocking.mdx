@@ -1,7 +1,7 @@
 ---
-title: Sync, Async, Non-Blocking, Blocking
-date: "Fri Aug 28 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
-description: 동기·비동기와 블로킹·논블로킹을 두 축으로 나누어 이해하고, Java와 Reactor 예시로 실행 스레드의 관점을 정리한다.
+title: "Sync, Async, Non-Blocking, Blocking"
+date: 2026-08-28
+description: "동기·비동기와 블로킹·논블로킹을 두 축으로 나누어 이해하고, Java와 Reactor 예시로 실행 스레드의 관점을 정리한다."
 categories:
   - 백엔드
   - 자바
@@ -10,11 +10,8 @@ tags:
   - sync
   - non-blocking
   - blocking
-author: 이영수
-lang: ko
-draft: false
-toc: true
-comments: true
+  - 네트워크
+  - Reactor
 ---
 
 # Sync, Async, Non-Blocking, Blocking
@@ -300,9 +297,3 @@ Sync / Async
 - [Java `CompletableFuture` 공식 API 문서](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/CompletableFuture.html)
 - [Project Reactor Reference Guide](https://projectreactor.io/docs/core/release/reference/)
 - [Netty `EventLoop` API 문서](https://netty.io/4.1/api/io/netty/channel/EventLoop.html)
-
-## 발행 전 확인할 것
-
-- [ ] 글의 제목과 영문 용어 표기를 최종 결정할 것
-- [ ] `CompletableFuture` 예시에서 예외·취소·타임아웃 처리 예시를 추가할지 결정할 것
-- [ ] 실제 블로그의 코드 스타일에 맞춰 `Optional<User>`와 `blockingIoExecutor` 예시를 조정할 것
