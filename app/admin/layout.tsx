@@ -1,5 +1,10 @@
 import { AdminNav } from "./components/admin-nav";
 
+// Admin HTML references build-specific client chunks and must not be cached
+// across deployments. Otherwise an old HTML document can request chunks that
+// were removed by the next build and surface Next.js's generic client error.
+export const dynamic = "force-dynamic";
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const adminEnabled = process.env.NODE_ENV !== "production" || process.env.ADMIN_UI_ENABLED === "true";
 
