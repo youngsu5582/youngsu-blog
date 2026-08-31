@@ -1,0 +1,236 @@
+---
+title: Strong ETags and Compression in Spring Boot (Tomcat)
+date: "2026-08-29T00:00:00.000Z"
+description: An explanation of the relationship between Spring Boot response compression and Tomcat's Strong ETag handling, including why a Weak ETag may be needed when caching and gzipping large API responses.
+image: /assets/img/thumbnail/2026-08-29-strong-etag-compression-spring-boot-tomcat.png
+categories:
+  - Spring
+tags:
+  - spring-boot
+  - tomcat
+  - etag
+  - compression
+  - http
+author: Lee Youngsu
+lang: en
+draft: true
+toc: true
+comments: true
+---
+
+> This English version was translated by Hermes Agent.
+
+# Strong ETags and Compression in Spring Boot (Tomcat)
+
+> Tomcat does not compress responses with an ETag that does not have `W/`. Make dynamic response ETags weak.
+
+There is currently an API in our codebase that returns a large response.
+
+It contains display data needed by the main logic. Since all of the data is required for the display, splitting it into multiple APIs immediately is not straightforward, so we return it from a single API.
+
+Returning this response from the server every time would be inefficient, so we decided to apply caching and compression.
+However, Spring can behave differently from what we intend if we configure or implement these features without fully understanding them.
+
+Let's take a look at them one by one.
+
+## ETag
+
+> An identifier for a specific version of a resource. When the resource at a specific URL changes, a new ETag is generated.
+> - [Mozilla](https://developer.mozilla.org/ko/docs/Web/HTTP/Reference/Headers/ETag)
+
+With an ETag, a web server can avoid sending the body again when the resource has not changed.
+
+### Strong and Weak ETags
+
+There are two types of ETags.
+
+```http
+ETag: "abc123"      ← strong
+ETag: W/"abc123"    ← weak
+```
+
+If an ETag starts with `W/`, it is a weak ETag; otherwise, it is a strong ETag.
+They mean the following:
+
+- Strong ETag — `If this tag is the same, the bytes are identical.` Every byte, including insignificant ones, must be the same.
+- Weak ETag — `If this tag is the same, the representations are semantically equivalent.` The bytes may be different.
+
+ETags are commonly used for conditional GET requests and range requests.
+
+- `If-None-Match`: Send the ETag with the request. If it differs from the version the client has, request the body.
+  - If there is no matching ETag, respond with `200` and the body.
+  - If there is a matching ETag, respond with `304` and an empty body.
+
+- `If-Range`: Send an ETag together with a `Range` request. If the versions match, request the remaining body.
+  - If the ETag matches, respond with `206` and only the requested byte range.
+  - If it fails, respond with `200` and the entire body. A weak ETag is always treated as a mismatch; only a strong ETag is allowed.
+
+> `206`: Partial Content, indicating that the request for the data range specified in the `Range` header succeeded.
+
+Each conditional header uses a different ETag comparison method.
+
+| Header | Comparison method | Weak ETag |
+| --- | --- | --- |
+| `If-None-Match` | Weak comparison | Can be used for `304` revalidation |
+| `If-Range` | Strong comparison | Cannot be used for range requests |
+
+## Compression and gzip
+
+When a response is large, a server tries to compress it whenever possible to reduce network outbound traffic.
+
+```yml
+server:
+  compression:
+    enabled: true
+    mime-types: text/html,application/javascript,application/json
+    min-response-size: 500
+```
+
+Spring Boot supports configuring options such as `enabled`, `media types`, and `minimum size`.
+
+gzip is a representative way to compress and transfer data over HTTP. Its basic flow is as follows.
+
+1. The client sends `Accept-Encoding: gzip`.
+2. The server assumes that the client can decompress gzip.
+3. The server compresses the response body, sends it, and indicates the compression with `Content-Encoding: gzip`.
+
+- Implemented with LZ77 + Huffman coding (DEFLATE): frequently occurring characters are represented with shorter bits, and rare characters with longer bits.
+  - Effective for repetitive structures such as HTML, JS, and JSON.
+  - Ineffective for already-compressed formats and media such as JPEG and MP4.
+
+The actual compression benefit depends on the payload and compression settings, so it should be measured directly on the production API.
+
+```bash
+curl -sS -D - -o /dev/null -w '%{size_download} bytes' URL
+curl -sS -D - -o /dev/null -w '%{size_download} bytes' -H 'Accept-Encoding: gzip' URL
+```
+
+- `-D -`: Display response headers on standard output.
+- `-w`: Display the transferred body size.
+- Check whether `Content-Encoding`, `Vary`, and `ETag` have the expected values as well.
+
+### gzip in Spring
+
+However, Spring does not compress responses directly just because of the YAML above.
+Spring Boot starts the embedded Tomcat when it starts up.
+
+> Tomcat supports gzip compression only. To use Brotli, zstd, or similar formats, you need a server in front of it.
+
+The YAML values are applied to Connector properties.
+
+```
+protocol.setCompression("on");                  // enabled: true
+protocol.setCompressionMinSize(...);            // min-response-size
+protocol.setCompressibleMimeType(...);          // mime-types
+```
+
+-> The embedded Tomcat Connector is responsible for deciding whether to compress and for performing the compression.
+-> If the response has an ETag header and it does not start with `W/`, Tomcat's normal compression path skips the compression!!!
+
+## The conflict between Strong ETags and gzip
+
+Tomcat's normal Connector compression path does not compress a response that has a Strong ETag. Let's understand why logically.
+
+Assume that resource A exists and that its data will not change for a while.
+
+```text
+리소스 A의 응답값: A
+리소스 A의 gzip 을 해제한 응답값:     A
+```
+
+Whether it is compressed with gzip or not, the response value being used is the same: A.
+
+```
+리소스 A의 gzip 압축한 응답값:     G-A
+```
+
+However, when we look at the response bytes themselves, the gzip-compressed response value is G-A.
+
+If the application creates the ETag from the body before compression, both responses will have the same ETag, `E-A`.
+
+```
+리소스 A 응답 헤더의 ETag: E-A
+리소스 A 를 gzip 압축한 응답 헤더의 ETag:     E-A
+```
+
+![image](https://assets.youngsu5582.today/blog/2026/08/31/1788172999818-image.png)
+
+The meaning after decompression is the same, but the byte sequence of the representation data delivered over HTTP is different.
+
+A Strong ETag is not a value that merely claims that two responses have the same meaning; it is a validator that indicates byte-for-byte identity.
+
+=> If the same Strong ETag is attached to different bytes, it cannot preserve the meaning of a Strong ETag.
+
+---
+
+### How Tomcat handles it
+
+From Tomcat's perspective, the process can be summarized as follows.
+
+1. A Strong ETag is already attached → this value is a promise about the bytes of the selected representation.
+2. Tomcat compresses the response, changing the bytes → it would send a different representation with the same tag.
+3. Therefore, Tomcat's normal compression path skips the compression.
+
+- `noCompressionStrongETag`: Determines whether responses with a strong ETag are eligible for compression; its default is `true` (do not compress).
+  - Starting with Tomcat 10, the option itself was removed and it behaves as `true`.
+
+![image](https://assets.youngsu5582.today/blog/2026/08/31/1788173609303-image.png)
+
+[Tomcat 9.0 configuration](https://tomcat.apache.org/tomcat-9.0-doc/config/http.html)
+
+## Applying an ETag
+
+Spring provides `ShallowEtagHeaderFilter`, but if you want to apply it explicitly only to specific APIs, you may need to implement it yourself.
+
+> `ShallowEtagHeaderFilter` uses a Strong ETag by default, so you need to check whether compression still works. It also calculates the ETag after buffering the response, so applying it unconditionally to large responses may require consideration of memory usage and processing cost.
+
+```java
+String WEAK_ETAG_PREFIX = "W/\"0";
+char WEAK_ETAG_SUFFIX = '"';
+
+byte[] bytes = objectMapper.writerWithView(jsonView).writeValueAsBytes(body);
+StringBuilder sb = new StringBuilder(39);
+sb.append(WEAK_ETAG_PREFIX);
+DigestUtils.appendMd5DigestAsHex(bytes, sb);
+sb.append(WEAK_ETAG_SUFFIX);
+return sb.toString();
+```
+
+Serialize the response DTO with the same `@JsonView` and serialization settings as the actual response, create an MD5 digest, and add `W/` from the beginning.
+
+ > You also need to check whether the response DTO contains elements that vary from instance to instance.
+ > `Set<Permission> allowed = Set.of(Permission.READ, Permission.WRITE, Permission.DELETE);`
+ > The value above may produce a different hash for each instance! — [Related note](https://www.youngsu5582.today/notes/enum-of-and-set-of)
+
+In the controller, you only need to attach it.
+When Spring MVC processes a `ResponseEntity` with `200 OK`, it compares the ETag for `GET` or `HEAD` requests with the conditional request. If they match, it returns `304 Not Modified` without a body.
+
+```java
+var headers = new HttpHeaders();
+headers.set(HttpHeaders.ETAG, etag);
+headers.set(HttpHeaders.VARY, "Accept-Encoding");
+
+return ResponseEntity.ok()
+        .headers(headers)                      // W/"0..."
+        .cacheControl(CacheControl.noCache())  // 캐시하되, 쓰기 전에 매번 재검증
+        .body(responseDto);
+```
+
+## Conclusion
+
+If compression is not happening even though it is configured, check the response's ETag header.
+If it starts with a Strong ETag without `W/`, Tomcat's normal Connector compression path does not compress that response.
+
+If you want to keep the same application ETag before and after compression while using Tomcat compression, a Weak ETag is a practical choice. However, creating representation-specific Strong ETags is also valid when you can do so.
+
+In addition, measure the API response size, `Content-Encoding`, `Vary`, ETag, and changes in the ALB's outbound cost together.
+
+As request volume grows, these small differences can create significant cost savings.
+
+## References
+
+- [RFC 9110 — ETag, If-None-Match, If-Range, Vary](https://www.rfc-editor.org/rfc/rfc9110.html)
+- [Apache Tomcat — HTTP Connector configuration](https://tomcat.apache.org/tomcat-10.1-doc/config/http.html)
+- [Apache Tomcat — CompressionConfig implementation](https://github.com/apache/tomcat/blob/10.1.x/java/org/apache/coyote/CompressionConfig.java)
+- [Spring Framework — HttpEntityMethodProcessor implementation](https://github.com/spring-projects/spring-framework/blob/main/spring-webmvc/src/main/java/org/springframework/web/servlet/mvc/method/annotation/HttpEntityMethodProcessor.java)
+- [Spring Framework — ShallowEtagHeaderFilter Javadoc](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/web/filter/ShallowEtagHeaderFilter.html)
