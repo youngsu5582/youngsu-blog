@@ -1,0 +1,142 @@
+---
+title: Kafka Sticky Partitioner와 Producer Send
+date: "Wed Sep 02 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: 키가 없는 레코드의 파티션 선택, Sticky Partitioner, batch.size·linger.ms, 전송 결과와 순서 보장까지 정리
+categories:
+  - Kafka
+tags:
+  - kafka
+  - producer
+  - sticky-partitioner
+references:
+  - object Object
+  - object Object
+  - object Object
+---
+
+## 한 줄 요약
+
+`partition`과 `key`를 모두 지정하지 않은 레코드는 최신 Kafka Producer의 기본 파티셔닝 로직에서 **현재 선택된 파티션의 배치를 우선 채우는 방식**으로 분배된다.
+
+단, Sticky Partitioner는 순서를 보장하는 기능이 아니다. 순서가 필요하면 레코드가 같은 파티션으로 가도록 같은 key를 지정해야 한다.
+
+## 파티션 선택 순서
+
+기본 파티셔닝 로직은 대략 다음 우선순위로 동작한다.
+
+1. `partition`을 직접 지정하면 해당 파티션으로 보낸다.
+2. `partition`은 없지만 `key`가 있으면 key의 hash를 이용해 파티션을 선택한다.
+3. `partition`과 `key`가 모두 없으면 Sticky 방식으로 파티션을 선택한다.
+
+따라서 다음 두 레코드는 의미가 다르다.
+
+```java
+// key가 있으므로 같은 key는 같은 파티션으로 가는 것이 기본 동작이다.
+kafkaTemplate.send("orders", orderId, event);
+
+// key가 없으므로 같은 주문의 이벤트라도 같은 파티션이라는 보장이 없다.
+kafkaTemplate.send("orders", event);
+```
+
+> key 기반 파티션 선택도 파티션 수가 바뀌거나 커스텀 파티셔너를 사용하면 결과가 달라질 수 있다.
+
+## Round Robin과 Sticky의 차이
+
+예전의 no-key 기본 동작은 연속된 레코드를 여러 파티션에 순서대로 분배하는 Round Robin에 가까웠다.
+
+```text
+메시지 1 -> P0
+메시지 2 -> P1
+메시지 3 -> P2
+메시지 4 -> P0
+```
+
+이 방식은 분산 자체는 고르게 보일 수 있지만, 각 파티션에 레코드가 흩어져 배치가 작아지기 쉽다. `linger.ms`가 지나면 작은 배치가 여러 개의 요청으로 전송될 수 있어 네트워크와 CPU 오버헤드가 늘어난다.
+
+![Round Robin과 Sticky 비교](https://assets.youngsu5582.today/obsidian/2026/09/02/a0e19887e9427e7c366168707ad971c8.png)
+
+Sticky 방식은 한 번 선택한 파티션을 일정 시간 유지하면서 그 파티션의 배치를 먼저 채운다.
+
+```text
+메시지 1 -> P1
+메시지 2 -> P1
+메시지 3 -> P1
+... 배치가 가득 차거나 전송 조건 도달
+메시지 4 -> P0
+메시지 5 -> P0
+```
+
+여기서 “한 파티션에 붙는다”는 말은 영구적으로 고정된다는 뜻이 아니다. 배치가 전송되고 다음 배치가 필요해지면 다른 파티션이 선택될 수 있다. 따라서 장시간 전체를 보면 여러 파티션을 사용하지만, 짧은 구간에서는 특정 파티션에 레코드가 몰릴 수 있다.
+
+> Round Robin을 명시적으로 사용하려면 `partitioner.class`에 `RoundRobinPartitioner`를 설정해야 한다. Kafka 2.4에서 Sticky Partitioner 개선이 도입되었고, 실제 기본 동작은 버전 및 설정을 확인
+
+## Batch는 파티션별로 만들어진다
+
+Producer는 레코드를 곧바로 broker로 보내지 않고, 파티션별로 버퍼에 모아 `RecordBatch`를 만든다.
+
+- `batch.size`: 하나의 파티션에 대한 기본 배치 버퍼 크기
+- `linger.ms`: 더 많은 레코드가 오기를 기다리는 최대 시간
+
+`batch.size`는 broker로 가는 ProduceRequest 전체 크기가 아니다.
+
+> 하나의 ProduceRequest 안에는 여러 파티션의 배치가 함께 들어갈 수 있고, 같은 broker로 향하는 배치들이 하나의 요청으로 묶일 수 있다.
+
+전송은 보통 다음 중 하나가 먼저 충족될 때 시작된다.
+
+- 해당 파티션의 배치가 `batch.size`에 도달
+- `linger.ms` 시간이 경과
+- `flush()` 또는 `close()`가 호출됨
+- 버퍼 압박, 재시도, broker 응답 및 기타 Producer 내부 조건으로 전송이 진행됨
+
+> Kafka 4.0 Producer 설정의 기본값은 `batch.size=16384`바이트(16KB), `linger.ms=5`밀리초다. `linger.ms`의 기본값은 Kafka 4.0에서 0에서 5로 바뀌었다.
+
+## `send()`와 `get()`의 차이
+
+`send()`는 기본적으로 비동기다. 레코드를 Producer의 버퍼에 추가한 뒤 `Future`를 반환하고, 별도의 I/O 스레드가 broker 전송과 응답 처리를 담당한다.
+
+```java
+List<CompletableFuture<SendResult<String, Event>>> futures = new ArrayList<>();
+
+for (Event event : events) {
+    futures.add(kafkaTemplate.send("events", event));
+}
+
+CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+```
+
+반면 다음 코드는 매번 이전 레코드의 결과를 기다린다.
+
+```java
+for (Event event : events) {
+    kafkaTemplate.send("events", event).get();
+}
+```
+
+저빈도 작업에서 성공·실패를 즉시 분기해야 한다면 의도적으로 사용할 수 있다.
+하지만 고빈도 발행이나 묶음 발행에서는 호출 스레드가 매번 broker 응답을 기다리므로, Producer가 여러 레코드를 모아 배치로 보낼 기회를 줄이고 처리량을 떨어뜨릴 수 있다.
+-> 일반적으로는 여러 번 `send()`한 뒤 완료를 한 번에 기다리거나, 빠른 callback으로 결과를 수집하는 편이 낫다.
+
+`get()`이 기다리는 것은 “broker가 데이터를 영구적으로 잃지 않는다”는 추상적인 보장이 아니라, 현재 Producer 설정에서 정한 요청 완료 조건이다. 예를 들어:
+
+- `acks=0`: broker 응답을 기다리지 않는다. `get()`은 저장 성공을 확인하지 못하며 offset도 유효하지 않다.
+- `acks=1`: leader가 자신의 로그에 기록한 뒤 응답한다. leader 장애 시 follower 복제 전에 유실될 수 있다.
+- `acks=all`: 현재 in-sync replica들이 기록을 확인할 때까지 기다린다. `min.insync.replicas`와 함께 설계해야 하며, 모든 장애 상황에서 유실이 절대 없다는 뜻은 아니다.
+
+## Sticky와 순서 보장은 별개다
+
+Sticky Partitioner가 보장하는 것은 배치 효율이지 이벤트 순서가 아니다.
+
+```text
+주문 A 이벤트 1 -> P0
+주문 B 이벤트 1 -> P0
+주문 A 이벤트 2 -> P1
+```
+
+이 경우 주문 A의 두 이벤트는 서로 다른 파티션에 들어갈 수 있으므로, consumer가 토픽 전체 순서로 처리할 수 없다.
+-> 주문 단위 순서가 필요하다면 주문 ID를 key로 사용해야한다.
+
+```java
+kafkaTemplate.send("orders", orderId, event);
+```
+
+=> 순서가 필요없고, key 를 지정하지 않으면 동작하는 produce 방식!
