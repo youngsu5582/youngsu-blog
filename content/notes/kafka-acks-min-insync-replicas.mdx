@@ -1,0 +1,130 @@
+---
+title: Kafka ACKS와 min.insync.replicas
+date: "2026-09-03T00:00:00.000Z"
+description: Kafka Producer의 acks 설정 세 가지와 min.insync.replicas 조합으로 메시지 손실과 쓰기 실패를 어떻게 제어하는지 정리
+categories:
+  - Kafka
+tags:
+  - kafka
+  - producer
+  - acks
+  - min-insync-replicas
+  - replication
+references:
+  - title: Kafka ACKS 참고 링크
+    url: https://brunch.co.kr/@peter5236/3
+---
+
+## 한 줄 요약
+
+`acks`는 프로듀서가 메시지를 보낸 뒤 브로커의 쓰기 확인을 어디까지 기다릴지 결정하는 옵션이다.
+
+- `acks=0`: 브로커의 응답을 기다리지 않는다.
+- `acks=1`: 파티션 리더의 로컬 로그 기록만 확인한다.
+- `acks=all` 또는 `acks=-1`: 현재 ISR(In-Sync Replicas)의 기록 확인을 기다린다.
+
+![Kafka Producer acks 옵션](https://assets.youngsu5582.today/obsidian/2026/09/02/611278debb2ff91603704bf9378ca672.png)
+
+[참고 링크](https://brunch.co.kr/@peter5236/3)
+
+## `acks=0`
+
+프로듀서가 메시지를 보내는 속도가 가장 빠르다. 하지만 브로커의 응답을 기다리지 않기 때문에 메시지 손실 가능성도 가장 높다.
+
+![acks=0 동작](https://assets.youngsu5582.today/obsidian/2026/09/02/4f257ef580921e0c38d27312df1ec13d.png)
+
+프로듀서는 메시지를 보낸 뒤 leader가 메시지를 잘 받았는지 확인하지 않는다. 메시지를 보내는 중간에 leader나 서버가 다운되면 메시지 일부가 손실될 수 있다.
+
+다음처럼 메시지 손실을 감안하더라도 빠른 발행이 중요한 경우 선택할 수 있다.
+
+- 일부 로그나 통계처럼 유실 허용 범위가 명확한 데이터
+- 지연 시간을 최소화해야 하는 고속 발행
+
+## `acks=1`
+
+프로듀서는 메시지를 보낸 뒤 파티션 leader의 응답을 기다린다. leader가 자신의 로그에 기록한 뒤 응답하므로 `acks=0`보다 안전하지만, follower 복제까지 확인하지는 않는다.
+
+![acks=1 동작](https://assets.youngsu5582.today/obsidian/2026/09/02/0b108c7595bf4c047e3e6b820b36197f.png)
+
+그래서 다음과 같은 순서에서는 메시지가 손실될 수 있다.
+
+1. leader가 메시지를 로컬 로그에 기록한다.
+2. leader가 follower로 복제하기 전에 장애가 발생한다.
+3. follower가 새 leader가 된다.
+4. 새 leader의 로그에는 해당 메시지가 없다.
+
+![acks=1에서 leader 장애가 발생하는 경우](https://assets.youngsu5582.today/obsidian/2026/09/02/1cc2b738d23f7cc82319d7925c25207c.png)
+
+`acks=1`은 leader 기록을 확인하면서도 `acks=all`보다 응답 지연을 줄이고 싶은 경우 사용할 수 있다. 다만 leader 장애와 복제 지연 사이의 손실 가능성은 남아 있다.
+
+## `acks=all` 또는 `acks=-1`
+
+`acks=all`과 `acks=-1`은 Kafka Producer에서 같은 의미로 사용된다. 프로듀서는 leader뿐 아니라 현재 ISR에 포함된 replica들의 기록 확인을 기다린다.
+
+![acks=all 동작](https://assets.youngsu5582.today/obsidian/2026/09/03/84806876abc6775157834317aaecab3c.png)
+
+- `acks=1`보다 복제 완료를 더 강하게 확인할 수 있다.
+- 메시지 손실 가능성을 낮출 수 있다.
+- replica 응답을 기다리는 만큼 지연 시간이 늘어날 수 있다.
+
+여기서 중요한 점은 “Replication Factor에 포함된 모든 broker가 항상 응답해야 한다”는 뜻이 아니라, **현재 ISR에 포함된 replica들이 기준**이라는 것이다.
+
+예를 들어 Replication Factor가 3이라면 leader 1개와 follower 2개로 구성된다. broker 2의 복제는 성공했지만 broker 3의 복제가 실패한 상황에서 결과는 ISR과 `min.insync.replicas` 설정에 따라 달라진다.
+
+- broker 3이 ISR에서 제외된 뒤 leader와 broker 2가 ISR로 남았다면, `acks=all` 응답이 가능할 수 있다.
+- `min.insync.replicas`가 3이라서 세 replica 모두 ISR이어야 한다면 쓰기가 실패한다.
+- 복제 상태가 바뀌는 시점과 leader의 응답 시점에 따라 관찰되는 결과가 달라질 수 있다.
+
+follower가 복제를 못했을 때 무조건 “모든 write가 즉시 실패한다”고 이해하기보다, **ISR 수와 최소 ISR 조건을 함께 확인해야 한다.**
+
+![acks=all과 복제 실패](https://assets.youngsu5582.today/obsidian/2026/09/03/07399f464e5787da3c182799b25d7845.png)
+
+## `min.insync.replicas`
+
+`min.insync.replicas`는 브로커 또는 토픽에 설정하는 값으로, 프로듀서가 `acks=all`로 메시지를 보낼 때 쓰기 성공에 필요한 최소 ISR 수를 의미한다.
+
+`acks=all`만 설정한다고 해서 항상 원하는 수준의 복제 보장이 만들어지는 것은 아니다. `min.insync.replicas`를 함께 설정해야 replica 수가 부족한 상황을 쓰기 성공으로 처리하지 않도록 제한할 수 있다.
+
+### Replication Factor 2, `min.insync.replicas=1`
+
+Replication Factor가 2라면 leader 1개와 follower 1개로 구성된다.
+
+![Replication Factor 2](https://assets.youngsu5582.today/obsidian/2026/09/03/84806876abc6775157834317aaecab3c.png)
+
+`min.insync.replicas=1`이면 leader 하나만 ISR에 남아도 최소 조건을 만족한다. 따라서 follower가 일시적으로 복제되지 않은 상태에서도 `acks=all` 쓰기가 성공할 수 있다.
+
+### Replication Factor 2, `min.insync.replicas=2`
+
+`min.insync.replicas=2`라면 leader와 follower가 모두 ISR에 있어야 쓰기가 성공한다.
+
+follower가 복제를 실패해 ISR에서 빠지면 다음과 같은 오류가 발생할 수 있다.
+
+```text
+NotEnoughReplicasException:
+Number of insync replicas for partition [example-topic-rf2,0]
+is [1], below required minimum [2]
+```
+
+이 경우 최종 write는 실패한다. 프로듀서는 성공 응답 대신 예외를 받고, 애플리케이션은 재시도·실패 기록·보상 처리 같은 후속 동작을 결정해야 한다.
+
+`min.insync.replicas`는 Replication Factor보다 클 수 없으며, 장애 상황에서도 쓰기를 허용할지에 따라 적절히 설정해야 한다.
+
+## 실무에서 함께 보는 설정
+
+`acks`와 `min.insync.replicas`만 따로 보지 말고 다음 항목을 함께 확인해야 한다.
+
+- `replication.factor`: 파티션 데이터를 몇 개의 replica로 유지할지
+- `min.insync.replicas`: `acks=all` 쓰기에 필요한 최소 ISR 수
+- `retries`: 일시적인 broker 오류를 재시도할지
+- `delivery.timeout.ms`: 전송 전체에 허용하는 최대 시간
+- `enable.idempotence`: 재시도로 인한 중복과 순서 문제를 어떻게 줄일지
+
+특히 `acks=all`과 `min.insync.replicas=2`를 함께 사용하는 구성은 “최소 두 개의 ISR에 기록되지 않으면 성공으로 처리하지 않는다”는 정책을 표현한다. 대신 follower 장애나 네트워크 분할 상황에서는 쓰기 실패가 늘어날 수 있으므로, 실패를 정상적인 운영 시나리오로 보고 재처리 경로를 설계해야 한다.
+
+## 정리
+
+일반적인 서비스에서 `acks=1`을 선택하는 경우도 많다. leader 장애가 드물고, 애플리케이션에서 재처리나 최종 정합성 보완을 별도로 설계한 경우다.
+
+반면 메시지 손실을 최대한 줄여야 하는 업무라면 `acks=all`을 검토해야 한다. 이때는 반드시 `min.insync.replicas`를 함께 확인하자.
+
+다만 `acks=all`도 모든 장애 상황에서 손실이 절대 없다는 뜻은 아니다. Kafka Producer의 재시도, idempotence, 토픽의 replication 설정, consumer의 처리 보장까지 함께 설계해야 최종적인 전달 보장 수준을 판단할 수 있다.
