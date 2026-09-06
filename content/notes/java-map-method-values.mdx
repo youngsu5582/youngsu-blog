@@ -1,0 +1,367 @@
+---
+title: Java Map 메서드의 기존 값·새 값·계산 결과
+date: "2026-09-06T00:00:00.000Z"
+description: put, replace, compute, merge 계열 Map 메서드의 실행 조건과 반환값, null 처리 차이를 테스트 예제로 정리
+categories:
+  - Java
+tags:
+  - java
+  - map
+  - concurrenthashmap
+  - collection
+  - function
+references:
+  - title: Java Map API Documentation
+    url: https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Map.html
+  - title: Java ConcurrentHashMap API Documentation
+    url: https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ConcurrentHashMap.html
+---
+
+## 한 줄 요약
+
+`Map<K, V>`에서 `K`는 키의 타입이고 `V`는 값의 타입이다. 아래 설명에서 `V`를 실제 값처럼 표현한 경우에는 “Map에 저장하거나 메서드 인자로 전달하는 값”을 간단히 나타낸 것이다.
+
+`Map`의 메서드를 이해할 때는 다음 세 가지를 구분하면 된다.
+
+- **기존 값**: Map에 이미 저장되어 있던 값
+- **새 값**: 메서드의 인자로 전달한 값
+- **계산 결과**: `Function` 또는 `BiFunction`을 실행한 결과
+
+아래 코드에서는 `map`이 이미 선언·초기화되어 있다고 가정한다. 선언부보다 각 메서드의 반환값과 Map의 상태 변화를 확인하는 데 집중한다. 각 메서드의 코드 블록은 서로 독립적으로 실행한다고 가정한다.
+
+## `V`와 함수는 다르다
+
+`V`는 값의 타입이다. 아래 코드에서 `value`처럼 실제 값을 전달하는 경우에는 이미 계산이 끝난 값이 전달된다.
+
+```java
+map.put("k", value);
+```
+
+반면 `Function`과 `BiFunction`은 값을 계산하기 위한 함수 자체가 인자로 전달된다. 함수 본문이 항상 실행되는 것은 아니며, 각 Map 메서드의 조건에 따라 실행된다.
+
+아래 메서드 시그니처는 핵심 타입만 단순화한 표현이다. 실제 Java API에는 `? super`, `? extends` 같은 와일드카드가 포함된다.
+
+```java
+map.computeIfAbsent("k", key -> createValue(key));
+```
+
+위 코드에서 `key -> createValue(key)`는 함수다. 키에 매핑된 값이 없거나 현재 값이 `null`일 때만 함수 본문이 실행된다.
+
+## `put(K, V)`
+
+Map에 값을 저장하고, 저장하기 전의 기존 값을 반환한다.
+
+- 기존 매핑이 없으면 값을 저장하고 `null` 반환
+- 기존 매핑이 있으면 새 값으로 교체하고 기존 값 반환
+
+```java
+map.remove("k");
+
+assertThat(map.put("k", "old"))
+        .isNull();
+
+assertThat(map.put("k", "new"))
+        .isEqualTo("old");
+
+assertThat(map)
+        .containsEntry("k", "new");
+```
+
+`put`의 반환값은 새로 저장한 값이 아니라 **교체되기 전의 기존 값**이다.
+
+## `putIfAbsent(K, V)`
+
+키에 매핑된 값이 없거나 현재 값이 `null`일 때만 새 값을 저장한다. `ConcurrentHashMap`은 `null` 값을 허용하지 않으므로, 해당 구현체에서는 사실상 매핑이 없는 경우를 의미한다.
+
+- 기존 매핑이 없거나 현재 값이 `null`이면 새 값을 저장하고 `null` 반환
+- 현재 값이 `null`이 아니면 아무것도 바꾸지 않고 기존 값 반환
+
+```java
+map.remove("k");
+
+assertThat(map.putIfAbsent("k", "first"))
+        .isNull();
+
+assertThat(map.putIfAbsent("k", "second"))
+        .isEqualTo("first");
+
+assertThat(map)
+        .containsEntry("k", "first");
+```
+
+즉, `putIfAbsent`는 이미 값이 있는 키를 덮어쓰지 않는다.
+
+## `replace(K, V)`
+
+기존 매핑이 있을 때만 값을 교체한다.
+
+- 기존 매핑이 없으면 아무것도 하지 않고 `null` 반환
+- 기존 매핑이 있으면 새 값으로 교체하고 기존 값 반환
+
+```java
+map.put("k", "old");
+
+assertThat(map.replace("missing", "value"))
+        .isNull();
+
+assertThat(map.replace("k", "replaced"))
+        .isEqualTo("old");
+
+assertThat(map)
+        .containsEntry("k", "replaced");
+```
+
+## `replace(K, V oldValue, V newValue)`
+
+현재 값이 예상한 값과 같을 때만 교체한다. 반환값은 교체 성공 여부다.
+
+- 키가 없으면 `false`
+- 키는 있지만 기존 값이 `oldValue`와 다르면 `false`
+- 키가 있고 기존 값이 `oldValue`와 같으면 `newValue`로 교체하고 `true`
+
+```java
+map.put("k", "replaced");
+
+assertThat(map.replace("k", "wrong", "new"))
+        .isFalse();
+
+assertThat(map)
+        .containsEntry("k", "replaced");
+
+assertThat(map.replace("k", "replaced", "new"))
+        .isTrue();
+
+assertThat(map)
+        .containsEntry("k", "new");
+```
+
+이 메서드는 “현재 값이 내가 기대한 값일 때만 변경한다”는 조건부 교체에 사용한다.
+
+## `computeIfPresent(K, BiFunction<K, V, V>)`
+
+키에 현재 값이 `null`이 아닐 때만 함수를 실행하고, 함수의 계산 결과로 교체한다. `ConcurrentHashMap`에서는 `null` 값이 허용되지 않으므로 키에 매핑된 값이 있을 때 실행된다고 이해하면 된다.
+
+- 현재 값이 `null`이면 함수 실행 안 함, `null` 반환
+- 현재 값이 `null`이 아니면 `f(키, 기존 값)` 실행
+- 계산 결과가 `null`이 아니면 결과로 교체하고 계산 결과 반환
+- 계산 결과가 `null`이면 항목 삭제 후 `null` 반환
+
+```java
+map.put("k", "existing");
+
+assertThat(map.computeIfPresent(
+        "k",
+        (key, oldValue) -> oldValue + "-computed"))
+        .isEqualTo("existing-computed");
+
+assertThat(map)
+        .containsEntry("k", "existing-computed");
+
+assertThat(map.computeIfPresent(
+        "k",
+        (key, oldValue) -> null))
+        .isNull();
+
+assertThat(map)
+        .doesNotContainKey("k");
+```
+
+`computeIfPresent`의 함수는 현재 값이 `null`이 아닐 때만 실행된다.
+
+## `computeIfAbsent(K, Function<K, V>)`
+
+키에 매핑된 값이 없거나 현재 값이 `null`일 때만 함수를 실행하고, 계산 결과를 저장한다. `ConcurrentHashMap`에서는 `null` 값이 허용되지 않으므로 매핑이 없는 경우에 실행된다.
+
+- 현재 값이 `null`이 아니면 함수 실행 안 함, 기존 값 반환
+- 키가 없거나 현재 값이 `null`이면 `f(키)` 실행
+- 계산 결과가 `null`이면 저장하지 않고 `null` 반환
+- 계산 결과가 `null`이 아니면 저장하고 계산 결과 반환
+
+```java
+map.remove("k");
+
+assertThat(map.computeIfAbsent(
+        "k",
+        key -> "created-for-" + key))
+        .isEqualTo("created-for-k");
+
+assertThat(map)
+        .containsEntry("k", "created-for-k");
+
+// 이미 값이 있으므로 함수 본문은 실행되지 않는다.
+assertThat(map.computeIfAbsent(
+        "k",
+        key -> "another-value"))
+        .isEqualTo("created-for-k");
+```
+
+`computeIfAbsent`는 지연 초기화나 캐시 값 생성에 자주 사용한다.
+
+## `compute(K, BiFunction<K, V, V>)`
+
+키의 현재 값과 관계없이 함수를 실행하고, 계산 결과를 저장한다. 키가 없거나 현재 값이 `null`이면 함수에는 `null`이 전달된다.
+
+- 키가 없거나 현재 값이 `null`이면 `f(키, null)` 실행
+- 현재 값이 `null`이 아니면 `f(키, 기존 값)` 실행
+- 계산 결과가 `null`이 아니면 결과 저장 후 반환
+- 계산 결과가 `null`이면 항목 삭제 후 `null` 반환
+
+```java
+map.remove("count");
+
+// 기존 값이 없더라도 함수는 실행된다.
+assertThat(map.compute(
+        "count",
+        (key, oldValue) -> oldValue == null ? 1 : oldValue + 1))
+        .isEqualTo(1);
+
+assertThat(map.compute(
+        "count",
+        (key, oldValue) -> oldValue + 1))
+        .isEqualTo(2);
+
+assertThat(map)
+        .containsEntry("count", 2);
+
+assertThat(map.compute(
+        "count",
+        (key, oldValue) -> null))
+        .isNull();
+
+assertThat(map)
+        .doesNotContainKey("count");
+```
+
+`computeIfPresent`와 달리 `compute`는 기존 값이 없어도 반드시 함수를 실행한다. 이때 함수에 전달되는 기존 값은 `null`이다.
+
+## `merge(K, V, BiFunction<V, V, V>)`
+
+키에 매핑된 값이 없거나 현재 값이 `null`이면 새 값을 저장하고, 값이 있으면 기존 값과 새 값을 합친다. `ConcurrentHashMap`에서는 `null` 값이 허용되지 않으므로 매핑이 없는 경우만 해당한다.
+
+- 기존 매핑이 없거나 현재 값이 `null`이면 함수 실행 안 함
+- 새 값을 저장하고 새 값 반환
+- 현재 값이 `null`이 아니면 `f(기존 값, 새 값)` 실행
+- 계산 결과가 `null`이 아니면 결과로 교체하고 계산 결과 반환
+- 계산 결과가 `null`이면 항목 삭제 후 `null` 반환
+
+```java
+map.remove("k");
+
+// 키가 없으면 함수는 실행되지 않고 "v"를 저장한다.
+assertThat(map.merge(
+        "k",
+        "v",
+        (oldValue, newValue) -> oldValue + "|" + newValue))
+        .isEqualTo("v");
+
+assertThat(map)
+        .containsEntry("k", "v");
+
+
+// 키가 있으면 (기존 값, 새 값) 순서로 함수가 실행된다.
+assertThat(map.merge(
+        "k",
+        "w",
+        (oldValue, newValue) -> oldValue + "|" + newValue))
+        .isEqualTo("v|w");
+
+assertThat(map)
+        .containsEntry("k", "v|w");
+
+
+// 함수의 계산 결과가 null이면 해당 항목을 삭제한다.
+assertThat(map.merge(
+        "k",
+        "w",
+        (oldValue, newValue) -> null))
+        .isNull();
+
+assertThat(map)
+        .doesNotContainKey("k");
+```
+
+`Long::sum`을 사용하면 카운터를 간결하게 구현할 수 있다.
+
+```java
+counts.remove("e");
+
+assertThat(counts.merge("e", 1L, Long::sum))
+        .isEqualTo(1L); // 없으면 1 저장
+
+assertThat(counts.merge("e", 1L, Long::sum))
+        .isEqualTo(2L); // sum(기존 1, 새 값 1)
+```
+
+`Long::sum`은 다음 람다와 같은 의미다.
+
+```java
+(oldValue, newValue) -> oldValue + newValue
+```
+
+따라서 `merge`의 함수 인자 순서는 항상 다음과 같다.
+
+```text
+BiFunction(기존 값, 새 값)
+```
+
+## `null` 처리와 `ConcurrentHashMap`
+
+Map 인터페이스는 구현체에 따라 `null` 키나 `null` 값을 허용할 수 있다. 이 경우 “키가 없다”와 “키는 있지만 값이 null이다”를 구분해야 하는 상황이 생길 수 있다.
+
+반면 `ConcurrentHashMap`은 `null` 키와 `null` 값을 허용하지 않는다. 따라서 `ConcurrentHashMap`에서는 다음처럼 이해하면 된다.
+
+- `null`을 함수의 결과로 반환하면 해당 항목 삭제
+- `null` 키나 값을 저장 메서드에 직접 전달하면 `NullPointerException` 발생
+- `merge`의 새 값 인자에 `null`을 전달해도 `NullPointerException` 발생
+- `compute`에서 키가 없거나 현재 값이 `null`일 때 함수에 전달되는 값은 `null`
+- `computeIfAbsent`와 `merge`는 현재 값이 `null`인지까지 포함해 함수 실행 여부를 판단
+
+다만 함수가 `null`을 반환하는 것은 별개의 규칙이다. `compute`, `computeIfPresent`, `merge`에서 계산 함수가 `null`을 반환하면 예외를 던지는 대신 해당 항목을 삭제한다. `computeIfAbsent`에서 함수가 `null`을 반환하면 값을 저장하지 않고 `null`을 반환한다.
+
+```java
+var map = new ConcurrentHashMap<String, String>();
+
+assertThatThrownBy(() -> map.put("k", null))
+        .isInstanceOf(NullPointerException.class);
+
+assertThatThrownBy(() -> map.put(null, "v"))
+        .isInstanceOf(NullPointerException.class);
+
+// 함수가 null을 반환하는 것은 예외가 아니라 삭제 규칙이다.
+map.put("k", "value");
+assertThat(map.computeIfPresent("k", (key, oldValue) -> null))
+        .isNull();
+assertThat(map).doesNotContainKey("k");
+```
+
+## 메서드별 핵심 비교
+
+| 메서드 | 함수 실행 조건 | 값이 없거나 현재 값이 `null`일 때 | 계산 결과가 `null`일 때 |
+|---|---|---|---|
+| `put` | 함수 없음 | 새 값 저장, `null` 반환 | 해당 없음 |
+| `putIfAbsent` | 함수 없음 | 새 값 저장, `null` 반환 | 해당 없음 |
+| `replace` | 함수 없음 | 아무것도 하지 않음 | 해당 없음 |
+| `computeIfPresent` | 현재 값이 `null`이 아닐 때 | 함수 실행 안 함 | 항목 삭제 |
+| `computeIfAbsent` | 매핑이 없거나 현재 값이 `null`일 때 | 함수 실행 | 저장하지 않음 |
+| `compute` | 항상 실행 | `f(key, null)` 실행 | 항목 삭제 |
+| `merge` | 현재 값이 `null`이 아닐 때 | 새 값 저장, 함수 실행 안 함 | 항목 삭제 |
+
+## 최종 정리
+
+Map의 계산 메서드는 함수가 **언제 실행되는지**와 함수에 **어떤 값이 어떤 순서로 전달되는지**를 구분해서 보면 된다.
+
+```text
+computeIfPresent
+= 현재 값이 null이 아닐 때만 계산
+
+computeIfAbsent
+= 값이 없거나 null일 때만 계산
+
+compute
+= 항상 계산
+
+merge
+= 없거나 null이면 새 값 저장, 있으면 (기존 값, 새 값)으로 합산
+```
+
+특히 `merge`는 “매핑이 없거나 현재 값이 `null`이면 람다를 실행하지 않는다”는 점과 “람다의 인자 순서가 기존 값, 새 값이다”라는 점을 기억하면 된다.
