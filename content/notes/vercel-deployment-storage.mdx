@@ -1,0 +1,38 @@
+---
+title: Vercel Deployment Storage 정리
+date: "2026-09-09T00:00:00.000Z"
+description: Vercel 의 배포 스토리지 정리하는 방법
+categories:
+  - Blog
+tags:
+  - vercel
+  - deployment-storage
+---
+
+```
+Your site is growing!
+
+Your free team xxx-projects has used 100% of the included free tier usage for Deployment Storage (10 GB).
+```
+
+와 같은 배포 스토리지 무료 사용량에 한계가 도달했다고 알림이 오면?
+
+프로젝트를 들어가고
+`Settings-Build and Deployment` 맨 하단을 가면
+
+![image](https://assets.youngsu5582.today/blog/2026/09/09/1788912957707-image.png)
+
+와 같은 배포 전략 설정이 존재한다.
+이를, 각자 전략에 맞게 설정하자.
+나는
+- 불필요한 데이터는 유지할 필요 없으니 1 day
+- preview 및 운영 데이터는 1 week & 2week
+
+로 설정했다.
+
+추가로,
+
+![image](https://assets.youngsu5582.today/blog/2026/09/09/1788912950724-image.png)
+
+설정을 하면 바로 정리된다.
+혹시나, 코드 소스가 없고? 이전 버전 배포가 필요할 가능성이 존재한다면 주의하자!
