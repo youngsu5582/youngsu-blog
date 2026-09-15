@@ -1,6 +1,7 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import * as fs from "fs";
 import * as path from "path";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 export type UploadedFile = { name: string; path: string; storage: "local" | "s3" };
 
@@ -43,7 +44,7 @@ export function getUploadStorageConfig(env: Env = process.env): UploadStorageCon
   if (storage !== "s3" && !isR2) {
     return {
       kind: "local",
-      uploadDir: path.join(process.cwd(), "public/assets/img/uploads"),
+      uploadDir: path.join(BLOG_REPO_ROOT, "public/assets/img/uploads"),
       publicPrefix: DEFAULT_LOCAL_PUBLIC_PREFIX,
     };
   }

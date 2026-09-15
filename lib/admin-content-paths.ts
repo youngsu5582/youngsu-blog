@@ -1,4 +1,5 @@
 import path from "path";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 export const ALLOWED_COLLECTIONS = new Set(["posts", "articles", "notes", "library"]);
 export const ALLOWED_GENERATED_PREFIXES = ["content/", "public/assets/img/"];
@@ -25,8 +26,8 @@ export function buildContentFilePath(collection: string, slug: string): { conten
   if (!isAllowedCollection(collection) || !isValidSlug(slug)) return null;
 
   const repoPath = `content/${collection}/${slug}.mdx`;
-  const root = path.resolve(process.cwd(), "content");
-  const absPath = path.resolve(process.cwd(), repoPath);
+  const root = path.resolve(BLOG_REPO_ROOT, "content");
+  const absPath = path.resolve(BLOG_REPO_ROOT, repoPath);
   if (!absPath.startsWith(root + path.sep)) return null;
 
   return {
@@ -45,8 +46,8 @@ export function resolveRepoFilePath(filePath: string, allowedPrefixes: string[])
   const repoPath = normalizeRepoRelativePath(filePath);
   if (!repoPath || !allowedPrefixes.some((prefix) => repoPath.startsWith(prefix))) return null;
 
-  const absPath = path.resolve(process.cwd(), repoPath);
-  if (!absPath.startsWith(process.cwd() + path.sep)) return null;
+  const absPath = path.resolve(BLOG_REPO_ROOT, repoPath);
+  if (!absPath.startsWith(BLOG_REPO_ROOT + path.sep)) return null;
 
   return { repoPath, absPath };
 }

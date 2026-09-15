@@ -8,6 +8,7 @@ import {
   normalizeRepoRelativePath,
   resolveRepoFilePath,
 } from "@/lib/admin-content-paths";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 describe("admin content path helpers", () => {
   it("accepts only known content collections", () => {
@@ -30,7 +31,7 @@ describe("admin content path helpers", () => {
     const built = buildContentFilePath("posts", "safe-post");
 
     expect(built?.repoPath).toBe("content/posts/safe-post.mdx");
-    expect(built?.absPath).toBe(path.join(process.cwd(), "content/posts/safe-post.mdx"));
+    expect(built?.absPath).toBe(path.join(BLOG_REPO_ROOT, "content/posts/safe-post.mdx"));
     expect(buildContentFilePath("../../outside", "safe-post")).toBeNull();
     expect(buildContentFilePath("posts", "../outside")).toBeNull();
   });

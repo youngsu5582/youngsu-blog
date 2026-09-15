@@ -5,6 +5,7 @@ import matter from "gray-matter";
 
 import { buildTaxonomySummary, renameTaxonomyValues, type TaxonomyContentItem, type TaxonomyField } from "@/lib/admin-taxonomy";
 import { serializeFrontmatter } from "@/lib/frontmatter";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 const CONTENT_COLLECTIONS = ["posts", "articles", "notes", "library"] as const;
 const CONTENT_EXTENSIONS = new Set([".md", ".mdx"]);
@@ -14,7 +15,7 @@ function isTaxonomyField(field: unknown): field is TaxonomyField {
 }
 
 function listContentFiles(): string[] {
-  const contentRoot = path.resolve(process.cwd(), "content");
+  const contentRoot = path.resolve(BLOG_REPO_ROOT, "content");
   const files: string[] = [];
 
   CONTENT_COLLECTIONS.forEach((collection) => {
@@ -31,7 +32,7 @@ function listContentFiles(): string[] {
 
 function readTaxonomyItems(): TaxonomyContentItem[] {
   return listContentFiles().map((repoPath) => {
-    const absPath = path.resolve(process.cwd(), repoPath);
+    const absPath = path.resolve(BLOG_REPO_ROOT, repoPath);
     const raw = fs.readFileSync(absPath, "utf-8");
     const { data } = matter(raw);
 
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
     const updatedFiles: string[] = [];
 
     listContentFiles().forEach((repoPath) => {
-      const absPath = path.resolve(process.cwd(), repoPath);
+      const absPath = path.resolve(BLOG_REPO_ROOT, repoPath);
       const raw = fs.readFileSync(absPath, "utf-8");
       const { data, content } = matter(raw);
       const currentValues = Array.isArray(data[field]) ? data[field].map(String) : [];

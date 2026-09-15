@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import matter from "gray-matter";
+import path from "path";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 export async function POST(req: Request) {
   try {
@@ -23,7 +25,7 @@ export async function POST(req: Request) {
     // Read MDX file
     const absPath = filePath.startsWith("/")
       ? filePath
-      : `${process.cwd()}/${filePath}`;
+      : path.resolve(BLOG_REPO_ROOT, filePath);
 
     if (!fs.existsSync(absPath)) {
       return NextResponse.json({ error: "파일을 찾을 수 없습니다" }, { status: 404 });

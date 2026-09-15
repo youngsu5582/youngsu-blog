@@ -4,6 +4,7 @@ import path from "path";
 import matter from "gray-matter";
 import { serializeFrontmatter } from "@/lib/frontmatter";
 import { isAllowedCollection, isValidSlug, resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 const EDITABLE_PREFIXES = ["content/"];
 const DELETABLE_PREFIXES = ["content/", "public/assets/img/"];
@@ -102,7 +103,7 @@ export async function PUT(req: Request) {
     if (!fs.existsSync(fromResolved.absPath)) return NextResponse.json({ error: "source not found" }, { status: 404 });
 
     const filename = path.basename(fromFile);
-    const toDir = path.join(process.cwd(), "content", toCollection);
+    const toDir = path.join(BLOG_REPO_ROOT, "content", toCollection);
     const toAbs = path.join(toDir, filename);
 
     if (fs.existsSync(toAbs)) return NextResponse.json({ error: "target already exists" }, { status: 400 });
