@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
-const ACTIVITIES_PATH = path.join(process.cwd(), "public/assets/data/activities.json");
+const ACTIVITIES_PATH = path.join(BLOG_REPO_ROOT, "public/assets/data/activities.json");
 
 interface Activity {
   title: { ko: string; en: string };

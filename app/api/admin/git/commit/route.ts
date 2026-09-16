@@ -4,6 +4,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { normalizeRepoRelativePath } from "@/lib/admin-content-paths";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 const ALLOWED_COMMIT_PREFIXES = ["content/", "public/assets/img/", "app/", "components/", "lib/", "__tests__/"];
 
@@ -25,7 +26,7 @@ function normalizeCommitFiles(files: unknown): string[] | null {
 }
 
 export async function POST(req: Request) {
-  const cwd = process.cwd();
+  const cwd = BLOG_REPO_ROOT;
   let tmpFile: string | null = null;
 
   try {

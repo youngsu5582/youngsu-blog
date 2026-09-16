@@ -4,9 +4,10 @@ import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 export async function GET() {
-  const cwd = process.cwd();
+  const cwd = BLOG_REPO_ROOT;
   const contentDir = path.join(cwd, "content");
 
   // Find new/modified content files from git status

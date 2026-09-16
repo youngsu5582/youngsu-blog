@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { execSync } from "child_process";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 interface GitLogEntry {
   hash: string;
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
     const limit = searchParams.get("limit") || "10";
     const path = searchParams.get("path") || "content/";
 
-    const cwd = process.cwd();
+    const cwd = BLOG_REPO_ROOT;
 
     // Get commit log with format: hash|message|timestamp
     const logCommand = `git log -${limit} --pretty=format:"%H|%s|%ct" -- ${path}`;

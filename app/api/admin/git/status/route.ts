@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { execSync } from "child_process";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 export async function GET() {
   try {
-    const cwd = process.cwd();
+    const cwd = BLOG_REPO_ROOT;
     const raw = execSync("git status --porcelain", { cwd, encoding: "utf-8" });
 
     const modified: string[] = [];

@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 import { resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 import { detectImageMimeFromBuffer, extensionForMime, validateImageBuffer } from "@/lib/admin-upload-validation";
 
 const ALLOWED_THUMBNAIL_CONTENT_PREFIXES = [
@@ -11,7 +12,7 @@ const ALLOWED_THUMBNAIL_CONTENT_PREFIXES = [
   "content/notes/",
   "content/library/",
 ];
-const THUMBNAIL_DIR = path.join(process.cwd(), "public/assets/img/thumbnail");
+const THUMBNAIL_DIR = path.join(BLOG_REPO_ROOT, "public/assets/img/thumbnail");
 
 function validateThumbnailFilename(filename: unknown): { valid: boolean; value?: string; error?: string } {
   if (typeof filename !== "string" || !filename.trim()) {

@@ -1,0 +1,16 @@
+node_modules
+.next
+.velite
+.pnpm-store
+.cache
+coverage
+out
+.git
+.git worktrees
+.env
+.env.*
+!.env.example
+*.pem
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store

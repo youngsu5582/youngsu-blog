@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { execSync } from "child_process";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 export async function POST(req: Request) {
   try {
     const { title, body } = await req.json();
-    const cwd = process.cwd();
+    const cwd = BLOG_REPO_ROOT;
 
     if (!title) {
       return NextResponse.json({ error: "PR 제목이 필요합니다" }, { status: 400 });

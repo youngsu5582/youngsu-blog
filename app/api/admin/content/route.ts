@@ -4,8 +4,9 @@ import path from "path";
 import matter from "gray-matter";
 import { execSync } from "child_process";
 import { serializeFrontmatter } from "@/lib/frontmatter";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
-const CONTENT_DIR = path.join(process.cwd(), "content");
+const CONTENT_DIR = path.join(BLOG_REPO_ROOT, "content");
 
 function collectCommittedDraftItems(existingItems: Array<{ slug: string; title: string; collection: string; date: string }>) {
   const collections = ["posts", "articles", "notes", "library"];
@@ -148,7 +149,7 @@ export async function GET(req: Request) {
       try {
         const gitStatus = execSync(
           'git -c core.quotePath=false status --porcelain content/',
-          { encoding: 'utf-8', cwd: process.cwd() }
+          { encoding: 'utf-8', cwd: BLOG_REPO_ROOT }
         );
 
         const uncommittedFiles = gitStatus
@@ -183,7 +184,7 @@ export async function GET(req: Request) {
           if (!alreadyExists) {
             // Read frontmatter from filesystem
             try {
-              const absPath = path.join(process.cwd(), filePath);
+              const absPath = path.join(BLOG_REPO_ROOT, filePath);
               const raw = fs.readFileSync(absPath, 'utf-8');
               const { data } = matter(raw);
 
@@ -210,7 +211,7 @@ export async function GET(req: Request) {
     }
   }
 
-  const absPath = path.join(process.cwd(), filePath);
+  const absPath = path.join(BLOG_REPO_ROOT, filePath);
   if (!fs.existsSync(absPath)) {
     return NextResponse.json({ error: "file not found" }, { status: 404 });
   }
@@ -228,7 +229,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { file, frontmatter } = await req.json();
-    const absPath = path.join(process.cwd(), file);
+    const absPath = path.join(BLOG_REPO_ROOT, file);
 
     if (!fs.existsSync(absPath)) {
       return NextResponse.json({ error: "file not found" }, { status: 404 });

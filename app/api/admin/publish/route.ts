@@ -6,6 +6,7 @@ import { execFileSync } from "child_process";
 import { updateFrontmatter } from "@/lib/frontmatter";
 import { validateMdx } from "@/lib/mdx-validator";
 import { buildContentFilePath, isAllowedGeneratedPath, normalizeRepoRelativePath } from "@/lib/admin-content-paths";
+import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 function git(args: string[], cwd: string) {
   return execFileSync("git", args, { cwd, encoding: "utf-8" });
@@ -18,7 +19,7 @@ function gh(args: string[], cwd: string) {
 function normalizeGeneratedFile(filePath: string): string | null {
   const normalized = normalizeRepoRelativePath(filePath);
   if (!normalized || !isAllowedGeneratedPath(normalized)) return null;
-  return fs.existsSync(path.resolve(process.cwd(), normalized)) ? normalized : null;
+  return fs.existsSync(path.resolve(BLOG_REPO_ROOT, normalized)) ? normalized : null;
 }
 
 function addCommitFile(filesToCommit: string[], filePath: string) {
@@ -77,7 +78,7 @@ function prepareFiles(posts: PublishPost[]): string[] {
     // frontmatter image 필드에서 썸네일 자동 포함
     if (typeof frontmatter.image === "string" && frontmatter.image.startsWith("/")) {
       const thumbRelPath = `public${frontmatter.image}`;
-      const thumbAbsPath = path.join(process.cwd(), thumbRelPath);
+      const thumbAbsPath = path.join(BLOG_REPO_ROOT, thumbRelPath);
       if (fs.existsSync(thumbAbsPath) && !filesToCommit.includes(thumbRelPath)) {
         addCommitFile(filesToCommit, thumbRelPath);
       }
@@ -104,7 +105,7 @@ function buildCommitMessage(posts: PublishPost[]): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const cwd = process.cwd();
+    const cwd = BLOG_REPO_ROOT;
 
     // 하위 호환: 단일 포스트 요청도 배열로 변환
     const posts: PublishPost[] = body.posts ?? [
