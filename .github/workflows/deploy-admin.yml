@@ -24,25 +24,47 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Fast-forward the homeserver runtime checkout
+      - name: Update clean homeserver deploy checkout
         env:
-          BLOG_RUNTIME_DIR: /home/yeongsu/docker/youngsu-blog
+          BLOG_DEPLOY_DIR: /home/yeongsu/docker/youngsu-blog-deploy
+          BLOG_REPOSITORY: git@github.com:youngsu5582/youngsu-blog.git
         run: |
           set -Eeuo pipefail
-          test -d "$BLOG_RUNTIME_DIR/.git"
 
-          if ! git -C "$BLOG_RUNTIME_DIR" diff --quiet || \
-             ! git -C "$BLOG_RUNTIME_DIR" diff --cached --quiet || \
-             test -n "$(git -C "$BLOG_RUNTIME_DIR" ls-files --others --exclude-standard)"; then
-            echo "Blog runtime checkout is dirty; refusing automatic Admin deployment." >&2
-            git -C "$BLOG_RUNTIME_DIR" status --short
+          if [ ! -d "$BLOG_DEPLOY_DIR/.git" ]; then
+            mkdir -p "$(dirname "$BLOG_DEPLOY_DIR")"
+            git clone --no-tags "$BLOG_REPOSITORY" "$BLOG_DEPLOY_DIR"
+          fi
+
+          test -d "$BLOG_DEPLOY_DIR/.git"
+          test "$(git -C "$BLOG_DEPLOY_DIR" remote get-url origin)" = "$BLOG_REPOSITORY"
+
+          if ! git -C "$BLOG_DEPLOY_DIR" diff --quiet || \
+             ! git -C "$BLOG_DEPLOY_DIR" diff --cached --quiet || \
+             test -n "$(git -C "$BLOG_DEPLOY_DIR" ls-files --others --exclude-standard)"; then
+            echo "Blog deploy checkout is dirty; refusing automatic Admin deployment." >&2
+            git -C "$BLOG_DEPLOY_DIR" status --short
             exit 1
           fi
 
-          git -C "$BLOG_RUNTIME_DIR" fetch --prune origin main
-          git -C "$BLOG_RUNTIME_DIR" merge --ff-only origin/main
+          git -C "$BLOG_DEPLOY_DIR" fetch --prune origin main
+          if git -C "$BLOG_DEPLOY_DIR" show-ref --verify --quiet refs/heads/main; then
+            git -C "$BLOG_DEPLOY_DIR" checkout main
+          else
+            git -C "$BLOG_DEPLOY_DIR" checkout -b main --track origin/main
+          fi
+          git -C "$BLOG_DEPLOY_DIR" merge --ff-only origin/main
+
+          deployed_sha="$(git -C "$BLOG_DEPLOY_DIR" rev-parse HEAD)"
+          if [ "$deployed_sha" != "$GITHUB_SHA" ]; then
+            echo "Deploy checkout SHA $deployed_sha does not match triggering SHA $GITHUB_SHA." >&2
+            exit 1
+          fi
 
       - name: Deploy and verify Blog Admin
+        env:
+          BLOG_ADMIN_SOURCE_DIR: /home/yeongsu/docker/youngsu-blog-deploy
+          BLOG_ADMIN_WORKSPACE_DIR: /home/yeongsu/docker/youngsu-blog
         run: |
           set -Eeuo pipefail
           /home/yeongsu/projects/homelab-infra/scripts/deploy-youngsu-blog-admin.sh
