@@ -79,6 +79,10 @@ describe("series discovery", () => {
     expect(series?.posts.length).toBeGreaterThanOrEqual(2);
     expect(getSeriesSlug(series!.name)).toBe("ai-assisted-homelab");
   });
+
+  it("한글 시리즈 이름을 slug로 보존한다", () => {
+    expect(getSeriesSlug("결제·크레딧 정합성")).toBe("결제-크레딧-정합성");
+  });
 });
 
 describe("series and sitemap SEO", () => {

@@ -122,8 +122,9 @@ export function getSeriesSlug(series: string) {
   return series
     .trim()
     .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
+    // NFKD decomposes Hangul syllables into Jamo, which the slug character
+    // class below cannot retain. NFKC keeps Korean names usable as URL slugs.
+    .normalize("NFKC")
     .replace(/[^a-z0-9가-힣]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
