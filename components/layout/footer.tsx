@@ -15,8 +15,8 @@ export function Footer() {
       links: [
         { name: "포스트", href: "/posts" },
         { name: "아티클", href: "/articles" },
+        { name: "시리즈", href: "/series" },
         { name: "노트", href: "/notes" },
-        { name: "서재", href: "/library" },
       ],
     },
     {
