@@ -83,6 +83,11 @@ describe("series discovery", () => {
   it("한글 시리즈 이름을 slug로 보존한다", () => {
     expect(getSeriesSlug("결제·크레딧 정합성")).toBe("결제-크레딧-정합성");
   });
+
+  it("URL 인코딩된 한글 slug로 시리즈를 찾는다", () => {
+    const encodedSlug = encodeURIComponent("결제-크레딧-정합성");
+    expect(getSeriesBySlug(encodedSlug, "ko")?.name).toBe("결제·크레딧 정합성");
+  });
 });
 
 describe("series and sitemap SEO", () => {

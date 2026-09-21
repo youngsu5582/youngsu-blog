@@ -159,7 +159,13 @@ export function getAllSeries(lang?: "ko" | "en"): SeriesSummary[] {
 }
 
 export function getSeriesBySlug(slug: string, lang?: "ko" | "en") {
-  return getAllSeries(lang).find((series) => series.slug === slug);
+  let decodedSlug = slug;
+  try {
+    decodedSlug = decodeURIComponent(slug);
+  } catch {
+    // Keep the raw slug when a malformed URL segment reaches the resolver.
+  }
+  return getAllSeries(lang).find((series) => series.slug === slug || series.slug === decodedSlug);
 }
 
 export function getAllCategories(lang?: "ko" | "en") {
