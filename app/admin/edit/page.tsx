@@ -19,6 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import { RelatedPostsField } from "@/components/admin/related-posts-field";
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
 import { handleMarkdownIndentKeyDown } from "@/components/admin/markdown-editor-keyboard";
 import {
@@ -31,6 +32,12 @@ import {
   type SeriesMode,
 } from "@/components/admin/series-fields";
 import type { AdminSeriesOption } from "@/lib/admin-series";
+import {
+  formatAdminContentDate,
+  sortAdminContentItems,
+  type AdminContentListItem,
+  type ContentSortOrder,
+} from "@/lib/admin-content-list";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -43,12 +50,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-interface ContentItem {
-  slug: string;
-  title: string;
-  collection: string;
-  date: string;
-}
+type ContentItem = AdminContentListItem;
 
 interface EditDraft {
   frontmatter: Record<string, any>;
@@ -92,6 +94,8 @@ export default function EditPage() {
   const [search, setSearch] = useState("");
   const [filterCollection, setFilterCollection] = useState<string | null>(null);
   const [showDraftOnly, setShowDraftOnly] = useState(false);
+  const [sortOrder, setSortOrder] = useState<ContentSortOrder>("newest");
+  const [relatedSearch, setRelatedSearch] = useState("");
 
   // Selected item
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
@@ -230,15 +234,24 @@ export default function EditPage() {
 
   const draftCount = items.filter(hasEditDraft).length;
 
-  const filtered = items.filter((item) => {
-    const matchSearch =
-      !search ||
-      item.title.toLowerCase().includes(search.toLowerCase()) ||
-      item.slug.toLowerCase().includes(search.toLowerCase());
-    const matchCollection = !filterCollection || item.collection === filterCollection;
-    const matchDraft = !showDraftOnly || hasEditDraft(item);
-    return matchSearch && matchCollection && matchDraft;
-  });
+  const filtered = useMemo(
+    () =>
+      items.filter((item) => {
+        const matchSearch =
+          !search ||
+          item.title.toLowerCase().includes(search.toLowerCase()) ||
+          item.slug.toLowerCase().includes(search.toLowerCase());
+        const matchCollection = !filterCollection || item.collection === filterCollection;
+        const matchDraft = !showDraftOnly || hasEditDraft(item);
+        return matchSearch && matchCollection && matchDraft;
+      }),
+    [items, search, filterCollection, showDraftOnly, hasEditDraft],
+  );
+
+  const sortedItems = useMemo(
+    () => sortAdminContentItems(filtered, sortOrder),
+    [filtered, sortOrder],
+  );
 
   const seriesValue: SeriesFormValue = {
     series: typeof frontmatter.series === "string" ? frontmatter.series : "",
@@ -246,6 +259,19 @@ export default function EditPage() {
     seriesDescription:
       typeof frontmatter.seriesDescription === "string" ? frontmatter.seriesDescription : "",
     seriesStatus: frontmatter.seriesStatus === "completed" ? "completed" : "ongoing",
+  };
+
+  const relatedSlugs = Array.isArray(frontmatter.related)
+    ? frontmatter.related.filter((value): value is string => typeof value === "string")
+    : [];
+
+  const handleRelatedChange = (slugs: string[]) => {
+    setFrontmatter((previous) => {
+      const next = { ...previous };
+      if (slugs.length > 0) next.related = slugs;
+      else delete next.related;
+      return next;
+    });
   };
 
   const handleSeriesChange = (value: SeriesFormValue) => {
@@ -287,6 +313,7 @@ export default function EditPage() {
     setResult(null);
     setMoveTarget(null);
     setAutoSaveTime(null);
+    setRelatedSearch("");
 
     try {
       const filePath = `content/${item.collection}/${item.slug}.mdx`;
@@ -630,9 +657,22 @@ export default function EditPage() {
             </button>
           </div>
 
+          <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+            <label htmlFor="content-sort-order">정렬</label>
+            <select
+              id="content-sort-order"
+              value={sortOrder}
+              onChange={(event) => setSortOrder(event.target.value as ContentSortOrder)}
+              className="rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              <option value="newest">최신 작성일순</option>
+              <option value="oldest">오래된 작성일순</option>
+            </select>
+          </div>
+
           {/* Items */}
           <div className="space-y-0.5 max-h-[65vh] overflow-y-auto">
-            {filtered.map((item) => (
+            {sortedItems.map((item) => (
               <button
                 key={`${item.collection}-${item.slug}`}
                 onClick={() => loadContent(item)}
@@ -661,9 +701,12 @@ export default function EditPage() {
                     </span>
                   )}
                 </div>
+                <div className="mt-0.5 pl-6 text-[10px] text-muted-foreground/70">
+                  {formatAdminContentDate(item.date)}
+                </div>
               </button>
             ))}
-            {filtered.length === 0 && (
+            {sortedItems.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-8">검색 결과가 없습니다</p>
             )}
           </div>
@@ -857,6 +900,14 @@ export default function EditPage() {
                         onChange={(tags) => setFrontmatter({ ...frontmatter, tags: tags })}
                       />
                     </div>
+
+                    <RelatedPostsField
+                      posts={items}
+                      selectedSlugs={relatedSlugs}
+                      search={relatedSearch}
+                      onSearchChange={setRelatedSearch}
+                      onChange={handleRelatedChange}
+                    />
 
                     <SeriesFields
                       mode={seriesMode}
