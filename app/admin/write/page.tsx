@@ -18,6 +18,7 @@ import {
   Plus,
 } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import { RelatedPostsField } from "@/components/admin/related-posts-field";
 import { MarkdownToolbar } from "@/components/admin/markdown-toolbar";
 import { handleMarkdownIndentKeyDown } from "@/components/admin/markdown-editor-keyboard";
 import {
@@ -230,7 +231,6 @@ export default function WritePage() {
   const [seriesOptions, setSeriesOptions] = useState<AdminSeriesOption[]>([]);
   const [allPosts, setAllPosts] = useState<PostItem[]>([]);
   const [relatedSearch, setRelatedSearch] = useState("");
-  const [showRelatedPicker, setShowRelatedPicker] = useState(false);
   const [outlineSearch, setOutlineSearch] = useState("");
 
   const [saving, setSaving] = useState(false);
@@ -539,18 +539,6 @@ export default function WritePage() {
       })
       .catch(() => {});
   }, []);
-
-  const filteredPosts = useMemo(() => {
-    if (!relatedSearch) return allPosts.filter((p) => !relatedSlugs.includes(p.slug)).slice(0, 8);
-    return allPosts
-      .filter(
-        (p) =>
-          !relatedSlugs.includes(p.slug) &&
-          (p.title.toLowerCase().includes(relatedSearch.toLowerCase()) ||
-            p.slug.includes(relatedSearch.toLowerCase())),
-      )
-      .slice(0, 8);
-  }, [allPosts, relatedSearch, relatedSlugs]);
 
   const resetDraft = useCallback(() => {
     setCollection("posts");
@@ -989,67 +977,13 @@ export default function WritePage() {
             />
           </div>
 
-          {/* Related Posts Picker */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">관련 포스트</label>
-            {/* Selected */}
-            {relatedSlugs.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {relatedSlugs.map((s) => {
-                  const post = allPosts.find((p) => p.slug === s);
-                  return (
-                    <span
-                      key={s}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/10 text-primary border border-primary/20"
-                    >
-                      {post?.title || s}
-                      <button
-                        onClick={() => setRelatedSlugs((prev) => prev.filter((x) => x !== s))}
-                        className="hover:text-destructive"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                value={relatedSearch}
-                onChange={(e) => {
-                  setRelatedSearch(e.target.value);
-                  setShowRelatedPicker(true);
-                }}
-                onFocus={() => setShowRelatedPicker(true)}
-                onBlur={() => setTimeout(() => setShowRelatedPicker(false), 200)}
-                placeholder="포스트 검색하여 추가..."
-                className="w-full pl-8 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-              {showRelatedPicker && filteredPosts.length > 0 && (
-                <div className="absolute z-10 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
-                  {filteredPosts.map((p) => (
-                    <button
-                      key={p.slug}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setRelatedSlugs((prev) => [...prev, p.slug]);
-                        setRelatedSearch("");
-                      }}
-                      className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors flex items-center justify-between"
-                    >
-                      <span className="truncate">{p.title}</span>
-                      <span className="text-[10px] text-muted-foreground/50 ml-2 flex-shrink-0">
-                        {p.collection}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <RelatedPostsField
+            posts={allPosts}
+            selectedSlugs={relatedSlugs}
+            search={relatedSearch}
+            onSearchChange={setRelatedSearch}
+            onChange={setRelatedSlugs}
+          />
 
           <SeriesFields
             mode={seriesMode}
