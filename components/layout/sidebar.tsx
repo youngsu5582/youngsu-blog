@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { navigation, taxonomyNavigation } from "@/config/navigation";
 import { siteConfig } from "@/config/site";
@@ -13,8 +14,15 @@ import { Avatar } from "@/components/common/avatar";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [isProtectedAdminHost, setIsProtectedAdminHost] = useState(false);
   const adminEnabled =
-    process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_ADMIN_UI_ENABLED === "true";
+    process.env.NODE_ENV === "development" ||
+    process.env.NEXT_PUBLIC_ADMIN_UI_ENABLED === "true" ||
+    isProtectedAdminHost;
+
+  useEffect(() => {
+    setIsProtectedAdminHost(window.location.hostname === "admin.youngsu5582.today");
+  }, []);
 
   return (
     <div

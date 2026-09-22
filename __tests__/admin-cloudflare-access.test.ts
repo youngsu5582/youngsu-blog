@@ -32,5 +32,6 @@ describe("admin access boundary", () => {
 
     expect(layout).toContain('process.env.ADMIN_UI_ENABLED === "true"');
     expect(sidebar).toContain('process.env.NEXT_PUBLIC_ADMIN_UI_ENABLED === "true"');
+    expect(sidebar).toContain('window.location.hostname === "admin.youngsu5582.today"');
   });
 });
