@@ -4,6 +4,7 @@ import path from "path";
 import matter from "gray-matter";
 import { serializeFrontmatter } from "@/lib/frontmatter";
 import { isAllowedCollection, isValidSlug, resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { validateSeriesAssignment } from "@/lib/admin-series";
 import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
 
 const EDITABLE_PREFIXES = ["content/"];
@@ -18,7 +19,8 @@ export async function GET(req: Request) {
 
   const resolved = resolveRepoFilePath(filePath, EDITABLE_PREFIXES);
   if (!resolved) return NextResponse.json({ error: "허용되지 않는 경로" }, { status: 400 });
-  if (!fs.existsSync(resolved.absPath)) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (!fs.existsSync(resolved.absPath))
+    return NextResponse.json({ error: "not found" }, { status: 404 });
 
   try {
     const raw = fs.readFileSync(resolved.absPath, "utf-8");
@@ -38,17 +40,42 @@ export async function POST(req: Request) {
     const absPath = resolved.absPath;
     if (!fs.existsSync(absPath)) return NextResponse.json({ error: "not found" }, { status: 404 });
 
+    const hasSeriesInput = [
+      frontmatter?.series,
+      frontmatter?.seriesOrder,
+      frontmatter?.seriesDescription,
+      frontmatter?.seriesStatus,
+    ].some((value) => value !== undefined && value !== "");
+    const isPost = file.startsWith("content/posts/");
+    if (!isPost && hasSeriesInput) {
+      return NextResponse.json(
+        { error: "시리즈는 현재 포스트에서만 사용할 수 있습니다" },
+        { status: 400 },
+      );
+    }
+
+    const seriesError = validateSeriesAssignment({
+      series: frontmatter?.series,
+      seriesOrder: frontmatter?.seriesOrder,
+      filePath: file,
+      requireOrder:
+        isPost && typeof frontmatter?.series === "string" && frontmatter.series.trim().length > 0,
+    });
+    if (seriesError) return NextResponse.json({ error: seriesError }, { status: 400 });
+
     const frontmatterYaml = serializeFrontmatter(frontmatter);
     const content = frontmatterYaml + "\n\n" + (body || "").trim() + "\n";
 
     // slug 변경 시 파일명 rename
     const currentSlug = path.basename(file, path.extname(file));
     if (newSlug && newSlug !== currentSlug) {
-      if (!isValidSlug(newSlug)) return NextResponse.json({ error: "허용되지 않는 slug" }, { status: 400 });
+      if (!isValidSlug(newSlug))
+        return NextResponse.json({ error: "허용되지 않는 slug" }, { status: 400 });
       const dir = path.dirname(absPath);
       const ext = path.extname(file);
       const newAbsPath = path.join(dir, `${newSlug}${ext}`);
-      if (fs.existsSync(newAbsPath)) return NextResponse.json({ error: "같은 이름의 파일이 이미 존재합니다" }, { status: 400 });
+      if (fs.existsSync(newAbsPath))
+        return NextResponse.json({ error: "같은 이름의 파일이 이미 존재합니다" }, { status: 400 });
       fs.writeFileSync(absPath, content, "utf-8");
       fs.renameSync(absPath, newAbsPath);
       const newFile = file.replace(`${currentSlug}${ext}`, `${newSlug}${ext}`);
@@ -65,7 +92,7 @@ export async function POST(req: Request) {
 // DELETE: 콘텐츠 파일 삭제 (files 배열로 여러 파일 삭제 가능)
 export async function DELETE(req: Request) {
   try {
-    const { files } = await req.json() as { files: string[] };
+    const { files } = (await req.json()) as { files: string[] };
     const deleted: string[] = [];
     const errors: string[] = [];
 
@@ -84,10 +111,17 @@ export async function DELETE(req: Request) {
     }
 
     if (deleted.length === 0) {
-      return NextResponse.json({ error: errors.join(", ") || "삭제할 파일이 없습니다" }, { status: 400 });
+      return NextResponse.json(
+        { error: errors.join(", ") || "삭제할 파일이 없습니다" },
+        { status: 400 },
+      );
     }
 
-    return NextResponse.json({ success: true, deleted, errors: errors.length > 0 ? errors : undefined });
+    return NextResponse.json({
+      success: true,
+      deleted,
+      errors: errors.length > 0 ? errors : undefined,
+    });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
@@ -99,14 +133,17 @@ export async function PUT(req: Request) {
     const { fromFile, toCollection } = await req.json();
     const fromResolved = resolveRepoFilePath(fromFile, EDITABLE_PREFIXES);
     if (!fromResolved) return NextResponse.json({ error: "허용되지 않는 경로" }, { status: 400 });
-    if (!isAllowedCollection(toCollection)) return NextResponse.json({ error: "허용되지 않는 collection" }, { status: 400 });
-    if (!fs.existsSync(fromResolved.absPath)) return NextResponse.json({ error: "source not found" }, { status: 404 });
+    if (!isAllowedCollection(toCollection))
+      return NextResponse.json({ error: "허용되지 않는 collection" }, { status: 400 });
+    if (!fs.existsSync(fromResolved.absPath))
+      return NextResponse.json({ error: "source not found" }, { status: 404 });
 
     const filename = path.basename(fromFile);
     const toDir = path.join(BLOG_REPO_ROOT, "content", toCollection);
     const toAbs = path.join(toDir, filename);
 
-    if (fs.existsSync(toAbs)) return NextResponse.json({ error: "target already exists" }, { status: 400 });
+    if (fs.existsSync(toAbs))
+      return NextResponse.json({ error: "target already exists" }, { status: 400 });
 
     fs.mkdirSync(toDir, { recursive: true });
     fs.renameSync(fromResolved.absPath, toAbs);
