@@ -1,0 +1,255 @@
+---
+title: Info Metric으로 문자열 메타데이터를 메트릭에 결합하기
+date: "2026-10-02T00:00:00.000Z"
+description: Prometheus와 OpenMetrics에서 Info Metric으로 버전·커밋·큐 분류 같은 문자열 메타데이터를 노출하고, 다른 메트릭에 결합하는 방법을 정리한다.
+categories:
+  - Backend
+  - Monitoring
+tags:
+  - prometheus
+  - openmetrics
+  - info-metric
+  - observability
+  - micrometer
+references:
+  - title: OpenMetrics Specification - Info Metric
+    url: https://prometheus.io/docs/specs/om/open_metrics_spec/#info-1
+  - title: Prometheus Documentation - Metric Types
+    url: https://prometheus.io/docs/concepts/metric_types/
+  - title: Prometheus Documentation - Operators
+    url: https://prometheus.io/docs/prometheus/latest/querying/operators/
+---
+
+## 한 줄 요약
+
+**Info Metric**은 버전, 커밋 해시, 리전, 작업 유형처럼 숫자가 아닌 문자열 메타데이터를 label로 노출하고, 다른 수치 메트릭과 결합할 수 있게 해준다.
+
+Prometheus 같은 모니터링 시스템은 시계열 데이터와 숫자의 변화를 저장하는 데 강하다. 하지만 애플리케이션 버전이나 커밋 해시처럼 문자열인 정보는 일반적인 수치 메트릭의 값으로 표현하기 어렵다.
+
+이때 문자열은 label로, 샘플 값은 `1`로 표현하는 Info Metric을 사용할 수 있다.
+
+## OpenMetrics의 Info Metric
+
+기존 Prometheus 텍스트 포맷에는 정식 `info` 타입이 없었다. 그래서 관행적으로 `값 1 + Gauge` 조합을 사용했다.
+
+```text
+myapp_build_info{version="1.0.0",commit="abc123def"} 1
+```
+
+이 방식은 널리 사용됐지만 서비스마다 네이밍과 표현 규칙이 달라질 수 있었다. OpenMetrics에서는 이를 표준화하기 위해 Info Metric 타입을 정의했다.
+
+```text
+# TYPE myapp_build info
+myapp_build_info{version="1.0.0",commit="abc123def"} 1
+```
+
+OpenMetrics의 Info Metric은 다음과 같은 형태를 갖는다.
+
+- 메트릭 이름은 `_info` 접미사를 사용한다.
+- 문자열 메타데이터는 label로 표현한다.
+- 샘플 값은 `1`로 설정한다.
+
+> OpenMetrics는 클라우드 네이티브 환경에서 메트릭 데이터를 교환하기 위한 표준 포맷이다.
+
+## 왜 Gauge로 표현했을까?
+
+Prometheus에서 자주 사용하는 메트릭 타입은 다음과 같다.
+
+- **Counter**: 증가하기만 하는 누적 값이다. “몇 번 일어났는가?”를 표현한다.
+- **Gauge**: 현재 상태를 나타내는 값이다. 증가하거나 감소할 수 있다.
+- **Histogram**: 관측값을 구간별 버킷에 모아 분포를 표현한다. “1초 이하인 요청이 몇 건인가?”처럼 사용할 수 있다.
+
+메타데이터는 특정 시점의 상태를 나타내고, 샘플 값 자체로 별도의 수치를 전달할 필요가 없다. 그래서 기존 Prometheus 방식에서는 현재 상태를 표현하는 Gauge가 가장 적합했다.
+
+## Info Metric의 사용 규칙
+
+### 문자열은 label, 값은 `1`
+
+```text
+myapp_build_info{version="1.0.0",commit="abc123def"} 1
+```
+
+버전과 커밋 해시를 메트릭 값으로 넣으면 숫자 타입 제약을 받거나 의미가 불명확해질 수 있다. 문자열은 label로 표현하고, 메트릭의 샘플 값은 `1`로 두는 편이 일관적이다.
+
+샘플 값이 `1`이므로 다른 수치 메트릭과 곱해도 원래 수치를 유지할 수 있다. 이 특성을 이용하면 Info Metric의 label을 기존 메트릭에 붙일 수 있다.
+
+### 자주 바뀌는 값을 label에 넣지 않는다
+
+다음처럼 매초 바뀌는 시간을 label로 사용하면 값이 바뀔 때마다 새로운 시계열이 만들어진다.
+
+```text
+myapp_build_info{version="1.0.0",updated="2026-10-01T16:00:00"} 1
+myapp_build_info{version="1.0.0",updated="2026-10-01T16:00:01"} 1
+```
+
+label의 값이 계속 달라지면 시계열 수와 저장 비용이 증가한다. 따라서 Info Metric에는 버전, 커밋 해시처럼 변경 빈도가 낮고 종류가 제한적인 메타데이터를 넣어야 한다.
+
+## Java 코드에서 등록하기
+
+Micrometer에서는 Gauge를 사용해 Info Metric과 같은 형태의 메트릭을 등록할 수 있다.
+
+```java
+private static final String METRIC_NAME = "queue.meta.info";
+
+private final MeterRegistry meterRegistry;
+
+@EventListener(ApplicationStartedEvent.class)
+public void register() {
+    Gauge.builder(METRIC_NAME, () -> 1)
+        .tags(
+            "queue", queueName,
+            "consumed_by", queueMeta.consumedBy().getLabel(),
+            "work_type", queueMeta.workType().getLabel()
+        )
+        .register(meterRegistry);
+}
+```
+
+애플리케이션이 시작될 때 큐 이름, 소비 주체, 작업 유형을 label로 등록하고, Gauge의 값은 `1`로 고정한다.
+
+실제 운영 환경에서는 메트릭 이름과 label의 조합이 얼마나 많은 시계열을 만드는지도 함께 확인해야 한다.
+
+## 여러 서버가 등록할 때의 주의점
+
+Prometheus와 OpenTelemetry를 함께 사용하면 인스턴스마다 다음과 같은 label이 추가될 수 있다.
+
+```text
+mq_queue_meta{
+    exported_application="...",
+    instance="...",
+    otel_scope_name="github.com/open-telemetry/...",
+    otel_scope_version="0.158.0",
+    purpose="api",
+    queue="develop3.consumer.ai-poster",
+    stage="develop3"
+} 1
+```
+
+이 경우 같은 큐의 메타데이터라도 `instance`나 계측 라이브러리 관련 label이 달라져 각각 다른 시계열로 저장된다.
+
+인스턴스 수와 큐 수가 많으면 시계열이 빠르게 증가할 수 있다. 예를 들어 다음과 같은 규모라면 Info Metric만으로도 상당한 시계열이 만들어진다.
+
+```text
+인스턴스 20개 × 큐 600개 × 큐당 Info Metric 3개 = 36,000개
+```
+
+메트릭은 값이 변하지 않더라도 scrape 주기마다 수집된다. 저장 과정에서 동일한 값이 압축될 수는 있지만, label 조합이 너무 많아지는 문제까지 해결해 주지는 않는다.
+
+## 수치 메트릭에 메타데이터 결합하기
+
+Info Metric은 PromQL의 벡터 매칭과 `group_left`를 이용해 기존 수치 메트릭에 label을 추가할 수 있다.
+
+```promql
+수치_메트릭
+* on(매칭할_label)
+  group_left(추가할_label)
+정보_메트릭
+```
+
+각 연산자의 의미는 다음과 같다.
+
+- `*`: 두 메트릭의 값을 곱한다. Info Metric의 값이 `1`이므로 왼쪽 수치가 유지된다.
+- `on(...)`: 괄호 안에 지정한 label 값이 같은 시계열끼리 매칭한다.
+- `group_left(...)`: 오른쪽 메트릭의 지정한 label을 왼쪽 결과에 추가한다.
+
+예를 들어 왼쪽에 인스턴스별 요청 수가 있고, 오른쪽에 큐의 작업 유형이 있다고 하자.
+
+```text
+{queue="image", instance="A"} 10
+{queue="image", instance="B"} 20
+```
+
+```text
+{queue="image", work_type="gpu"} 1
+```
+
+다음과 같이 결합하면:
+
+```text
+{queue="image", instance="A", work_type="gpu"} 10
+{queue="image", instance="B", work_type="gpu"} 20
+```
+
+왼쪽 수치 메트릭의 값은 유지하면서 오른쪽 Info Metric의 `work_type` label이 추가된다.
+
+### 요청 메트릭에 빌드 버전 붙이기
+
+다음과 같은 요청 메트릭이 있다고 하자.
+
+```text
+http_requests_total{job="myapp",instance="api-1",method="GET",status="200"} 1000
+http_requests_total{job="myapp",instance="api-1",method="POST",status="200"} 500
+```
+
+여기에 애플리케이션 빌드 정보를 결합한다.
+
+```text
+myapp_build_info{job="myapp",instance="api-1",version="1.0.0",commit="abc123"} 1
+```
+
+```promql
+rate(http_requests_total{job="myapp"}[5m])
+* on(job, instance) group_left(version)
+myapp_build_info{job="myapp"}
+```
+
+결과에는 기존 요청 메트릭의 값과 label을 유지하면서 `version`이 추가된다.
+
+```text
+{job="myapp",instance="api-1",method="GET",status="200",version="1.0.0"} 20
+```
+
+이제 요청량을 애플리케이션 버전별로 나누어 보거나, 특정 버전에서 오류율이 증가했는지 확인할 수 있다.
+
+## 여러 인스턴스의 메타데이터 정리하기
+
+여러 API 인스턴스가 같은 큐 정보를 등록하면 동일한 메타데이터가 인스턴스 수만큼 반복될 수 있다.
+
+```text
+mq_queue_meta{queue="dev.consumer.work",instance="api-1",consumed_by="web",work_type="external"} 1
+mq_queue_meta{queue="dev.consumer.work",instance="api-2",consumed_by="web",work_type="external"} 1
+mq_queue_meta{queue="dev.consumer.work",instance="api-3",consumed_by="web",work_type="external"} 1
+```
+
+이 정보가 인스턴스가 아니라 애플리케이션과 큐 단위의 정보라면, 결합 전에 인스턴스 label을 제거하고 하나로 합칠 수 있다.
+
+```promql
+max by (application, queue, consumed_by, work_type) (
+  mq_queue_meta{application="api"}
+)
+```
+
+이 쿼리는 다음과 같이 동작한다.
+
+- `{application="api"}`: `application`이 `api`인 시계열만 선택한다.
+- `by (application, queue, consumed_by, work_type)`: 지정한 네 label의 조합별로 그룹을 만든다.
+- `max`: 각 그룹에서 하나의 최댓값을 반환한다. 모든 샘플 값이 `1`이므로 결과 값도 `1`이다.
+
+예를 들어 원본이 다음과 같다면:
+
+| application | queue | consumed_by | work_type | instance | 값 |
+| --- | --- | --- | --- | --- | ---: |
+| api | image | consumer | gpu | api-1 | 1 |
+| api | image | consumer | gpu | api-2 | 1 |
+| api | image | consumer | gpu | api-3 | 1 |
+| api | video | consumer | external | api-1 | 1 |
+
+결과는 인스턴스 label이 제거된 다음과 같은 두 시계열이 된다.
+
+```text
+{application="api",queue="image",consumed_by="consumer",work_type="gpu"} 1
+{application="api",queue="video",consumed_by="consumer",work_type="external"} 1
+```
+
+## 정리
+
+Info Metric은 수치 자체보다 **메타데이터를 다른 메트릭과 연결하는 것**에 의미가 있다.
+
+- 문자열 정보는 label로 표현한다.
+- 샘플 값은 `1`로 둔다.
+- 변경 빈도가 높은 값을 label에 넣지 않는다.
+- `on`과 `group_left`를 사용해 수치 메트릭에 메타데이터를 붙일 수 있다.
+- 인스턴스, 큐, label 조합이 늘어날수록 시계열 증가와 저장 비용을 확인한다.
+- 같은 메타데이터가 여러 인스턴스에서 반복되면 `max by` 등으로 결합 전에 정리할 수 있다.
+
+Info Metric은 대시보드에서 “이 수치는 어떤 버전·큐·작업 유형에 해당하는가?”를 보여주거나, 배포 버전별 오류율과 처리량을 비교할 때 유용하다. 다만 label은 시계열의 차원을 늘리는 기능이므로, 넣을 메타데이터의 종류와 cardinality를 먼저 제한해야 한다.
