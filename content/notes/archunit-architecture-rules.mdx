@@ -1,0 +1,198 @@
+---
+title: ArchUnit으로 코드 구조 규칙을 테스트로 강제하기
+date: "2026-10-03T00:00:00.000Z"
+description: 컴파일된 .class 파일을 분석해 애플리케이션을 실행하지 않고도 패키지 의존성, 레이어 경계, 커스텀 계약을 테스트로 검증하는 방법을 정리한다.
+categories:
+  - Backend
+  - Testing
+tags:
+  - archunit
+  - architecture-test
+  - java
+  - kotlin
+  - spring-modulith
+  - testing
+references:
+  - title: ArchUnit User Guide
+    url: https://www.archunit.org/userguide/html/000_Index.html
+  - title: ArchUnit User Guide - Freezing Arch Rules
+    url: https://www.archunit.org/userguide/html/000_Index.html#_freezing_arch_rules
+  - title: ArchUnit Javadoc - ArchCondition
+    url: https://javadoc.io/doc/com.tngtech.archunit/archunit/latest/com/tngtech/archunit/lang/ArchCondition.html
+  - title: Spring Modulith Reference Documentation - Application Modules
+    url: https://docs.spring.io/spring-modulith/reference/fundamentals.html
+---
+
+## 한 줄 요약
+
+**ArchUnit**은 컴파일된 `.class` 파일을 읽어 코드의 구조와 계약을 테스트하는 라이브러리다. 애플리케이션을 실행하거나 클래스를 로딩하지 않고도 패키지 의존성, 레이어 경계, 특정 API의 직접 호출 같은 규칙을 검증할 수 있다.
+
+## 왜 필요한가
+
+기능 테스트는 애플리케이션이 기대한 결과를 내는지 검증하는 데 강하지만, 코드가 어떤 패키지에 있어야 하는지, 어느 계층을 참조하면 안 되는지 같은 구조적 계약까지 모두 잡아내지는 못한다.
+
+특히 AI와 협업할 때 구조 규칙을 문서에만 적어 두면 지켜질 가능성에 기대게 된다. `CLAUDE.md` 같은 문서는 중요한 맥락을 전달하지만, 규칙 위반을 결정적으로 실패시키지는 않는다. 반면 ArchUnit 규칙은 테스트가 실패하는 방식으로 구조 계약을 강제한다.
+
+## 어떻게 동작하는가
+
+ArchUnit은 클래스 파일을 ASM으로 파싱해 메모리 그래프를 만들고, 그 그래프를 대상으로 규칙을 평가한다.
+
+- 애플리케이션을 실행하지 않는다.
+- 테스트 대상 클래스를 컨텍스트에 올리거나 애플리케이션 클래스를 직접 로딩하지 않는다.
+- 패키지, 의존성, 어노테이션, 메소드 호출 같은 바이트코드 정보를 검사한다.
+- 한 번 import한 `JavaClasses`를 여러 규칙에서 공유할 수 있다.
+
+따라서 규칙마다 클래스를 다시 import하기보다, 테스트 클래스에서 import 결과를 한 번만 만들어 두는 편이 좋다. 실행 시간은 규칙 개수보다 import 횟수의 영향을 크게 받는다.
+
+## 기본 DSL로 패키지 경계 검사하기
+
+ArchUnit의 DSL은 검사 대상(`that()`)과 기준(`should()`)을 분리한다. 다음 예시는 도메인 패키지가 인프라스트럭처 패키지에 의존하지 않도록 강제한다.
+
+```kotlin
+class ArchitectureTest {
+
+    companion object {
+        // import는 한 번만 한다. 테스트 메서드마다 import하면 규칙 수만큼 파싱이 반복된다.
+        // 테스트 클래스는 제외한다. 예를 들어 IntegrationTest 같은 기반 클래스에는
+        // 애플리케이션 코드와 다른 어노테이션이 붙을 수 있다.
+        private val classes: JavaClasses by lazy {
+            ClassFileImporter()
+                .withImportOption(ImportOption.DoNotIncludeTests())
+                .importPackages("dev.joyson.aiworkbench")
+        }
+    }
+
+    @Test
+    fun `domain은 infrastructure를 모른다`() {
+        noClasses().that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat().resideInAPackage("..infrastructure..")
+            .because("domain은 port를 선언하고 구현은 infrastructure가 한다")
+            .check(classes)
+    }
+
+    @Test
+    fun `엔티티는 모듈 경계를 넘지 않는다`() {
+        noClasses().that().areAnnotatedWith(Entity::class.java)
+            .should().resideInAPackage("dev.joyson.aiworkbench.*")
+            .because("루트는 공개 API다. 엔티티는 서브패키지로 옮기고 경계에는 값을 둔다")
+            .check(classes)
+    }
+}
+```
+
+`..domain..`은 이름 중간에 `domain` 패키지가 포함된 클래스를 선택한다. 선택된 클래스가 `..infrastructure..`에 의존하지 않아야 한다는 규칙이다.
+
+두 번째 규칙처럼 어노테이션으로 대상을 선택한 뒤, 특정 패키지에 있어야 한다는 위치 규칙을 적용할 수도 있다. 이런 방식으로 모듈 간 경계와 모듈 내부의 레이어 규칙을 함께 제어할 수 있다.
+
+> Spring Modulith도 애플리케이션 모듈의 구조를 검증하는 과정에서 ArchUnit 기반의 규칙 모델을 활용한다. Modulith가 표현하는 애플리케이션 모듈 경계와 별개로, ArchUnit을 직접 사용하면 모듈 내부의 레이어와 세부 의존성까지 검사할 수 있다.
+
+## 커스텀 검증 만들기
+
+기본 DSL만으로 표현하기 어려운 규칙은 `ArchCondition`으로 직접 만들 수 있다. 예를 들어 특정 타입의 메소드 중 `@JsonValue`가 붙은 메소드가 반드시 하나 이상 있어야 한다고 하자.
+
+```kotlin
+val haveJsonValue = object : ArchCondition<JavaClass>("@JsonValue 게터를 가진다") {
+    override fun check(item: JavaClass, events: ConditionEvents) {
+        if (item.methods.none { it.isAnnotatedWith(JsonValue::class.java) }) {
+            events.add(
+                SimpleConditionEvent.violated(
+                    item,
+                    "${item.name}에 @JsonValue가 없다"
+                )
+            )
+        }
+    }
+}
+```
+
+커스텀 조건은 다음처럼 동작한다.
+
+1. 조건은 `JavaClass` 단위로 정의한다.
+2. `that()`으로 선택된 각 클래스에 대해 ArchUnit이 `check`를 한 번 호출한다.
+3. `item`은 현재 검사 중인 클래스다.
+4. `events`는 검사 결과를 기록하는 객체다.
+5. 위반이 있으면 `SimpleConditionEvent.violated`를 추가한다.
+
+즉, 검사 대상 선택과 검사 기준을 분리할 수 있다. 대상은 재사용하고 기준만 바꾸거나, 동일한 기준을 여러 종류의 대상에 적용하는 식으로 확장할 수 있다.
+
+## 기존 위반 동결하기
+
+레거시 프로젝트에 구조 규칙을 처음 도입하면 기존 위반 때문에 테스트를 바로 통과시키기 어렵다. 이때 `FreezingArchRule`을 사용하면 현재 위반을 기준선으로 저장하고, 이후 새로 발생한 위반만 실패시킬 수 있다. 일종의 구조 스냅샷 테스트다.
+
+다음은 `Instant.now()`를 직접 호출하는 코드를 기준선으로 동결하는 예시다.
+
+```kotlin
+@Test
+fun `Instant now 직접 호출 - 기존 위반은 동결하고 새 위반만 막는다`() {
+    // 기준선 저장 위치와, 없으면 새로 만들어도 된다는 허락
+    ArchConfiguration.get().apply {
+        setProperty("freeze.store.default.path", "archunit_store")
+        setProperty("freeze.store.default.allowStoreCreation", "true")
+    }
+
+    // 컴파일된 main 클래스를 읽어 그래프를 만든다. 테스트 클래스는 제외한다.
+    val imported = ClassFileImporter()
+        .withImportOption(ImportOption.DoNotIncludeTests())
+        .importPackages("dev.joyson.aiworkbench")
+
+    // 어떤 클래스도 Instant.now()를 직접 부르지 않는다.
+    val rule = noClasses().should().callMethod(Instant::class.java, "now")
+        .because("time must be injected through a Clock")
+
+    // 기존 위반은 동결하고, 새 위반이 추가되면 실패한다.
+    FreezingArchRule.freeze(rule).check(imported)
+}
+```
+
+처음 실행하면 `archunit_store` 아래에 규칙과 위반 결과가 저장된다.
+
+```text
+stored.rules
+99e609b1-0c3c-4241-ba95-1daa7beb119b
+```
+
+`stored.rules`에는 규칙과 결과 파일의 연결 정보가 들어간다.
+
+```properties
+#
+#Sat Oct 03 16:06:20 KST 2026
+no\ classes\ should\ call\ method\ Instant.now(),\ because\ time\ must\ be\ injected\ through\ a\ Clock=99e609b1-0c3c-4241-ba95-1daa7beb119b
+```
+
+UUID 이름의 결과 파일에는 실행 시점에 발견된 위반이 저장된다.
+
+```text
+Rule 'classes should not call Instant.now() directly' was violated (13 times):
+GeneratedFile · 생성자 기본값 → Instant.now() (GeneratedFile.kt:77)
+GenerationJob · touch() → Instant.now() (GenerationJob.kt:122)
+GenerationJob · 생성자 기본값 → Instant.now() (GenerationJob.kt:98)
+GenerationJobTask · 생성자 기본값 → Instant.now() (GenerationJobTask.kt:72)
+ProviderCall · 생성자 기본값 → Instant.now() (ProviderCall.kt:128)
+```
+
+기준선을 저장한 뒤에는 위반을 한 번에 모두 해결하지 않아도 된다. 새로운 위반이 추가되지 않도록 먼저 막고, 기존 목록은 점진적으로 줄여 갈 수 있다. 다만 `allowStoreCreation`은 기준선을 의도적으로 갱신할 때만 허용하도록 CI와 로컬 실행 환경을 구분하는 편이 안전하다.
+
+## 장점
+
+- 애플리케이션 인프라 없이 실행할 수 있어 빠르고 결정적이다.
+- 실패 메시지에 `because`로 규칙의 의도와 수정 방향을 함께 적을 수 있다.
+- 기존 위반을 동결해 레거시 코드에도 점진적으로 도입할 수 있다.
+- Spring Modulith가 표현하는 모듈 경계보다 더 세밀한 모듈 내부 레이어 규칙도 검사할 수 있다.
+- 규칙을 코드로 관리하므로 리뷰와 CI에서 구조 변경을 함께 검토할 수 있다.
+
+## 한계와 주의점
+
+ArchUnit은 바이트코드에 나타난 구조를 검사한다. 따라서 소스 코드의 의도나 런타임 동작을 모두 알 수 있는 것은 아니다.
+
+- Kotlin의 소스 의도와 컴파일된 바이트코드가 다를 수 있다.
+- value class는 바이트코드에서 `String` 같은 기본 타입으로 보일 수 있다.
+- inline 함수는 호출 자체가 사라져 호출 규칙으로 검사하기 어려울 수 있다.
+- 주석, 문자열, 설정 파일, 실제 런타임 동작은 검사 대상이 아니다.
+- 별도로 import 결과를 공유하거나 캐시하지 않으면 import할 때마다 다시 파싱한다.
+- 바이트코드에 남는 호출과 의존성만 검사하므로, 리플렉션이나 설정 기반 연결은 별도의 테스트가 필요하다.
+
+## 정리
+
+ArchUnit은 “코드 구조를 잘 지키자”라는 문장을 테스트 가능한 계약으로 바꿔 준다. 패키지 경계에는 의존성 규칙을, 특정 타입에는 어노테이션·메소드 규칙을, 레거시 코드에는 동결 규칙을 적용할 수 있다.
+
+AI가 코드를 빠르게 생성하는 환경일수록 구조 규칙은 문서보다 테스트로 남기는 편이 안전하다. 문서는 맥락을 설명하고, ArchUnit 테스트는 그 맥락을 어겼을 때 결정적으로 실패하게 만든다.
