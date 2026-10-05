@@ -35,13 +35,30 @@ type SelectionResult = {
 export function MarkdownToolbar({ textareaRef, value, onChange, onImageUpload, onImageUploadError }: MarkdownToolbarProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pendingImageSelectionRef = useRef<{ start: number; end: number } | null>(null);
+  const pendingToolbarSelectionRef = useRef<{ start: number; end: number } | null>(null);
+
+  const captureToolbarSelection = (event: React.PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (!target.closest("button")) return;
+
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    pendingToolbarSelectionRef.current = {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    };
+  };
+
   // Get current selection info
   const getSelection = (): SelectionResult | null => {
     const textarea = textareaRef.current;
     if (!textarea) return null;
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
+    const savedSelection = pendingToolbarSelectionRef.current;
+    const start = savedSelection?.start ?? textarea.selectionStart;
+    const end = savedSelection?.end ?? textarea.selectionEnd;
+    pendingToolbarSelectionRef.current = null;
     const selectedText = value.substring(start, end);
     const beforeSelection = value.substring(0, start);
     const afterSelection = value.substring(end);
@@ -247,6 +264,7 @@ export function MarkdownToolbar({ textareaRef, value, onChange, onImageUpload, o
       <div
       role="toolbar"
       aria-label="마크다운 편집 도구"
+      onPointerDownCapture={captureToolbarSelection}
       className="flex items-center justify-between gap-2 border-b border-border/40 bg-muted/30 px-3 py-2"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-1">

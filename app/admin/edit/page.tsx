@@ -227,6 +227,18 @@ export default function EditPage() {
       .catch(() => setLoading(false));
   }, []);
 
+  // On narrow screens, keep the main editing surface reachable without first
+  // scrolling through the full metadata form. Desktop keeps the richer layout.
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 1279px)").matches
+    ) {
+      setShowMeta(false);
+    }
+  }, []);
+
   const hasEditDraft = useCallback((item: ContentItem) => {
     if (typeof window === "undefined") return false;
     return Boolean(localStorage.getItem(`admin-edit-draft-${item.collection}-${item.slug}`));
@@ -990,7 +1002,7 @@ export default function EditPage() {
                 <section
                   role="region"
                   aria-label="긴 글 아웃라인"
-                  className="max-h-[calc(100vh-20rem)] min-h-[50vh] overflow-hidden rounded-xl border border-border/60 bg-background p-3 text-xs space-y-3"
+                  className="order-2 hidden max-h-[calc(100vh-20rem)] min-h-[50vh] space-y-3 overflow-hidden rounded-xl border border-border/60 bg-background p-3 text-xs xl:order-1 xl:block"
                 >
                   <div>
                     <h3 className="font-medium">아웃라인</h3>
@@ -1031,7 +1043,7 @@ export default function EditPage() {
                 {/* Editor */}
                 <section
                   aria-label="마크다운 본문 편집"
-                  className="flex max-h-[calc(100vh-20rem)] min-h-[50vh] flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md"
+                  className="order-1 flex max-h-[calc(100vh-20rem)] min-h-[50vh] flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md xl:order-2"
                 >
                   <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-muted/30 px-3 py-2">
                     <div>
@@ -1071,7 +1083,7 @@ export default function EditPage() {
                 {showPreview && (
                   <section
                     aria-label="마크다운 미리보기"
-                    className="flex max-h-[calc(100vh-20rem)] min-h-[50vh] flex-col overflow-hidden rounded-lg border border-border/60"
+                    className="order-3 flex max-h-[calc(100vh-20rem)] min-h-[50vh] flex-col overflow-hidden rounded-lg border border-border/60"
                   >
                     <div className="px-3 py-2 border-b border-border/40 bg-muted/30">
                       <span className="text-xs font-medium text-muted-foreground">미리보기</span>

@@ -636,19 +636,19 @@ export default function WritePage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-xl font-semibold">간편 작성기</h2>
           <p className="text-sm text-muted-foreground mt-1">마크다운으로 작성하고 저장</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
           {/* 새 글 작성 */}
           <button
             onClick={() => {
               if (hasDraftContent() && !confirm(NEW_POST_CONFIRM_MESSAGE)) return;
               resetDraft();
             }}
-            className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center gap-1.5"
+            className="shrink-0 whitespace-nowrap text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center gap-1.5"
           >
             <Plus className="h-3 w-3" />새 글
           </button>
@@ -665,7 +665,7 @@ export default function WritePage() {
           <div className="relative">
             <button
               onClick={() => setShowDraftPicker(!showDraftPicker)}
-              className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+              className="shrink-0 whitespace-nowrap text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
             >
               <Archive className="h-3 w-3" />
               임시저장 불러오기
@@ -730,13 +730,13 @@ export default function WritePage() {
 
           <button
             onClick={() => setShowMeta(!showMeta)}
-            className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${showMeta ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+            className={`shrink-0 whitespace-nowrap text-xs px-3 py-1.5 rounded-md border transition-colors ${showMeta ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
           >
             메타데이터 {showMeta ? "접기" : "펼치기"}
           </button>
           <button
             onClick={() => setShowPreview(!showPreview)}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground border border-border transition-colors"
+            className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:text-foreground"
           >
             {showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
@@ -1004,7 +1004,7 @@ export default function WritePage() {
         <section
           role="region"
           aria-label="긴 글 아웃라인"
-          className="rounded-xl border border-border/60 bg-background p-3 text-xs space-y-3 max-h-[60vh] overflow-hidden"
+          className="order-2 hidden max-h-[60vh] space-y-3 overflow-hidden rounded-xl border border-border/60 bg-background p-3 text-xs xl:order-1 xl:block"
         >
           <div>
             <h3 className="font-medium">아웃라인</h3>
@@ -1038,7 +1038,7 @@ export default function WritePage() {
             )}
           </div>
         </section>
-        <div className="flex flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md">
+        <div className="order-1 flex flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md xl:order-2">
           <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-muted/30 px-3 py-2">
             <div>
               <span className="text-xs font-medium text-muted-foreground">마크다운</span>
@@ -1074,7 +1074,7 @@ export default function WritePage() {
           />
         </div>
         {showPreview && (
-          <div className="flex flex-col rounded-lg border border-border/60 overflow-hidden">
+          <div className="order-3 flex flex-col overflow-hidden rounded-lg border border-border/60">
             <div className="px-3 py-2 border-b border-border/40 bg-muted/30">
               <span className="text-xs font-medium text-muted-foreground">미리보기</span>
             </div>
@@ -1092,19 +1092,19 @@ export default function WritePage() {
       </div>
 
       {/* Bottom: title + save */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
         {!showMeta && (
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="제목을 입력하세요 *"
-            className="flex-1 rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+            className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         )}
         <button
           onClick={handleSave}
           disabled={saving || !title.trim() || !!slugError}
-          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           저장하기

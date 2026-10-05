@@ -54,6 +54,22 @@ describe("MarkdownToolbar", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("textarea에서 선택한 텍스트를 모바일 툴바 버튼을 눌러도 유지한다", () => {
+    render(<ToolbarHarness initialValue="모바일 선택 텍스트" />);
+
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const boldButton = screen.getByRole("button", { name: "굵게" });
+    textarea.focus();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    fireEvent.pointerDown(boldButton);
+    // 실제 브라우저에서는 버튼으로 포커스가 이동하면서 textarea selection이 사라질 수 있다.
+    textarea.setSelectionRange(0, 0);
+    fireEvent.click(boldButton);
+
+    expect(textarea.value).toBe("**모바일 선택 텍스트**");
+  });
+
   it("이미지 버튼으로 선택한 파일을 업로드하고 커서 위치에 Markdown을 삽입한다", async () => {
     const onImageUpload = vi.fn().mockResolvedValue("https://assets.example.test/blog/diagram.png");
 
