@@ -68,14 +68,14 @@ export function AdminNav() {
     .find((item) => item.href === pathname);
 
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Admin</h1>
         <p className="text-xs text-muted-foreground mt-1">
           {currentPage ? `${currentPage.name} · 로컬 전용 관리 도구` : "로컬 전용 관리 도구"}
         </p>
       </div>
-      <nav className="flex items-center gap-1">
+      <nav className="flex w-full items-center justify-end gap-1 sm:w-auto">
         {adminNavGroups.map((group) => {
           const GroupIcon = group.icon;
           const hasActivePage = group.items.some((item) => item.href === pathname);
@@ -88,7 +88,7 @@ export function AdminNav() {
                 aria-haspopup="menu"
                 onClick={() => setOpenGroup((current) => (current === group.label ? null : group.label))}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium transition-colors",
+                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-2 text-xs font-medium transition-colors",
                   hasActivePage
                     ? "text-foreground bg-muted"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
