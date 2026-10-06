@@ -6,6 +6,10 @@ const tagPath = (tag: string) => `/tags/${encodeURIComponent(tag)}`;
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: siteConfig.imageDomains.map((hostname) => ({ hostname })),
+    // Published blog images are effectively immutable; reuse optimized results for 31 days.
+    minimumCacheTTL: 60 * 60 * 24 * 31,
+    // Keep one quality variant for now to avoid unnecessary image transformations.
+    qualities: [75],
   },
   async redirects() {
     return [
