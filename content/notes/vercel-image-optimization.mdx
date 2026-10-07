@@ -1,0 +1,69 @@
+---
+title: Vercel Image Optimization, Transformation 정리
+date: "2026-10-06T00:00:00.000Z"
+description: Vercel의 Image Optimization과 Transformation 동작 및 비용을 정리합니다.
+categories:
+  - Blog
+tags:
+  - vercel
+  - image-optimization
+  - image-transformation
+---
+
+```
+Your site is growing!
+
+Your free team xxx-projects has used 80% of the included free tier usage for Image Optimization - Transformations (5,000 Transformations).
+```
+
+> Deployment Storage 관련이라면, [링크](https://www.youngsu5582.today/notes/vercel-deployment-storage) 를 참고하자.
+
+Next.js 의 `next/image`는 원본 이미지를 그대로 브라우저에 보내지 않고,
+요청된 화면의 폭·품질·포맷등에 맞춰 최적화 이미지를 생성한 뒤 캐싱후 응답한다.
+
+그 후, 같은 조건의 요청이 오면(캐시 HIT) 기존 결과를 재사용, 아니라면(캐시 MISS) 다시 변환한다.
+
+그리고, 이 이미지의 새로운 변형을 생성작업(Transformation)은 월별 사용량이 제한되어 있다.
+
+와 같은 이미지 변환의 무료 사용량에 한계가 도달했다고 알림이 오면?
+
+프로젝트를 들어가고
+`Usage-Imgae Optimization-Image Transformations` 를 들어가면
+
+![image](https://assets.youngsu5582.today/blog/2026/10/06/1791286974569-image.png)
+
+와 같이 이미지 변환이 얼마나 되었는지 알 수 있다.
+
+현재, 사용량의 80% 까지 도달했으니 방법을 찾아야 한다.
+이는 next.config.ts 에서 설정할 수 있다.
+
+```typescript
+const nextConfig: NextConfig = {
+  images: {
+    minimumCacheTTL: 60 * 60 * 24 * 31,
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    qualities: [75],
+  }
+}
+```
+
+- minimumCacheTTL : 최적화된 이미지 캐시가 유지될 수 있는 최소 TTL, 초 단위
+- deviceSizes : 반응형 이미지가 만들 수 있는 후보군
+  - imageSizes : 아바타, 작은 카드 썸네일 같은 작은 이미지 후보군
+- qualities : 허용할 압축 품질값 목록, 다르면 같은 원본 및 폭이어도 별도 결과 생성
+
+이를, 각자 전략에 맞게 설정하자.
+
+나는
+- 이미지 경로에서 다른 이미지로 바뀔일이 없으므로 31일
+- 1920을 넘어가는 디바이스는 당장은 고려안해서 1920 까지 및 보편적인 셋으로 설정
+- 당장은 썸네일이나 원본이나 세부 설정이 필요없다고 판단해 기본값 75 고정
+
+로 설정했다.
+
+![image](https://assets.youngsu5582.today/blog/2026/10/06/1791289014429-image.png)
+
+> 어떤 변환이 일어났는지 확인해서, Widhts 를 설정해도 좋을거 같다.
+
+> 그리고. 배포가 발생했다고 기존 이미지가 모두 다시 변환되진 않는다.
+> (요청이 들어올 때 필요한 변형만 지연 생성)
