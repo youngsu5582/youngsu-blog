@@ -6,6 +6,12 @@ const tagPath = (tag: string) => `/tags/${encodeURIComponent(tag)}`;
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: siteConfig.imageDomains.map((hostname) => ({ hostname })),
+    // Limit responsive candidates to the largest width used by the blog layout.
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    // Published blog images are effectively immutable; reuse optimized results for 31 days.
+    minimumCacheTTL: 60 * 60 * 24 * 31,
+    // Keep one quality variant for now to avoid unnecessary image transformations.
+    qualities: [75],
   },
   async redirects() {
     return [
