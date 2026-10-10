@@ -1,0 +1,484 @@
+---
+title: "Claude Code Mod: Exploring It and Building an Example"
+date: "2026-10-09T00:00:00.000Z"
+description: A record of examining Claude Code Mod's event-hook structure and building a command-log example that records Bash commands and checks GitHub write operations
+image: /assets/img/thumbnail/2026-10-09-claude-code-mod.png
+categories:
+  - AI
+  - Claude Code
+tags:
+  - claude-code
+  - mod
+  - plugin
+  - typescript
+author: Youngsoo Lee
+lang: en
+draft: false
+toc: true
+comments: true
+---
+
+> This post has been translated from Korean to English.
+
+A new feature called `Mod` has appeared in Claude, and people's interest has been quite intense.
+So, through the background knowledge needed to understand what Mod is and some example code,
+I will organize what kinds of Mods can be made and how to make them.
+
+## Claude Mod
+
+Mod is JavaScript/TypeScript code that changes Claude Code's behavior and UI.
+It is distinctly different from Skills and `CLAUDE.md`, and is similar to Hooks.
+
+- Observe events within a session, intervene in tool execution, or display custom panels
+- Hot reloading lets you check changes immediately without restarting.
+
+## Background knowledge
+
+Before explaining Mod, I will organize some information to make it easier to understand.
+
+### Claude and Claude Code
+
+Claude is a model. Requests and responses travel through the Anthropic API.
+
+> The reason Claude Code can also connect to other models is that its API endpoint can be configured arbitrarily.
+
+It cannot read files or execute commands. It only asks, "Please execute this."
+
+Claude Code is a program that runs on a computer. It connects the `model` and the `computer`.
+
+- Assemble a prompt and send it to the API
+- Inspect the returned tool-call request, then execute it for real
+- Send the result back to the API
+
+They cooperate with each other in this way.
+
+![The flow of tool calls exchanged between Claude and Claude Code](https://assets.youngsu5582.today/obsidian/2026/10/09/1d7babb4c4f74b71d20ba350c4e5d28e.png)
+
+Looking at the diagram, at step 1, the Claude model returns a `gh pr list` request through the API,
+-> at steps 2–5, Claude Code inspects and executes that request,
+-> at step 6, it passes it to Claude, which reads it and responds to the user.
+
+### User control
+
+There are two places in the loop above that the user can control.
+
+#### Claude's input
+
+Skills · `CLAUDE.md`
+
+- They are included in the prompt as text, and Claude decides whether to read and follow them.
+- They are merely a kind of instruction. → They can be forgotten or interpreted differently.
+
+#### Claude Code's procedure
+
+Hooks · Mod
+
+- The engine executes code at a defined point. It can be applied independently of Claude's judgment.
+- Execution can be enforced. → It can always be executed and verified.
+
+Hooks are shell scripts, while Mod is TypeScript that runs inside the engine.
+
+The two differ in how forcefully they can be applied.
+EX) "Always ask the user before using gh to write"
+
+- Skill: Ask only when Claude remembers to
+- Mod: Even if Claude forgets, `tool.check` answers `ask`
+
+> If Mod is merely appended to the prompt rather than used for verification, it behaves the same as an instruction.
+
+### Events
+
+The names attached to each individual thing Claude Code does.
+
+- When the user presses Enter? -> `prompt.submit`
+- When a tool is executed? -> `tool.call`
+- When an answer is finished? -> `turn.complete`
+
+Code can be registered for each name.
+(It is a kind of web `onClick`—when a button is pressed, the registered function runs.)
+
+![A diagram summarizing the Claude Code event flow](https://assets.youngsu5582.today/obsidian/2026/10/07/968bf86e2efc1bf51c211795b6a8f334.png)
+
+### `next(e)`
+
+A function that passes control to the next step.
+
+- The next step may be another function or the next event.
+- The very end is Claude Code's original behavior, such as executing a tool.
+
+```typescript
+// e = 지금 하려는 일의 입력. 예: e.command === 'gh pr list'
+on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+
+  if (e.command.includes('rm -rf')) {
+	// next 를 안 부름 → 명령은 실행되지 않는다
+    return { deny: '위험한 명령' }
+  }
+
+  // 다음 차례로 넘긴다. 아래 단계(다른 훅, PreToolUse, 권한 판정 등)가 끝나면 결과가 온다.
+  const result = await next(e)
+  return result
+})
+```
+
+- With `next(e)` as the boundary, `the upper side is before execution` / `the lower side is after execution`.
+- It does not necessarily return a result; it may return a value handled in a lower step, such as `deny`.
+
+## Characteristics of Mod
+
+### Intervening in behavior
+
+- Through `tool.call`, a tool can be blocked before execution, or its input can be modified.
+	- Blocking: `{deny: '민감한 요청'}` can propagate an error to Claude and pass along the reason
+
+EX) Check commit message formats, or check before triggering a deployment workflow
+
+- After execution, the result can be changed, or an explanation that only Claude reads can be appended.
+
+After `await next(e)` in `tool.call`:
+
+EX) A Gradle test normally responds only with `BUILD SUCCESSFUL`
+-> Read the test result XML and add the number of tests that were executed
+
+- Permissions can be decided through `tool.check`. `allow` / `ask` / `deny`
+	- `allow`: Execute immediately without asking
+	- `ask`: Confirm with the user through the permission prompt
+	- `deny`: Block it and pass the reason to Claude as an error
+
+EX) Explicit control is possible, such as `allow` for `gh api` reads and `ask` for writes with `-X POST`·`-f` attached
+
+### Changing context
+
+- Through `prompt.compose` and `prompt.submit`, rules or the current state can be sent with every request.
+
+EX) Inject context about Korean writing style only when Korean is present, and automatically add unanswered comments on the current PR.
+
+### Working at the beginning and end of a turn
+
+- `turn.start`, `turn.complete`
+
+EX) If a Java file changes during this turn, run a compilation check when the turn ends and report the result.
+
+### Providing Claude with new tools
+
+- `tool.register`, `agent.register`
+
+EX) Give Claude a tool such as "my PR list" without an MCP server. (In code, call them as `$.tool.register`, `$.agent.register`.)
+
+### UI and background work
+
+It provides ways to make better use of the UI, including panels, a single line above the prompt, status lines, timers, sounds, and so on.
+
+- `ui.render` (draw a panel) · `$.ui.status` (status line) · `$.ui.toast` (notification) · `$.clock.every` (timer)
+
+EX) Display the status of my PRs in a panel and show a notification when a new review arrives.
+
+---
+
+This is an ambiguous area, but simply attaching a panel or a feature does not seem to be the best use of Mod.
+I think it has meaning when it is tied to what Claude does, and visualizes or specifies it concretely.
+
+- Control tool results
+- Screen, timers
+- Sessions
+
+> The `command-log` below tries three of these (recording before and after execution · permission decisions · screen).
+
+## Building one
+
+Let's write a simple Mod.
+We will make `command-log`, which records the Bash commands Claude executes.
+
+- Open the panel with `/command-log` to see the commands executed, whether they succeeded, and how long they took.
+- Show `12 · 1 failure` for the command count in the status line.
+- Ask before executing commands that write to GitHub through gh (PR comments · issue creation, etc.).
+
+![The command-log panel and execution records](https://assets.youngsu5582.today/obsidian/2026/10/09/e22209b83f976f3246d59b3feaaaec38.png)
+
+[Full code](https://github.com/youngsu5582/playground/tree/main/claude-mod-playground)
+
+The Mod is structured as follows.
+
+![The file structure of the command-log Mod](https://assets.youngsu5582.today/obsidian/2026/10/09/75434d8369f2db91b1edac87d0ce41ef.png)
+### plugin.json
+
+It indicates that this folder is a plugin. Without it, the folder is not read as a plugin.
+
+```json
+{
+  "name": "command-log",
+  "version": "0.1.0",
+  "description": "Claude가 실행한 Bash 명령을 패널(/command-log)과 상태줄에 보여주고, gh로 GitHub에 쓰는 명령은 실행 전에 묻는다",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "askGhWrite": {
+      "type": "boolean",
+      "title": "gh 쓰기 전에 묻기",
+      "description": "gh로 PR 코멘트 · 이슈 생성 같은 쓰기를 하기 전에 권한 프롬프트를 띄운다",
+      "default": true
+    }
+  }
+}
+```
+
+Specify name, version, description, and types.
+
+- userConfig is a value that the user can configure.
+-> Specify it when managing elements that each user may want to use differently.
+
+### hooks.json
+
+It tells Claude Code which code files to read.
+Mod points to TypeScript files through modules.
+
+```json
+{
+  "modules": ["./register.tsx"]
+}
+```
+
+#### register.tsx
+
+This is the body of the Mod.
+When `register` is exported, Claude Code calls it once when reading the Mod. (It is called again during hot reload as well.)
+
+```typescript
+export const register: Register = (on, options) => {
+  const isAskGhWrite = options.askGhWrite !== false
+
+  // 아래 1~6의 on(...)이 여기 들어간다
+}
+```
+
+- `on`: A tool for registering a function for an event
+- `options`: The value the user entered in `plugin.json`-`userConfig`
+
+##### 1. session.start
+
+Register the function to be called when a session starts. The function to register receives `($, e, next)`.
+
+```typescript
+on('session.start', async ($, e, next) => {
+  await $.command.register({
+    name: 'command-log',
+    description: 'Claude가 실행한 Bash 명령을 패널로 본다. off 를 붙이면 닫는다',
+    argumentHint: '[off]',
+  })
+  return next(e)
+})
+```
+
+- `$`: Used to ask Claude Code to do something
+- `e`: Event information
+- `next`: A function that passes control to the next step
+
+> Mod code runs in an isolated place, so it cannot directly control Claude Code and makes requests through the API.
+> (`$.ui.status('PR 리뷰 요청')`, `$.process.run(['gh', 'api', ...])`)
+
+Register the slash command.
+
+- `name`: The command name
+- `description`: The description shown in the command list
+- `argumentHint`: A hint for the argument to append to the command; shown when you are about to enter it.
+
+> Here, we only register the command. What it does is registered separately in `command.run`.
+##### 2. command.run
+
+```typescript
+on('command.run', { command: 'command-log' }, async ($, e) => {
+  if (e.args.trim() === 'off') {
+    await $.ui.close({ id: PANE })
+    return { text: '명령 기록 패널을 닫았다.' }
+  }
+  await $.ui.open({ id: PANE, title: '명령 기록', focus: true })
+  return { text: '명령 기록 패널을 열었다. 닫으려면 /command-log off' }
+})
+```
+
+Register the function to be called when `/command-log` is entered.
+
+- `e.args`: Arguments added after the command
+- `{ text }`: The text to display as the command's result
+
+`$.ui.open` only opens the panel. The function registered in `$.ui.render` is responsible for drawing in the panel.
+
+##### 3. State
+
+`records` is the data for the list of executed commands.
+
+```typescript
+import { atom, read, update } from 'claude-code'
+
+const records = atom({ plugin: 'command-log', key: 'records' } as const, [])
+```
+
+```typescript
+export type CommandRecord = { command: string; isOk: boolean; ms: number }
+
+declare module 'claude-code' {
+  interface PluginState {
+    'command-log': { records: CommandRecord[] }
+  }
+}
+```
+
+Write the value's type in `types/index.d.ts`.
+
+##### 4. tool.call
+
+Intervene before and after execution.
+
+```typescript
+on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+
+  const startedAt = await $.clock.now()
+
+  const result = await next(e)
+  const ms = (await $.clock.now()) - startedAt
+
+  // 막혔거나, 실패한 경우
+  const isOk = result.deny === undefined && result.isError !== true
+
+  await update($, records,
+	list => [...list, { command: e.command, isOk, ms }].slice(-MAX_RECORDS))
+
+  $.ui.status(statusOf(await read($, records)))
+  return result
+}).catch(($, e, next) => next(e))
+```
+
+Whenever Claude runs Bash, record the elapsed time and whether it succeeded in `records`.
+
+- `{ tool: 'Bash' }`: Called only when executing the Bash tool
+- The result must always be returned because this is middleware.
+
+> `update` is a function provided by Claude.
+
+##### 5. ui.render
+
+Draw the panel.
+
+```tsx
+on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+  const { Box, Text } = $.ui.resolve(e)
+  const list = await read($, records)
+  return (
+    <Box flexDirection="column">
+      {list.length === 0 && <Text dimColor>아직 실행한 명령이 없다.</Text>}
+      {list.map((one, index) => (
+        <Text key={`record-${index}`} color={one.isOk ? undefined : 'error'} wrap="truncate-end">
+          {one.isOk ? '✓' : '✕'} {one.command} · {one.ms}ms
+        </Text>
+      ))}
+    </Box>
+  )
+})
+```
+
+- `{ component: 'Pane', requestId: PANE }`: Called only when drawing this panel
+- `$.ui.resolve(e)`: Receives the components to draw from Claude Code.
+	- It manages internally the differences in how each screen works, such as desktop, VS Code, and terminal.
+
+Draw the returned value in the panel as-is.
+
+=> Bash execution -> 4. update(records) -> records change -> 5. rendering called again -> read(records)
+
+##### 6. tool.check
+
+A specific feature can be explicitly controlled through a check.
+
+```typescript
+on('tool.check', { tool: 'Bash' }, async ($, e, next) => {
+  const command = (e.input as { command?: string }).command ?? ''
+  if (isAskGhWrite && isGhWrite(command)) {
+    return { decision: 'ask', reason: 'gh 로 GitHub 에 쓰는 명령이다' }
+  }
+  return next(e)
+  // 판정하다 실패하면 묻기
+}).catch(() => ({ decision: 'ask' }))
+```
+
+```typescript
+export const isGhWrite = (command: string): boolean => {
+  if (/\bgh\s+api\b/.test(command)) {
+    return /(-X|--method)[\s=]*(POST|PUT|PATCH|DELETE)\b/i.test(command) || /\s(-f|-F|--field|--raw-field|--input)\s/.test(command)
+  }
+  return /\bgh\s+(pr|issue)\s+(create|comment|edit|close|merge|review)\b/.test(command)
+}
+```
+
+- `e.input`: The arguments of the tool to be executed. For Bash, `{ command }`
+- `ask` asks for permission, and `reason` displays the reason.
+
+![A screen asking for permission for a GitHub write command](https://assets.youngsu5582.today/obsidian/2026/10/09/6314b4fee685485c06a249bfd391acb4.png)
+
+```
+Hook tool.check requires confirmation for this command:
+gh 로 GitHub 에 쓰는 명령이다
+```
+
+It is explicitly shown at the bottom as above.
+
+## Trying it out
+
+### Installing and using it
+
+Enter it in the prompt of a Claude Code session.
+
+```
+/plugin install command-log --marketplace youngsu5582/playground
+```
+
+> Naturally, if you implemented it yourself, change the `youngsu5582/playground` address.
+
+- Enter `y` for `Add marketplace?`, choose the installation scope, and it is enabled immediately for that session.
+- `.claude-plugin/marketplace.json` at the repository root makes this repository an installation list.
+
+```json
+{
+  "name": "youngsu5582-playground",
+  "description": "playground 에서 직접 돌려 보며 만든 Claude Code 플러그인",
+  "owner": { "name": "youngsu5582" },
+  "plugins": [{ "name": "command-log", "source": "./claude-mod-playground/command-log" }]
+}
+```
+
+- Open the panel with `/command-log`.
+- Change the setting (`askGhWrite`) with `/plugin configure command-log`.
+
+---
+
+## Conclusion
+
+Mod is not a completely new feature.
+It is similar to opening an interface so that users can intentionally control the existing tasks of Claude Code.
+
+'Register a specific action at the desired event (`tool.call`, `tool.check` ...) so that it runs.'
+This explanation is all there is to Mod.
+
+"It can be shown in a panel, additional content can be injected into the prompt, and content can be manipulated."
+Most things you want are possible.
+
+As I wrote above, Mod has meaning when it is tied to what Claude does.
+
+For example:
+
+- Add a prompt to fix Korean grammar and style when Korean is included
+- View additional information through a panel (token usage, context space, command history)
+- Block dangerous commands and suggest alternatives (`git push --force` -> `--force-with-lease`)
+- Mask API keys and passwords in tool results before passing them to Claude
+- Add a sound when asking for permission and show a toast message in the upper-right while work is in progress
+
+I think there will be possibilities like these.
+
+I have:
+
+1. Improved a POC by making a Mod that helps frontend developers deploy more easily and check the current status more easily: a 'development server deployment panel' and a Mod that lets them deploy with only mouse clicks.
+
+2. Improved a POC by making a Mod that shows the status of my PR (who has reviewed it and whether additional comments were added after I incorporated the review) and the list of PRs I need to review.
+
+3. Improved a POC by migrating rules enforced only through Hooks written as shell scripts and instructions in the existing Harness to Mod, increasing enforcement and visibility.
+
+4. Improved a POC by making a Mod that shows timers and specifications helpful for individual study in order, while limiting what the AI can implement or answer directly.
+
+I plan to try it more and leave a follow-up post if I find points where it can be useful after using it to some extent or enhancing Mod.
