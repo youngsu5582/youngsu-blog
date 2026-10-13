@@ -3,6 +3,7 @@ import { getAllArticles, getArticleBySlug, getUrlSlug } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
+import { ReferenceGrid } from "@/components/post/reference-grid";
 import { Breadcrumbs } from "@/components/common/breadcrumbs";
 import { generateArticleSchema, generateBreadcrumbSchema, renderJsonLd } from "@/lib/json-ld";
 import { siteConfig } from "@/config/site";
@@ -172,6 +173,10 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
             tags={article.tags}
             readingTime={article.metadata.readingTime}
           />
+
+          {article.references?.length ? (
+            <ReferenceGrid references={article.references ?? []} />
+          ) : null}
 
           {/* MDX Content */}
           <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
