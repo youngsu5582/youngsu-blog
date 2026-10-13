@@ -1,0 +1,488 @@
+---
+title: "CORS 에러인 줄 알았던 400 — Tomcat 이 앞에서 끊은 요청을 Valve 로 기록하기"
+date: "2026-10-13T00:00:00.000Z"
+description: CORS 에러처럼 보였던 400 응답의 원인이 Tomcat 앞단의 헤더 크기 제한임을 추적하고, 애플리케이션에 도달하지 못한 요청을 Engine Valve로 기록하는 방법을 정리한 글
+categories:
+  - Spring
+tags:
+  - spring-boot
+  - tomcat
+  - cors
+  - observability
+  - troubleshooting
+image: /assets/img/thumbnail/2026-10-13-cors-400-tomcat-valve-request-logging.png
+author: 이영수
+lang: ko
+draft: true
+toc: true
+comments: true
+---
+
+### 3줄 요약
+
+1. 브라우저에 CORS 에러로 보이던 실패의 정체는, 요청 헤더가 Tomcat 기본 상한을 넘어 앱에 닿기도 전에 끊긴 400 이었다.
+2. 이런 요청은 Spring 필터를 하나도 거치지 않아서 앱 로그·메트릭 어디에도 남지 않고, Tomcat 자체 로그도 INFO 및 생략하고 있었다.
+3. Tomcat 의 Engine 단계에 Valve 를 하나 붙여, 앱 밖에서 거절된 요청을 사유와 함께 한 줄로 남기도록 한다.
+
+일부 사용자가 화면에서 요청을 보낼 때 CORS 에러가 난다는 제보가 있었다.
+원인을 찾아 Tomcat 설정 한 줄을 바꾸는 PR 을 올렸지만, 질문이 하나 남았다.
+
+"이게 왜 우리 모니터링, 로그에는 하나도 안 보였지?"
+
+이번 글은 그 질문을 따라가며 Tomcat 의 구조를 보고, Tomcat 의 Valve 로 그 빈자리를 메운다.
+
+## 상황과 환경
+
+먼저 우리 인프라를 정리하면 아래와 같다.
+
+- Spring Boot 3.5 + 내장 Tomcat 10.1
+- AWS ECS 위에서 동작하고, 앞단은 ALB
+	- 중간에 nginx·Envoy 같은 게이트웨이는 X
+- API 는 다른 웹 서비스에서 호출
+	- 즉 브라우저 입장에서는 다른 출처(cross-origin) 요청
+- 모니터링(로그·메트릭·트레이싱)은 대부분 Spring 안쪽에 붙어 있다.
+	- 필터, 예외 핸들러, HTTP 요청 메트릭
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/12/52fa994e417e9d132bc8170c7cefebfc.png)
+
+## 브라우저 상황 추적
+
+### 증상: CORS 에러?
+
+브라우저 개발자 도구에는 CORS 에러만 찍혀 있었다. 이상한 점은 두 가지였다.
+
+- 모든 사용자가 아니라 일부 사용자만 실패했다.
+- 서버 CORS 설정은 바뀐 적이 없었다.
+
+> 여기서 말하는 CORS 에러는 CORS 설정이 잘못돼서 난 것이 아니다.
+> 응답에 CORS 헤더가 없으면 브라우저는 이유와 상관없이 응답을 막고,
+> 콘솔에 `blocked by CORS policy …` 를 남긴다. 400 응답에 그 헤더가 빠져 있었을 뿐이다.
+
+### 원인: 헤더가 지정 크기 초과
+
+실패한 요청을 그대로 재현해 보니 응답은 위에서 말한대로 CORS 문제가 아니라 400 Bad Request 였다.
+그리고 그 응답에는 `Access-Control-Allow-Origin` 헤더가 없었다.
+
+원인은 요청 헤더 크기였다.
+
+- 브라우저는 도메인·경로가 맞는 쿠키를 모든 요청에 자동으로 실어 보낸다.
+- 상위 도메인(`.example.com`)에 심어진 쿠키는 그 아래 모든 서브도메인으로 간다.
+- 쿠키가 많이 쌓인 사용자의 요청은 헤더 전체가 Tomcat 의 기본 상한을(8KB) 넘었다.
+
+Tomcat 은 헤더를 읽다가 상한을 넘으면 요청 내용을 보지도 않고 400 을 돌려준다.
+이때 요청은 Spring 필터까지 가지 못한다.
+
+CORS 헤더를 붙이는 것도 필터의 일이니 400 응답에는 CORS 헤더가 없다.
+브라우저는 다른 출처 응답에 CORS 헤더가 없으면 상태 코드를 JS 에 넘기지 않고 CORS 에러만 보여 준다.
+
+=> 실제 원인은 400 인데, 증상은 CORS 에러로 보였던 것이다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/13/56503179ca0b8a5b5d6564da18c90e63.png)
+
+"일부 사용자만" 실패한 것도 이걸로 설명된다. 쿠키가 많이 쌓인 사용자만 경계를 넘은것이다.
+
+### 수정
+
+당장의 수정은 상한을 올리는 것이었다.
+
+```yaml
+server:
+  max-http-request-header-size: 16KB # 기본 8KB
+```
+
+근본적으로는 쿠키가 필요 없는 요청에 쿠키가 실리지 않게 해야 한다.
+상위 도메인 쿠키의 범위를 좁히거나,
+쿠키가 필요 없는 API 호출에는 `fetch` 의 `credentials` 를 기본값(`same-origin`)으로 두는 방식이다.
+
+>  이건 이번 내용에서 중요한 부분이 아니라 생략한다.
+### 지난번 multipart 문제와 이어지는 지점
+
+이 문제를 보면서 얼마 전 겪은 일이 떠올랐다.
+[Spring Boot 3.5 로 올렸더니 multipart 요청이 터진 이야기](https://www.youngsu5582.today/posts/spring-boot-3-5-multipart-request-broken-by-tomcat-part-limit) 에서 정리한,
+Tomcat 의 multipart part 개수 제한에 걸렸던 일이다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/12/6d9e76b4a8d9cb8c5345ab9478155dec.png)
+
+|             | multipart part 제한                                    | 요청 헤더 크기 제한                             |
+| ----------- | ---------------------------------------------------- | --------------------------------------- |
+| 걸린 한도       | Tomcat `maxPartCount`                                | Tomcat `maxHttpRequestHeaderSize`       |
+| 사용자에게 보인 것  | 500 응답                                               | 브라우저 콘솔의 CORS 에러 (실제로는 CORS 헤더가 없는 400) |
+| 서버 로그에 남은 것 | `MaxUploadSizeExceededException` (파일 크기 문제처럼 보이는 이름) | 거의 없음 (Tomcat INFO 가 가끔)                |
+| 앱이 알았나      | 예외로는 들어왔다 (이름이 엉뚱했을 뿐)                               | **아예 몰랐다**                              |
+
+둘 다 Tomcat 의 기본 한도에 걸렸고, 둘 다 증상이 엉뚱한 곳에서 보였다.
+
+차이도 있다.
+multipart 제한은 앱이 `getParts()` 부르는 순간 터지기 때문에, 이름이 엉뚱하긴 해도 예외로 앱에 들어왔다.
+
+반면 헤더 크기 제한은 앱이 요청을 받기도 전에 끊겨서 흔적이 아예 없었다.
+
+지난 글 마무리에 `"업그레이드만큼이나 빠르게 감지할 수 있는 환경이 중요하다"`고 썼다.
+이번엔 그 감지 자체가 안 되는 자리를 만난 셈이다.
+
+## Tomcat 로그
+
+앱이 못 봤다면 Tomcat 은 뭔가 남겼을 것이다. 실제로 Tomcat 은 이런 로그를 남긴다.
+
+```
+INFO  o.a.coyote.http11.Http11Processor - Error parsing HTTP request header
+ Note: further occurrences of HTTP request parsing errors will be logged at DEBUG level.
+java.lang.IllegalArgumentException: Request header is too large
+```
+
+두 번째 줄이 문제였다. 번역하자면, "이후 같은 오류는 DEBUG 로 남긴다."
+
+Tomcat 은 이런 오류를 "처음 한 번은 INFO, 이후 24시간은 DEBUG" 로 남긴다.
+운영 로그 레벨은 보통 INFO 이니, 두 번째부터는 사실상 사라진다.
+
+> 얼마나 빠지는지 궁금해서 ALB 접근 로그와 대조해 봤다.
+> 같은 시간 구간에서 세어 보니 Tomcat 로그에는 실제 거절의 약 1/3 만 남아 있었던 것으로 보인다!!!
+> (24시간을 서버 전체가 아니라 요청을 처리하는 객체마다 따로 세서, 전부 빠지지는 않고 일부가 남는다.)
+> `+` 그리고 한 사용자는 며칠 동안 같은 요청을 계속 실패하고 있었다..
+
+정리하면 상황은 아래와 같다.
+
+- 앱 모니터링: 요청이 앱에 오지 않았으니 아무것도 없다.
+- Tomcat 로그: 일부만, 그것도 어느 요청인지(경로 등) 없이 남는다.
+- ALB 로그: 전부 있지만 400 이라는 것만 알고 사유는 알 수 없다.
+
+=> Tomcat 이 혼자 결정하고 끝낸 일을, 우리 쪽에서 매번 빠짐없이 볼 수 있는 자리가 필요했다.
+
+## 사전 지식
+
+우선, 요청이 Tomcat 안에서 어떻게 처리되는지 짚고 가자.
+
+### Tomcat 의 구조
+
+Tomcat 은 크게 두 부분으로 나뉜다.
+
+- Connector (Coyote): 소켓에서 바이트를 읽어 HTTP 요청으로 해석.
+	- 요청 줄과 헤더를 읽는 `Http11Processor` 가 여기 있다.
+- Container (Catalina): 해석된 요청을 앱의 어느 서블릿이 처리할지 찾아 넘긴다.
+	- `Engine → Host → Context → Wrapper` 순서로 내려간다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/13/1020f25c0a75248e5b909043155286f1.png)
+
+여기서 `Context` 는 하나의 웹 애플리케이션, 즉 우리 Spring Boot 앱이다.
+우리가 쓰는 서블릿 Filter(CORS 필터, 인증 필터, HTTP 메트릭 필터 등)는 전부 이 `Context` 안에 있다.
+
+그럼 헤더가 상한을 넘으면 어떻게 될까. Tomcat 소스(10.1)를 따라가보았다.
+
+```
+헤더 8KB 초과
+  → Http11InputBuffer: IllegalArgumentException("Request header is too large")
+  → Http11Processor: 응답 상태를 400 으로 정하고 에러 표시
+  → CoyoteAdapter: 에러가 표시된 요청은 URI 를 비우고 매핑
+       → Host 까지만 찾고, Context(= 앱)에는 매핑되지 않음
+  → Host 의 ErrorReportValve 가 Tomcat 기본 에러 페이지를 씀
+```
+
+깨진 데이터를 앱에 넘기지 않으려고 Tomcat 이 일부러 URI 를 비운다.
+그 결과 요청은 `Host` 까지만 가고, `Context` 안의 필터는 하나도 실행되지 않는다.
+
+우리 모니터링이 이 요청을 못 본 이유가 이것이다.
+모니터링이 전부 `Context`(애플리케이션) 안에 있었기 때문이다.
+
+### Tomcat 은 파싱 오류를 어떻게 남기나
+
+그럼 Tomcat 자체 로그는 왜 대부분을 생략했을까.
+헤더 파싱이 실패했을 때 `Http11Processor` 가 하는 일은 아래와 같다.
+
+```java
+// Http11Processor.java
+} catch (Throwable t) {
+    ExceptionUtils.handleThrowable(t);
+    UserDataHelper.Mode logMode = userDataHelper.getNextMode();
+    if (logMode != null) {
+        String message = sm.getString("http11processor.header.parse"); // "Error parsing HTTP request header"
+        switch (logMode) {
+            case INFO_THEN_DEBUG:
+                message += sm.getString("http11processor.fallToDebug"); // "Note: further occurrences ... DEBUG level."
+                //$FALL-THROUGH$
+            case INFO:
+                log.info(message, t);
+                break;
+            case DEBUG:
+                log.debug(message, t);
+        }
+    }
+    // 400 - Bad Request
+    response.setStatus(400);
+    setErrorState(ErrorState.CLOSE_CLEAN, t);
+}
+```
+
+로그를 어느 레벨로 남길지는 `UserDataHelper` 가 정한다.
+사용자가 보낸 잘못된 데이터를 로그에 얼마나 남길지 조절하는 장치다.
+
+```java
+// UserDataHelper.java (일부 생략)
+public UserDataHelper(Log log) {
+    this.log = log;
+
+    Config tempConfig;
+    String configString = System.getProperty("org.apache.juli.logging.UserDataHelper.CONFIG");
+    if (configString == null) {
+        tempConfig = Config.INFO_THEN_DEBUG; // 기본값
+    } else {
+        // ...
+    }
+
+    // Default suppression time of 1 day.
+    suppressionTime = Integer.getInteger("org.apache.juli.logging.UserDataHelper.SUPPRESSION_TIME", 60 * 60 * 24).intValue() *
+                    1000L;
+    // ...
+}
+
+private boolean logAtInfo() {
+    // ...
+    long now = System.currentTimeMillis();
+
+    if (lastInfoTime + suppressionTime > now) {
+        return false; // 마지막 INFO 로부터 24시간이 안 지났으면 DEBUG 로
+    }
+
+    lastInfoTime = now;
+    return true; // 처음이거나 24시간이 지났으면 INFO
+}
+```
+
+기본값은 `INFO_THEN_DEBUG`, 억제 시간은 24시간이다.
+`getNextMode()` 는 `logAtInfo()` 가 `true` 면 INFO, 아니면 DEBUG 를 돌려준다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/13/8f561030a155fc118ef2eacd0a5cbfd1.png)
+
+이 동작은 시스템 프로퍼티로 바꿀 수 있다.
+`-Dorg.apache.juli.logging.UserDataHelper.CONFIG=INFO_ALL` 을 주면 매번 INFO 로 남는다
+(`SUPPRESSION_TIME=0` 도 같은 효과다).
+
+다만, 매번 남겨도 이 로그에는 어느 요청인지(메서드·경로)가 없다. 사유와 스택트레이스뿐이다.
+
+그래서 다른 자리가 필요했다.
+
+### Valve
+
+앞의 Tomcat 구조 그림에서 `Engine` 과 `Host` 아래에
+붙어 있던 상자(`RejectedRequestValve`, `ErrorReportValve`)가 Valve 이고, 이번 글의 주인공이다.
+
+`RejectedRequestValve` 는 뒤에서 직접 만들 Valve 다.
+그림에는 이번 이야기와 관련된 것만 그렸고, 실제로는 각 컨테이너에 Valve 가 여러 개 붙을 수 있다.
+
+Tomcat 의 각 컨테이너(Engine·Host·Context·Wrapper)는 파이프라인(Pipeline) 을 하나씩 가진다.
+파이프라인은 Valve 들을 순서대로 엮은 체인이다.
+
+```java
+public void invoke(Request request, Response response) {
+    // 앞에서 할 일
+    getNext().invoke(request, response); // 다음 Valve 로 넘긴다
+    // 뒤에서 할 일
+}
+```
+
+> 서블릿 Filter 의 `chain.doFilter()` 와 거의 같은 모양이다.
+
+각 파이프라인의 맨 끝에는 다음 컨테이너로 요청을 넘기는
+기본 Valve(`StandardEngineValve`, `StandardHostValve` 등)가 있다.
+
+생소해 보이지만 이미 쓰고 있을 가능성이 높다.
+Tomcat 이 기본으로 제공하는 Valve 들이 있고, Spring Boot 설정 몇 개는 사실 이 Valve 들을 켜는 스위치다.
+
+| Valve              | 하는 일                               | Spring Boot 에서 켜는 방법                     |
+| ------------------ | ---------------------------------- | ---------------------------------------- |
+| `AccessLogValve`   | 접근 로그                              | `server.tomcat.accesslog.enabled`        |
+| `RemoteIpValve`    | `X-Forwarded-For` 로 실제 클라이언트 IP 복원 | `server.forward-headers-strategy=native` |
+| `ErrorReportValve` | Tomcat 기본 에러 페이지                   | Spring Boot 가 자동 설정                      |
+
+### Valve 의 특징
+
+|           | Filter                                 | Valve                                                       |
+| --------- | -------------------------------------- | ----------------------------------------------------------- |
+| 표준        | 서블릿 스펙 (어느 서블릿 컨테이너에서나 동작)             | Tomcat 전용                                                   |
+| 위치        | `Context` 안 (앱)                        | Engine·Host·Context 의 파이프라인                                 |
+| 볼 수 있는 요청 | 앱에 매핑된 요청만                             | Engine·Host 에 붙이면 앱에 못 들어간 요청까지                             |
+| 등록        | `@Component`, `FilterRegistrationBean` | `server.xml`, Spring Boot 는 `TomcatServletWebServerFactory` |
+
+평소 요청 처리라면 Filter 가 맞다. 표준이고, 웹 서버를 바꿔도 그대로 쓸 수 있다.
+
+Valve 를 꺼내야 하는 건 Filter 가 닿지 않는 곳을 다룰 때다.
+이번처럼 앱(`Context`)에 들어가기 전에 끝나는 요청이 그렇다.
+`Engine` 에 붙인 Valve 는 `Host` 까지만 가고 끝난 요청도 지나가므로, 그 결과를 볼 수 있다.
+
+#### ⭐ 참고 : 왜 Tomcat 구현체를 사용하게 되었는가
+
+앞단에 게이트웨이를 두는 구성이라면 같은 일을 게이트웨이가 한다.
+
+- nginx 는 헤더 초과를 내부 상태 코드 494 로 구분해 `error_page 494` 로 따로 받을 수 있게 하고
+- Envoy 는 표준 상태 코드 431(Request Header Fields Too Large)로 응답한다
+
+우리 구성에는 그 자리가 없어서 Tomcat 안에서 직접 만든 것이다.
+
+## 예시 코드
+
+### Valve
+
+```java
+/**
+ * 앱(Context)에 닿기 전에 Tomcat 이 예외를 던지며 거절한 요청을 남긴다.
+ * 정상 사용자를 막는 헤더 초과만 ERROR 로 알리고, 나머지 형식 위반은 WARN 으로만 남긴다.
+ */
+@Slf4j
+public class RejectedRequestValve extends ValveBase {
+
+    /** ALB 가 요청마다 붙이는 식별자. ALB 접근 로그의 trace_id 와 같은 값이다. */
+    static final String ALB_TRACE_HEADER = "X-Amzn-Trace-Id";
+
+    /** 요청 줄과 헤더를 합친 크기가 상한을 넘을 때 Tomcat 이 던지는 메시지. 쿠키 누적·긴 URL 로 정상 사용자도 걸린다. */
+    static final String HEADER_TOO_LARGE = "Request header is too large";
+
+    public RejectedRequestValve() {
+        // false 면 Engine 을 지나는 모든 요청의 async 지원이 꺼진다
+        super(true);
+    }
+
+    @Override
+    public void invoke(Request request, Response response) throws IOException, ServletException {
+        getNext().invoke(request, response);
+        Throwable cause = (Throwable) request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
+        if (request.getContext() != null || cause == null) {
+            return; // 앱이 처리한 요청은 기존 로그·메트릭이 본다
+        }
+        String reason = truncate(cause.getMessage(), 200);
+        if (HEADER_TOO_LARGE.equals(cause.getMessage())) {
+            log.error("앱 도달 전 거절 status={} method={} uri={} trace={} reason={}",
+                    response.getStatus(), request.getMethod(), request.getRequestURI(),
+                    request.getHeader(ALB_TRACE_HEADER), reason, cause);
+            return;
+        }
+        // 헤더 초과가 아닌 형식 위반(잘못된 문자·헤더 줄 등)은
+        // 정상 브라우저가 거의 보내지 않고 대부분 스캐너라, 알림 없이 WARN 으로만 남긴다
+        var uri = request.getRequestURI();
+        var trace = request.getHeader(ALB_TRACE_HEADER);
+        log.warn("앱 도달 전 거절 status={} method={} uri={} trace={} reason={}",
+                response.getStatus(), request.getMethod(), uri, trace, reason);
+    }
+
+    private static String truncate(String text, int max) {
+        return text == null || text.length() <= max ? text : text.substring(0, max) + "...";
+    }
+}
+```
+
+조건 세 개가 핵심이다.
+
+- `request.getContext() == null`: 앱에 매핑되지 않고 끝난 요청.
+	- 앱이 직접 낸 400 이나 404 는 `Context` 가 있으므로 여기 걸리지 않는다.
+	- Spring Boot 는 루트 Context 하나가 모든 경로를 받으므로, 정상 요청이면 항상 `Context` 가 존재
+- **`cause != null`**: Tomcat 이 예외를 던지며 거절한 경우만 남긴다.
+	- 거절 사유 예외는 `jakarta.servlet.error.exception` 요청 속성(`RequestDispatcher.ERROR_EXCEPTION`)으로 꺼낼 수 있다.
+- 헤더 초과인지: 사유가 `Request header is too large` 면 ERROR 와 예외로 알린다.
+	- 나머지(잘못된 문자·헤더 줄 형식 위반 등)는 WARN 한 줄로만 남긴다. 주석 참고
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/13/051b7100cb4eecce17d8a7a2259381fd.png)
+
+두 번째 조건을 넣은 이유가 있다.
+처음에는 "앱에 못 들어간 4xx" 를 전부 남겼는데, 재현해 보니 예외 없이 거절되는 경우도 있었다.
+
+```
+uri=/api/a%2Fb            → 400, 예외 없음 (인코딩된 슬래시)
+uri=/api/../../etc        → 400, 예외 없음 (상위 경로)
+uri=/api/%2e%2e/%2e%2e/x  → 400, 예외 없음
+```
+
+`../../etc` 같은 요청은 경로 탐색 공격을 시험하는 스캐너가 흔히 보내는 모양이다.
+이걸 다 남기면 로그 공해가 될 수 있어서, "Tomcat 이 예외를 던진 거절" 로 범위를 좁혔다.
+
+### 등록
+
+```java
+@Configuration
+public class TomcatConfig {
+
+    /** 앱에 닿기 전에 거절된 요청은 Context 를 지나지 않으므로 Engine 에 붙인다. */
+    @Bean
+    public WebServerFactoryCustomizer<TomcatServletWebServerFactory> rejectedRequestValveCustomizer() {
+        return factory -> factory.addEngineValves(new RejectedRequestValve());
+    }
+}
+```
+
+`Context` 에 붙이면 우리가 보고 싶은 요청은 거기까지 오지 않는다.
+(`addContextValves` 가 아니라 `addEngineValves` 인 이유)
+
+### 테스트
+
+헤더 파싱 실패는 MockMvc 로는 재현되지 않는다. MockMvc 는 Tomcat 을 거치지 않기 때문이다.
+
+그래서 Spring Boot 가 앱을 띄울 때 쓰는 것과 같은 팩토리로 실제 Tomcat 을 띄우고,
+소켓으로 원시 HTTP 요청을 보냈다.
+
+이렇게 하면 Docker 나 전체 앱 컨텍스트 없이도 등록과 동작을 한 번에 확인할 수 있다.
+
+```java
+@BeforeEach
+void setUp() {
+    var factory = new TomcatServletWebServerFactory(0);
+    new TomcatConfig().rejectedRequestValveCustomizer().customize(factory);
+    server = factory.getWebServer(ctx -> ctx.addServlet("app", new HttpServlet() {
+        @Override
+        protected void service(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+            resp.getWriter().write("ok");
+        }
+    }).addMapping("/*"));
+    server.start();
+}
+
+@Test
+@DisplayName("헤더가 상한(기본 8KB)을 넘으면 ERROR 한 건에 사유를 남긴다")
+void headerTooLarge() throws IOException {
+    String request = "POST /api/sample HTTP/1.1\r\n"
+            + "Host: localhost\r\n"
+            + "Cookie: k=" + "x".repeat(9000) + "\r\n"
+            + "Content-Length: 0\r\nConnection: close\r\n\r\n";
+
+    assertThat(send(request)).contains(" 400");
+    assertThat(logs.list).singleElement().satisfies(event -> {
+        assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+        assertThat(event.getFormattedMessage()).contains("reason=Request header is too large");
+    });
+}
+```
+
+### 결과
+
+요청을 보내 보면 아래와 같이 나온다.
+
+```
+[ERROR] RejectedRequestValve - 앱 도달 전 거절 status=400 method=POST uri=/api/sample trace=Root=1-test-0003 reason=Request header is too large
+[WARN ] RejectedRequestValve - 앱 도달 전 거절 status=400 method=GET uri=null trace=null reason=Invalid character found in the request target [/api/a{b} ]. The valid characters are defined in RFC 7230 and RFC 3986
+```
+
+같은 두 요청에 대해 Tomcat 자체 로그는 첫 번째만 INFO 로 남기고 두 번째는 생략했다.
+이제는 거절될 때마다 사유와 경로가 한 줄로 남고, 정상 사용자를 막는 헤더 초과만 알림이 간다.
+
+> 두 번째 줄이 `uri=null` 인 건 요청 줄 자체가 깨져서, 경로를 얻기 전에 거절됐기 때문이다.
+> 쿠키로 헤더가 커진 경우는 요청 줄을 다 읽은 뒤에 터지므로 경로가 남는다.
+
+## 마무리
+
+이번 일로 남은 것은 세 가지다.
+
+첫째, CORS 에러는 증상일 뿐 원인이 아닐 수 있다.
+다른 출처 요청이 앞단에서 거절되면, 응답에는 CORS 헤더가 없어서 브라우저는 CORS 에러로 보여 준다.
+
+> 처음에는 애플리케이션 로그도 없어서, 특정 사용자만 요청 자체가 날라가는 현상으로 파악했다.
+
+둘째, 앱 중심 모니터링에는 사각지대가 있다.
+로그·메트릭·트레이싱이 전부 Spring 안쪽에 있으면, Tomcat 이 요청을 읽다가 처리한 일은 보이지 않는다.
+게이트웨이가 있는 구성이라면 게이트웨이가 그 자리를 보지만, ALB 와 같이 앱으로 바로 들어가는 구성이라면 Tomcat 안에서 직접 봐야 한다.
+
+셋째, Tomcat 은 앱보다 먼저 요청을 거르지만 우리는 그 단계를 잘 보지 않는다.
+혹시나 증상이 설명되지 않으면 앱 코드보다 앞 단계, Tomcat 의 설정과 한도를 확인해 보자.
+
+## 참고
+
+- [Apache Tomcat 10.1 - The Valve Component](https://tomcat.apache.org/tomcat-10.1-doc/config/valve.html)
+- [Baeldung - Max-Http-Request-Header-Size in Spring Boot](https://www.baeldung.com/spring-boot-max-http-header-size)
+- [nginx - introduce 494 code "Request Header Too Large"](https://nginx.googlesource.com/nginx/+/26cf2c96ea50f86c273411a2a4a1514f63800884%5E%21/)
+- [Envoy - HTTP connection manager (max_request_headers_kb)](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto)
+- Tomcat 10.1 소스: `Http11Processor`, `CoyoteAdapter`, `UserDataHelper`
