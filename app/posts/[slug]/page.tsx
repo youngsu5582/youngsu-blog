@@ -12,6 +12,7 @@ import { PostHeader } from "@/components/post/post-header";
 import { TableOfContents } from "@/components/post/toc";
 import { MobileToc } from "@/components/post/mobile-toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
+import { ReferenceGrid } from "@/components/post/reference-grid";
 import type { Metadata } from "next";
 import { GiscusComments } from "@/components/common/giscus-comments";
 import { ReadingProgress } from "@/components/post/reading-progress";
@@ -267,6 +268,8 @@ export default async function PostPage({ params }: PostPageProps) {
               currentSlug={slug}
             />
           )}
+
+          {post.references?.length ? <ReferenceGrid references={post.references ?? []} /> : null}
 
           {/* MDX Content */}
           <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-p:leading-relaxed prose-pre:max-w-full prose-pre:overflow-x-auto">

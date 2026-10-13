@@ -4,6 +4,14 @@ import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import remarkBreaks from "remark-breaks";
 
+const reference = s.object({
+  title: s.string(),
+  url: s.string(),
+  type: s.enum(["video", "article", "docs"]).optional(),
+  role: s.enum(["primary", "supporting", "verification"]).optional(),
+  description: s.string().optional(),
+});
+
 const posts = defineCollection({
   name: "Post",
   pattern: "posts/**/*.mdx",
@@ -25,6 +33,7 @@ const posts = defineCollection({
     seriesDescription: s.string().optional(),
     seriesStatus: s.enum(["ongoing", "completed"]).optional(),
     related: s.array(s.string()).default([]),
+    references: s.array(reference).default([]),
     slug: s.path(),
     body: s.mdx(),
     // RSS content:encoded 용 정적 HTML — body(컴파일된 MDX JS)는 피드에 넣을 수 없음
@@ -47,6 +56,7 @@ const articles = defineCollection({
     moc: s.string().optional(),
     status: s.enum(["evergreen", "seed", "draft"]).default("seed"),
     subTopic: s.string().optional(),
+    references: s.array(reference).default([]),
     slug: s.path(),
     body: s.mdx(),
     html: s.markdown(),

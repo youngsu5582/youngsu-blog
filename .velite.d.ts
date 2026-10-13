@@ -1,6 +1,14 @@
 // NOTE: 이 파일은 velite.config.ts 스키마와 수동으로 동기화해야 한다.
 // (#site/content 경로가 .velite/index.d.ts 대신 이 선언으로 resolve됨)
 declare module "#site/content" {
+  export interface Reference {
+    title: string;
+    url: string;
+    type?: "video" | "article" | "docs";
+    role?: "primary" | "supporting" | "verification";
+    description?: string;
+  }
+
   export interface Post {
     title: string;
     date: string;
@@ -20,6 +28,7 @@ declare module "#site/content" {
     seriesDescription?: string;
     seriesStatus?: "ongoing" | "completed";
     related: string[];
+    references?: Reference[];
     slug: string;
     body: string;
     /** RSS content:encoded 용 렌더링된 HTML (s.markdown()) */
@@ -41,6 +50,7 @@ declare module "#site/content" {
     moc?: string;
     status: "evergreen" | "seed" | "draft";
     subTopic?: string;
+    references?: Reference[];
     slug: string;
     body: string;
     /** RSS content:encoded 용 렌더링된 HTML (s.markdown()) */
