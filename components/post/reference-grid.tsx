@@ -1,15 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import {
-  BookOpen,
-  CheckCircle2,
-  ExternalLink,
-  FileText,
-  Play,
-  ShieldCheck,
-  Video,
-} from "lucide-react";
+import { BookOpen, CheckCircle2, ExternalLink, FileText, ShieldCheck, Video } from "lucide-react";
 import {
   getReferenceLayout,
   getYouTubeEmbedUrl,
@@ -52,7 +43,6 @@ function ReferenceCard({
   reference: ReturnType<typeof getReferenceLayout>["secondary"][number];
   featured?: boolean;
 }) {
-  const [playing, setPlaying] = useState(false);
   const embedUrl = reference.type === "video" ? getYouTubeEmbedUrl(reference.url) : null;
   const isEmbeddableVideo = Boolean(embedUrl);
 
@@ -61,35 +51,15 @@ function ReferenceCard({
       className={`overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm transition-shadow hover:shadow-md ${featured ? "md:col-span-2" : ""}`}
     >
       {isEmbeddableVideo ? (
-        playing ? (
-          <iframe
-            className="aspect-video w-full border-0 bg-black"
-            src={embedUrl ?? undefined}
-            title={reference.title}
-            loading="lazy"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allowFullScreen
-          />
-        ) : (
-          <button
-            type="button"
-            className="group relative flex aspect-video w-full items-center justify-center overflow-hidden bg-gradient-to-br from-sky-950 via-blue-800 to-cyan-700 text-left text-white"
-            onClick={() => setPlaying(true)}
-            aria-label={`${reference.title} 영상 재생`}
-          >
-            <span className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(125,211,252,.35),transparent_35%),radial-gradient(circle_at_85%_85%,rgba(45,212,191,.3),transparent_32%)]" />
-            <span className="relative flex flex-col items-center gap-3">
-              <span className="grid h-14 w-14 place-items-center rounded-full bg-white text-blue-700 shadow-lg transition-transform group-hover:scale-110">
-                <Play className="ml-0.5 h-6 w-6 fill-current" aria-hidden="true" />
-              </span>
-              <span className="text-sm font-semibold">클릭하여 영상 재생</span>
-            </span>
-            <span className="absolute right-4 top-4 rounded-full bg-black/25 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
-              YouTube
-            </span>
-          </button>
-        )
+        <iframe
+          className="aspect-video w-full border-0 bg-black"
+          src={embedUrl ?? undefined}
+          title={reference.title}
+          loading="lazy"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allowFullScreen
+        />
       ) : null}
 
       <div className="p-4 sm:p-5">
