@@ -81,6 +81,14 @@ export function getYouTubeVideoId(value: string) {
 }
 
 export function getYouTubeEmbedUrl(value: string) {
+  const url = parseHttpUrl(value);
+  if (!url || !isYouTubeHostname(normalizedHostname(url))) return null;
+
+  const playlistId = url.searchParams.get("list");
+  if (playlistId && /^[A-Za-z0-9_-]{6,}$/.test(playlistId)) {
+    return `https://www.youtube-nocookie.com/embed/videoseries?list=${playlistId}`;
+  }
+
   const videoId = getYouTubeVideoId(value);
   return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}?rel=0` : null;
 }

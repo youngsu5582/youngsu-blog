@@ -69,6 +69,9 @@ describe("reference layout helpers", () => {
     expect(getYouTubeEmbedUrl("https://www.youtube.com/live/live789")).toBe(
       "https://www.youtube-nocookie.com/embed/live789?rel=0",
     );
+    expect(getYouTubeEmbedUrl("https://www.youtube.com/watch?v=abc123&list=playlist12")).toBe(
+      "https://www.youtube-nocookie.com/embed/videoseries?list=playlist12",
+    );
     expect(getYouTubeEmbedUrl("https://example.com/not-youtube")).toBeNull();
   });
 });
