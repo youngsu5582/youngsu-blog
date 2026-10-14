@@ -79,6 +79,16 @@ When a cross-origin response lacks CORS headers, the browser shows only a CORS e
 
 => The actual cause was a 400, but the symptom looked like a CORS error.
 
+I sent the same request again to a test Tomcat endpoint. In the screenshots below, the Console shows both the CORS policy block and the `400` failure, while the Network tab shows that the actual HTTP status for the same request was `400 Bad Request`.
+
+![Browser Console showing a CORS policy block and a 400 failure](https://assets.youngsu5582.today/blog/2026/10/14/tomcat-cors-console-redacted.png)
+
+*The Console shows the CORS policy message together with the network request's `400` failure.*
+
+![Network tab showing the 400 response and response headers](https://assets.youngsu5582.today/blog/2026/10/14/tomcat-cors-network-400-redacted.png)
+
+*The actual response status in the Network tab is `400 Bad Request`, and there is no `Access-Control-Allow-Origin` header.*
+
 ![image](https://assets.youngsu5582.today/obsidian/2026/10/13/56503179ca0b8a5b5d6564da18c90e63.png)
 
 This also explains why only some users failed: only users with enough accumulated cookies crossed the boundary.
