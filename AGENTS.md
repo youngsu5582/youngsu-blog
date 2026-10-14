@@ -11,12 +11,13 @@ Public site: `https://youngsu5582.today`
 ## Read first
 
 1. `README.md`
-2. `CONTEXT.md`
-3. `docs/AI_SYNC.md`
-4. `velite.config.ts`
-5. `config/site.ts`
-6. `config/navigation.ts`
-7. Relevant content/schema/helper files for the task
+2. `docs/development.md`
+3. `CONTEXT.md`
+4. `docs/AI_SYNC.md`
+5. `velite.config.ts`
+6. `config/site.ts`
+7. `config/navigation.ts`
+8. Relevant content/schema/helper files for the task
 
 ## Safety rules
 
@@ -36,7 +37,7 @@ pnpm test
 pnpm build
 ```
 
-Content validation and generation commands are documented in `README.md`.
+Content validation and generation commands are documented in `docs/development.md`.
 
 Before completion:
 

@@ -7,7 +7,7 @@ Use this when blog work is split between personal Hermes and another AI/coding a
 ```text
 You are helping with my personal Next.js technical blog repository.
 
-Read README.md, AGENTS.md, CONTEXT.md, and docs/AI_SYNC.md first.
+Read README.md, docs/development.md, AGENTS.md, CONTEXT.md, and docs/AI_SYNC.md first.
 
 Boundaries:
 - Do not ask for or print .env.local values or API keys.

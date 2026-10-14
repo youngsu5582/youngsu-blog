@@ -19,13 +19,14 @@ Personal technical blog and content platform.
 ## Read first
 
 1. `README.md`
-2. `AGENTS.md`
-3. `CONTEXT.md`
-4. `docs/AI_SYNC.md`
-5. `velite.config.ts`
-6. `config/site.ts`
-7. `config/navigation.ts`
-8. relevant `lib/*`, `components/*`, or `content/*` files for the task
+2. `docs/development.md`
+3. `AGENTS.md`
+4. `CONTEXT.md`
+5. `docs/AI_SYNC.md`
+6. `velite.config.ts`
+7. `config/site.ts`
+8. `config/navigation.ts`
+9. relevant `lib/*`, `components/*`, or `content/*` files for the task
 
 ## Security / privacy boundary
 
