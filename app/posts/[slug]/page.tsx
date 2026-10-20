@@ -16,6 +16,7 @@ import { ReferenceGrid } from "@/components/post/reference-grid";
 import type { Metadata } from "next";
 import { GiscusComments } from "@/components/common/giscus-comments";
 import { ReadingProgress } from "@/components/post/reading-progress";
+import { ArticleEndTracker } from "@/components/post/article-end-tracker";
 import { ReadingPosition } from "@/components/post/reading-position";
 import { ShareButtons } from "@/components/post/share-buttons";
 import { PostNavigation } from "@/components/post/post-navigation";
@@ -251,6 +252,7 @@ export default async function PostPage({ params }: PostPageProps) {
           {alternatePost && (
             <TranslationNotice
               currentLang={post.lang as "ko" | "en"}
+              currentSlug={slug}
               alternate={{
                 title: alternatePost.title,
                 slug: getUrlSlug(alternatePost.slug),
@@ -275,6 +277,7 @@ export default async function PostPage({ params }: PostPageProps) {
           <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-p:leading-relaxed prose-pre:max-w-full prose-pre:overflow-x-auto">
             <MDXContent code={post.body} />
           </div>
+          <ArticleEndTracker slug={slug} contentType="post" language={post.lang} />
 
           {/* Post End Mark */}
           <div className="flex justify-center py-8">
@@ -284,11 +287,12 @@ export default async function PostPage({ params }: PostPageProps) {
           <ShareButtons title={post.title} slug={slug} />
 
           <PostNavigation
+            currentSlug={slug}
             prev={prevPost ? { title: prevPost.title, slug: getUrlSlug(prevPost.slug) } : undefined}
             next={nextPost ? { title: nextPost.title, slug: getUrlSlug(nextPost.slug) } : undefined}
           />
 
-          <RelatedPosts posts={related} />
+          <RelatedPosts posts={related} currentSlug={slug} />
 
           {post.comments && <GiscusComments />}
         </article>

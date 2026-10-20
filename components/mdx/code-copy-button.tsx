@@ -2,17 +2,22 @@
 
 import * as React from "react";
 import { Check, Copy } from "lucide-react";
+import { trackCodeCopy } from "@/lib/analytics";
 
 interface CodeCopyButtonProps {
   code: string;
+  language?: string;
 }
 
-export function CodeCopyButton({ code }: CodeCopyButtonProps) {
+export function CodeCopyButton({ code, language }: CodeCopyButtonProps) {
   const [copied, setCopied] = React.useState(false);
 
-  const copyToClipboard = async () => {
+  const copyToClipboard = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    const codeLanguage = language ?? event.currentTarget.parentElement?.querySelector<HTMLElement>("[data-language]")?.dataset.language;
     try {
       await navigator.clipboard.writeText(code);
+      const match = window.location.pathname.match(/^\/(posts|articles)\/([^/]+)\/?$/);
+      if (match) trackCodeCopy(decodeURIComponent(match[2]), match[1] === "posts" ? "post" : "article", codeLanguage);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {

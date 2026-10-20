@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Fuse from "fuse.js";
 import {
@@ -11,7 +11,7 @@ import {
 import { searchConfig } from "@/config/search";
 import type { SearchItem } from "@/lib/search";
 import { Search, Hash, Folder, Clock, X } from "lucide-react";
-import { trackSearch } from "@/lib/analytics";
+import { trackSearchResults, trackSearchResultSelect } from "@/lib/analytics";
 import { getAllTags } from "@/lib/content";
 
 interface SearchDialogProps {
@@ -24,7 +24,7 @@ function getCurrentLang(): "ko" | "en" {
   if (typeof window === "undefined") return "ko";
   const params = new URLSearchParams(window.location.search);
   if (params.get("lang") === "en") return "en";
-  return (localStorage.getItem("locale") as "ko" | "en") || "ko";
+  return localStorage.getItem("locale") === "en" ? "en" : "ko";
 }
 
 const TYPE_BADGE: Record<string, { label: string; className: string }> = {
@@ -74,11 +74,13 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [language, setLanguage] = useState<"ko" | "en">("ko");
+  // 같은 언어·검색어 조합은 입력 대기 후 이미 기록했다면, 결과 선택 때 중복 기록하지 않는다.
+  const lastTracked = useRef<string | null>(null);
 
   const filteredIndex = useMemo(() => {
-    const lang = getCurrentLang();
-    return searchIndex.filter((item) => !item.lang || item.lang === lang);
-  }, [searchIndex]);
+    return searchIndex.filter((item) => !item.lang || item.lang === language);
+  }, [searchIndex, language]);
 
   const fuse = useMemo(() => {
     return new Fuse(filteredIndex, {
@@ -95,13 +97,23 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
     });
   }, [filteredIndex]);
 
-  const results = useMemo(() => {
+  const allResults = useMemo(() => {
     if (!query.trim()) return [];
-    const searchResults = fuse.search(query);
-    const items = searchResults.slice(0, searchConfig.maxResults).map((r) => r.item);
-    if (items.length > 0) trackSearch(query, items.length);
-    return items;
+    return fuse.search(query).map((result) => result.item);
   }, [query, fuse]);
+  // 화면에는 일부만 보여줘도 검색 이벤트에는 실제 전체 결과 수를 전달한다.
+  const results = useMemo(() => allResults.slice(0, searchConfig.maxResults), [allResults]);
+
+  useEffect(() => {
+    if (!open || !query.trim()) return;
+    const key = `${language}:${query.trim()}`;
+    // 타이핑 중 매 글자마다 전송하지 않고, 500ms 입력이 멈춘 최종 결과만 기록한다.
+    const timer = setTimeout(() => {
+      trackSearchResults(allResults.length, language);
+      lastTracked.current = key;
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [open, query, allResults, language]);
 
   const popularTags = useMemo(() => {
     const lang = getCurrentLang();
@@ -127,6 +139,8 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
       // Load recent searches asynchronously
       const timer = setTimeout(() => {
         setRecentSearches(getRecentSearches());
+        setLanguage(getCurrentLang());
+        lastTracked.current = null;
       }, 0);
       return () => clearTimeout(timer);
     }
@@ -151,6 +165,13 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
   }, [results.length, selectedIndex]);
 
   const handleSelect = (item: SearchItem) => {
+    const key = `${language}:${query.trim()}`;
+    // 사용자가 debounce가 끝나기 전에 결과를 고른 경우에도 검색 결과 수를 남긴다.
+    if (query.trim() && lastTracked.current !== key) {
+      trackSearchResults(allResults.length, language);
+      lastTracked.current = key;
+    }
+    trackSearchResultSelect(item.type, results.indexOf(item) + 1, language);
     const basePath =
       item.type === "article" ? "/articles" :
       item.type === "library" ? "/library" :
@@ -170,6 +191,7 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
   };
 
   const handleRecentSearchClick = (searchTerm: string) => {
+    lastTracked.current = null;
     setQuery(searchTerm);
   };
 
@@ -180,6 +202,7 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
   };
 
   const handleTagClick = (tag: string) => {
+    lastTracked.current = null;
     setQuery(tag);
   };
 
@@ -205,7 +228,10 @@ export function SearchDialog({ searchIndex, open, onOpenChange }: SearchDialogPr
               type="text"
               placeholder="포스트, 아티클, 노트 검색..."
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                lastTracked.current = null;
+                setQuery(e.target.value);
+              }}
               onKeyDown={handleKeyDown}
               className="w-full pl-10 pr-4 py-3 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring text-sm"
               aria-label="검색"

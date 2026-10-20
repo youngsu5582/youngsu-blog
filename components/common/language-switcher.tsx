@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Languages } from "lucide-react";
 import { type Locale, defaultLocale, getLocaleLabel } from "@/lib/i18n";
+import { trackLangChange } from "@/lib/analytics";
 
 export function LanguageSwitcher() {
   const router = useRouter();
@@ -23,6 +24,10 @@ export function LanguageSwitcher() {
     const next: Locale = locale === "ko" ? "en" : "ko";
     const currentSearch = window.location.search;
     const currentPath = `${pathname}${currentSearch}`;
+    const match = pathname.match(/^\/posts\/([^/]+)\/?$/);
+    const postLanguage = match ? document.querySelector("article")?.getAttribute("lang") : null;
+    const from = match ? (postLanguage === "en" ? "en" : "ko") : locale;
+    trackLangChange(from, next, match ? decodeURIComponent(match[1]) : undefined, "global");
 
     setLocale(next);
     localStorage.setItem("locale", next);

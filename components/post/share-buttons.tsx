@@ -3,7 +3,7 @@
 import { Twitter, Linkedin, Link2, Check, Github } from "lucide-react";
 import { useState } from "react";
 import { siteConfig } from "@/config/site";
-import { trackShare } from "@/lib/analytics";
+import { trackShare, trackShareClick } from "@/lib/analytics";
 
 interface ShareButtonsProps {
   title: string;
@@ -30,6 +30,7 @@ export function ShareButtons({ title, slug }: ShareButtonsProps) {
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground mr-1">공유</span>
         <a
+          onClick={() => trackShareClick("twitter", slug)}
           href={`https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`}
           target="_blank"
           rel="noopener noreferrer"
@@ -39,6 +40,7 @@ export function ShareButtons({ title, slug }: ShareButtonsProps) {
           <Twitter className="h-4 w-4" />
         </a>
         <a
+          onClick={() => trackShareClick("linkedin", slug)}
           href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`}
           target="_blank"
           rel="noopener noreferrer"

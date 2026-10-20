@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TrackedContentLink } from "@/components/post/tracked-content-link";
 import { getUrlSlug } from "@/lib/content";
 
 interface RelatedPost {
@@ -9,10 +9,11 @@ interface RelatedPost {
 }
 
 interface RelatedPostsProps {
+  currentSlug: string;
   posts: RelatedPost[];
 }
 
-export function RelatedPosts({ posts }: RelatedPostsProps) {
+export function RelatedPosts({ posts, currentSlug }: RelatedPostsProps) {
   if (posts.length === 0) return null;
 
   return (
@@ -20,7 +21,7 @@ export function RelatedPosts({ posts }: RelatedPostsProps) {
       <h3 className="text-sm font-semibold mb-4">관련 포스트</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {posts.map((post) => (
-          <Link
+          <TrackedContentLink source={currentSlug} destination={getUrlSlug(post.slug)} location="related"
             key={post.slug}
             href={`/posts/${getUrlSlug(post.slug)}`}
             className="group p-3 rounded-lg border border-border/40 hover:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/8 transition-all"
@@ -36,7 +37,7 @@ export function RelatedPosts({ posts }: RelatedPostsProps) {
                 <span className="text-[10px] text-primary/60">{post.categories[0]}</span>
               )}
             </div>
-          </Link>
+          </TrackedContentLink>
         ))}
       </div>
     </section>

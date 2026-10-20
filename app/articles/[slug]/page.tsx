@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAllArticles, getArticleBySlug, getUrlSlug } from "@/lib/content";
 import { PostHeader } from "@/components/post/post-header";
+import { ArticleEndTracker } from "@/components/post/article-end-tracker";
 import { TableOfContents } from "@/components/post/toc";
 import { MDXContent } from "@/components/mdx/mdx-content";
 import { ReferenceGrid } from "@/components/post/reference-grid";
@@ -182,6 +183,7 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
           <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
             <MDXContent code={article.body} />
           </div>
+          <ArticleEndTracker slug={slug} contentType="article" language="ko" />
         </article>
 
         {/* Table of Contents */}

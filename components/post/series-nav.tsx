@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { TrackedContentLink } from "@/components/post/tracked-content-link";
 import {
   ChevronDown,
   ChevronUp,
@@ -177,7 +178,7 @@ export function SeriesNav({ seriesName, seriesSlug, posts, currentSlug }: Series
                       {ItemContent}
                     </div>
                   ) : (
-                    <Link
+                    <TrackedContentLink source={currentSlug} destination={slug} location="series"
                       href={`/posts/${slug}`}
                       className={`group flex items-start gap-2.5 px-2.5 py-1.5 rounded-lg transition-all duration-200 ${
                         isPast
@@ -186,7 +187,7 @@ export function SeriesNav({ seriesName, seriesSlug, posts, currentSlug }: Series
                       }`}
                     >
                       {ItemContent}
-                    </Link>
+                    </TrackedContentLink>
                   )}
                 </li>
               );
@@ -196,7 +197,7 @@ export function SeriesNav({ seriesName, seriesSlug, posts, currentSlug }: Series
           {(prevPost || nextPost) && (
             <div className="grid gap-2 border-t border-border/50 px-3.5 py-3 sm:grid-cols-2">
               {prevPost ? (
-                <Link
+                <TrackedContentLink source={currentSlug} destination={getUrlSlug(prevPost.slug)} location="series"
                   href={`/posts/${getUrlSlug(prevPost.slug)}`}
                   className="group rounded-lg border border-border/60 bg-background/50 p-3 text-xs transition hover:border-primary/30 hover:bg-primary/5"
                 >
@@ -207,12 +208,12 @@ export function SeriesNav({ seriesName, seriesSlug, posts, currentSlug }: Series
                   <strong className="mt-1 block line-clamp-2 text-sm font-medium text-foreground group-hover:text-primary">
                     {prevPost.title}
                   </strong>
-                </Link>
+                </TrackedContentLink>
               ) : (
                 <div />
               )}
               {nextPost && (
-                <Link
+                <TrackedContentLink source={currentSlug} destination={getUrlSlug(nextPost.slug)} location="series"
                   href={`/posts/${getUrlSlug(nextPost.slug)}`}
                   className="group rounded-lg border border-border/60 bg-background/50 p-3 text-right text-xs transition hover:border-primary/30 hover:bg-primary/5"
                 >
@@ -223,7 +224,7 @@ export function SeriesNav({ seriesName, seriesSlug, posts, currentSlug }: Series
                   <strong className="mt-1 block line-clamp-2 text-sm font-medium text-foreground group-hover:text-primary">
                     {nextPost.title}
                   </strong>
-                </Link>
+                </TrackedContentLink>
               )}
             </div>
           )}
