@@ -33,8 +33,11 @@ const posts = [
 ];
 
 describe("Admin publish page", () => {
+  let publishResponse: Response | null;
+
   beforeEach(() => {
     localStorage.clear();
+    publishResponse = null;
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -94,6 +97,10 @@ describe("Admin publish page", () => {
           return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
         }
 
+        if (url === "/api/admin/publish" && init?.method === "POST") {
+          return Promise.resolve(publishResponse || new Response(JSON.stringify({}), { status: 200 }));
+        }
+
         return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
       })
     );
@@ -109,8 +116,8 @@ describe("Admin publish page", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /새 글/ }));
 
-    expect(screen.getByText("위험도 높음 · main에 바로 반영")).toBeTruthy();
-    expect(screen.getByText("자동 푸시는 origin/main에 즉시 반영되어 배포를 트리거할 수 있어요.")).toBeTruthy();
+    expect(screen.getByText("자동 푸시 시 main에 바로 반영")).toBeTruthy();
+    expect(screen.getByText("최신 origin/main과 동기화한 뒤 푸시하며, 동시 변경이 있으면 강제 푸시하지 않고 실패 이유를 보여줘요.")).toBeTruthy();
   });
 
   it("최종 확인에서 발행 방식, 자동 푸시, 미충족 품질 체크를 다시 보여준다", async () => {
@@ -120,7 +127,7 @@ describe("Admin publish page", () => {
     fireEvent.click(screen.getByLabelText("발행 후 자동 푸시"));
     fireEvent.click(screen.getByRole("button", { name: /발행하기/ }));
 
-    expect(await screen.findByText("실행 예정: main에 직접 커밋 후 origin/main으로 푸시")).toBeTruthy();
+    expect(await screen.findByText("실행 예정: 최신 origin/main 기준 커밋 후 origin/main으로 푸시")).toBeTruthy();
     expect(screen.getByText("경고 2개: 썸네일 URL이 비어 있음, 설명(description)이 비어 있음")).toBeTruthy();
   });
 
@@ -189,8 +196,28 @@ describe("Admin publish page", () => {
     fireEvent.click(await screen.findByRole("button", { name: /새 글/ }));
 
     expect(await screen.findByRole("region", { name: "발행 dry-run 요약" })).toBeTruthy();
-    expect(screen.getByText("실행 방식: main에 직접 커밋 (푸시 없음)")).toBeTruthy();
+    expect(screen.getByText("실행 방식: 최신 origin/main 기준 로컬 publish 브랜치에 커밋 (푸시 없음)")).toBeTruthy();
     expect(screen.getByText("선택한 포스트 1개")).toBeTruthy();
     expect(screen.getByText("커밋 대상: content/posts/new-post.mdx")).toBeTruthy();
+  });
+
+  it("push 실패를 성공으로 표시하지 않고 선택한 포스트를 유지한다", async () => {
+    publishResponse = new Response(JSON.stringify({
+      success: false,
+      phase: "push",
+      error: "커밋은 생성됐지만 origin/main 푸시에 실패했습니다.\nnon-fast-forward",
+      hash: "abc1234",
+      pushed: false,
+    }), { status: 409 });
+
+    render(<PublishPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /새 글/ }));
+    fireEvent.click(screen.getByLabelText("발행 후 자동 푸시"));
+    fireEvent.click(screen.getByRole("button", { name: /발행하기/ }));
+    fireEvent.click(screen.getByRole("button", { name: "확인" }));
+
+    expect(await screen.findByText(/커밋은 생성됐지만 origin\/main 푸시에 실패했습니다/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /새 글/ })).toBeTruthy();
   });
 });

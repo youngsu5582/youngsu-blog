@@ -22,12 +22,17 @@ export function normalizeRepoRelativePath(filePath: string): string | null {
   return normalized;
 }
 
-export function buildContentFilePath(collection: string, slug: string): { contentDir: string; absPath: string; repoPath: string } | null {
+export function buildContentFilePath(
+  collection: string,
+  slug: string,
+  repoRoot: string = BLOG_REPO_ROOT,
+): { contentDir: string; absPath: string; repoPath: string } | null {
   if (!isAllowedCollection(collection) || !isValidSlug(slug)) return null;
 
+  const resolvedRepoRoot = path.resolve(repoRoot);
   const repoPath = `content/${collection}/${slug}.mdx`;
-  const root = path.resolve(BLOG_REPO_ROOT, "content");
-  const absPath = path.resolve(BLOG_REPO_ROOT, repoPath);
+  const root = path.resolve(resolvedRepoRoot, "content");
+  const absPath = path.resolve(resolvedRepoRoot, repoPath);
   if (!absPath.startsWith(root + path.sep)) return null;
 
   return {

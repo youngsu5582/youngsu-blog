@@ -144,8 +144,8 @@ function getQualityWarnings(post: PostInfo, frontmatter: Frontmatter): string[] 
 
 function getPublishActionLabel(mode: PublishMode, autoPush: boolean) {
   if (mode === "pr") return "PR 생성 후 리뷰/머지";
-  if (autoPush) return "main에 직접 커밋 후 origin/main으로 푸시";
-  return "main에 직접 커밋 (푸시 없음)";
+  if (autoPush) return "최신 origin/main 기준 커밋 후 origin/main으로 푸시";
+  return "최신 origin/main 기준 로컬 publish 브랜치에 커밋 (푸시 없음)";
 }
 
 function getReviewSummary(review: string) {
@@ -597,8 +597,10 @@ export default function PublishPage() {
         if (data.mode === "pr") {
           setResult({ success: true, message: `PR 생성 완료! ${data.prUrl}` });
         } else {
-          const pushMsg = data.pushed ? " + 푸시 완료" : data.pushError ? " (푸시 실패)" : "";
-          setResult({ success: true, message: `발행 완료! (${data.hash})${pushMsg}` });
+          const pushMsg = data.pushed
+            ? "origin/main 푸시 완료"
+            : `로컬 커밋 완료 · 브랜치 ${data.branch || "publish/*"}`;
+          setResult({ success: true, message: `${pushMsg} (${data.hash})` });
         }
         const publishedPaths = new Set(selectedPosts.keys());
         setPosts((prev) => prev.filter((p) => !publishedPaths.has(p.filePath)));
@@ -606,10 +608,14 @@ export default function PublishPage() {
         setEditingPost(null);
         clearPersistedData();
       } else {
-        setResult({ success: false, message: data.error });
+        setResult({
+          success: false,
+          message: data.error || `발행 실패${data.phase ? ` (${data.phase})` : ""}`,
+        });
       }
-    } catch {
-      setResult({ success: false, message: "발행 실패" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "발행 실패";
+      setResult({ success: false, message });
     }
     setPublishing(false);
   };
@@ -1073,9 +1079,9 @@ export default function PublishPage() {
                 >
                   <GitCommit className="h-4 w-4" />
                   <div className="text-left">
-                    <div className="font-medium">직접 커밋</div>
-                    <div className="text-[10px] text-muted-foreground">main에 바로 커밋</div>
-                    <div className="mt-1 text-[10px] font-medium text-red-600 dark:text-red-400">위험도 높음 · main에 바로 반영</div>
+                    <div className="font-medium">직접 발행</div>
+                    <div className="text-[10px] text-muted-foreground">최신 origin/main 기준으로 커밋</div>
+                    <div className="mt-1 text-[10px] font-medium text-red-600 dark:text-red-400">자동 푸시 시 main에 바로 반영</div>
                   </div>
                 </button>
                 <button
@@ -1105,9 +1111,9 @@ export default function PublishPage() {
                   />
                   <div>
                     <span className="text-sm">발행 후 자동 푸시</span>
-                    <span className="text-[10px] text-muted-foreground ml-2">git push origin main</span>
+                    <span className="text-[10px] text-muted-foreground ml-2">git push origin HEAD:main</span>
                     <p className="mt-1 text-[10px] text-red-600 dark:text-red-400">
-                      자동 푸시는 origin/main에 즉시 반영되어 배포를 트리거할 수 있어요.
+                      최신 origin/main과 동기화한 뒤 푸시하며, 동시 변경이 있으면 강제 푸시하지 않고 실패 이유를 보여줘요.
                     </p>
                   </div>
                 </label>
