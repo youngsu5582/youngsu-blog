@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TrackedContentLink } from "@/components/post/tracked-content-link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface NavPost {
@@ -7,17 +7,18 @@ interface NavPost {
 }
 
 interface PostNavigationProps {
+  currentSlug: string;
   prev?: NavPost;
   next?: NavPost;
 }
 
-export function PostNavigation({ prev, next }: PostNavigationProps) {
+export function PostNavigation({ prev, next, currentSlug }: PostNavigationProps) {
   if (!prev && !next) return null;
 
   return (
     <nav className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-8 mt-8 border-t border-border">
       {prev ? (
-        <Link
+        <TrackedContentLink source={currentSlug} destination={prev.slug} location="prev_next"
           href={`/posts/${prev.slug}`}
           className="group relative flex items-center gap-3 p-5 rounded-xl border border-border/50 bg-gradient-to-br from-muted/40 to-muted/20 hover:from-muted/60 hover:to-muted/30 hover:border-primary/30 transition-all duration-300 overflow-hidden shadow-sm hover:shadow-md"
         >
@@ -37,13 +38,13 @@ export function PostNavigation({ prev, next }: PostNavigationProps) {
 
           {/* Decorative Gradient */}
           <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        </Link>
+        </TrackedContentLink>
       ) : (
         <div className="hidden sm:block" />
       )}
 
       {next ? (
-        <Link
+        <TrackedContentLink source={currentSlug} destination={next.slug} location="prev_next"
           href={`/posts/${next.slug}`}
           className="group relative flex items-center gap-3 p-5 rounded-xl border border-border/50 bg-gradient-to-br from-muted/40 to-muted/20 hover:from-muted/60 hover:to-muted/30 hover:border-primary/30 transition-all duration-300 overflow-hidden shadow-sm hover:shadow-md"
         >
@@ -63,7 +64,7 @@ export function PostNavigation({ prev, next }: PostNavigationProps) {
 
           {/* Decorative Gradient */}
           <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        </Link>
+        </TrackedContentLink>
       ) : (
         <div className="hidden sm:block" />
       )}

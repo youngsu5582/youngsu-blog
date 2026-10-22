@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { trackLangChange } from "@/lib/analytics";
 
 interface LangToggleProps {
   currentLang: "ko" | "en";
@@ -40,6 +41,7 @@ export function LangToggle({ currentLang, basePath = "/posts" }: LangToggleProps
     }
 
     const href = getLangHref(basePath, lang);
+    trackLangChange(currentLang, lang, undefined, "list");
     setPendingLang(lang);
     localStorage.setItem("locale", lang);
     window.dispatchEvent(new CustomEvent("locale-change", { detail: lang }));
