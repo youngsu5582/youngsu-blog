@@ -1,7 +1,8 @@
 ---
-title: "[1편] Spring 은 어떻게 꺼지는가 — 종료 3단계와 Lifecycle phase 를 로그로 확인하기"
+title: "Spring 은 어떻게 꺼지는가 — 종료 3단계 분석하기"
 date: "2026-10-23T00:00:00.000Z"
-description: "Spring의 종료 이벤트, Lifecycle phase, Bean destroy가 어떤 순서와 timeout 정책으로 실행되는지 테스트 코드와 로그로 확인한다."
+description: Spring의 종료 이벤트, Lifecycle phase, Bean destroy가 어떤 순서와 timeout 정책으로 실행되는지 테스트 코드와 로그로 확인한다.
+image: /assets/img/thumbnail/2026-10-23-spring-shutdown-3-stages.png
 categories:
   - Spring
 tags:
@@ -14,33 +15,65 @@ lang: ko
 draft: false
 toc: true
 comments: true
-series: spring-shutdown
-seriesOrder: 1
 ---
-### 3줄 요약
 
-1. Spring은 종료 이벤트 발행, Lifecycle 종료 처리, Bean destroy를 순서대로 호출한다.
-2. `② lifecycle stop` 은 phase 가 큰 빈부터 멈추고 phase 묶음마다 timeout 이 따로 걸린다. `③ Bean destroy` 는 생성의 역순으로, 스레드 하나가 하나씩 처리한다.
-3. 자원이 어느 단계에서 닫히는지는 해당 클래스의 구현과 Spring Data 버전에 따라 달라진다. Redis(Lettuce)는 Spring Data Redis 3.2부터 `② lifecycle stop` 으로 옮겨 갔다.
+현재 우리 코드는 요청이 들어오면 요청을 저장하고 트랜잭션을 커밋한 후,
+이미지 생성 후처리를 비동기 이벤트로 넘기고 있었다.
 
-운영 중인 서비스에서 트랜잭션이 커밋된 뒤, `@Async` + `@TransactionalEventListener` 로 이미지 생성 후처리를 넘기고 있었다. 작업이 끝날 때까지 기다리도록 executor에도 다음 설정을 넣었다.
+```java
+@Async(AsyncProperties.ASYNC_LISTENER)
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void validate(TextToImageCreatedEvent event) {
+    ...
+}
+```
+
+이 이벤트를 처리할 executor도 따로 두고 있었다.
+
+```java
+@Bean(name = AsyncProperties.ASYNC_LISTENER)
+public Executor asyncListenerExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+
+    ...
+    executor.setCorePoolSize(corePoolSize);
+    executor.setMaxPoolSize(maxPoolSize);
+    executor.setQueueCapacity(queueCapacity);
+    executor.setThreadNamePrefix("listener-");
+
+    executor.initialize();
+    return executor;
+}
+```
+
+서버가 종료되더라도 이미 들어온 작업은 끝까지 처리하도록 설정도 켰다.
+[Baeldung — Spring Boot graceful shutdown](https://www.baeldung.com/spring-boot-graceful-shutdown)
 
 ```java
 taskExecutor.setWaitForTasksToCompleteOnShutdown(true);
 taskExecutor.setAwaitTerminationSeconds(30);
 ```
 
-이 설정은 executor가 종료 시점에 이미 제출된 작업을 기다리게 만든다. 하지만 이것만으로 전체 graceful shutdown이 보장되는 것은 아니다. 작업이 끝나기를 기다리는 동안 Spring이 Redis 같은 외부 자원을 먼저 닫으면, 작업은 살아 있어도 사용할 연결이 사라질 수 있다.
+그런데 이 설정이 켜져 있었는데도, 서버가 내려가는 동안 이미지 생성 후처리가 끝까지 처리되지 않은 사례를 확인했다.
 
-그래서 다음이 궁금해졌다.
+처음에는 이렇게 생각했다.
 
-- 이 설정은 Spring 종료 3단계 중 어디에서 실행되는가?
-- phase가 여러 개면 timeout은 한 번만 적용되는가?
-- `@Async` 작업을 기다리는 동안 Redis, DB, Kafka 같은 외부 자원은 살아 있는가?
+> “shutdown phase의 timeout까지 설정해 두면, 서버가 내려가기 전에 후처리 작업이 끝날 때까지 기다려 주는 것 아닌가?”
 
-[Baeldung — Spring Boot graceful shutdown](https://www.baeldung.com/spring-boot-graceful-shutdown)에서 관련 설정을 확인할 수 있지만, 설정의 의미를 제대로 이해하려면 먼저 Spring이 `ApplicationContext`를 닫는 순서를 알아야 했다.
+이 질문에 답하려면 Spring이 종료 과정에서 실제로 무엇을 기다리는지부터 확인해야 했다.
 
-이번 편에서는 `ContextClosedEvent`, `SmartLifecycle`의 phase별 stop, Bean destroy가 실제로 어떤 순서로 실행되는지 테스트 코드와 로그로 확인한다. `@PreDestroy`, `Lifecycle`, `timeout-per-shutdown-phase`가 머릿속에서 섞여 있었다면 이 세 단계를 먼저 분리해 보는 것이 출발점이다.
+- 이 설정만 켜면 진짜 graceful shutdown이 되는 건가?
+- Spring은 어느 시점에서 비동기 작업을 기다리는가?
+- phase timeout은 어떻게 적용되는가?
+- `@Async` executor는 shutdown 때 남은 작업을 어떻게 처리하는가?
+
+### 3줄 요약
+
+1. Spring은 종료 이벤트 발행, Lifecycle 종료 처리, Bean destroy를 순서대로 호출한다.
+2. `② lifecycle stop`은 phase가 큰 빈부터 멈추고, phase 묶음마다 timeout이 따로 걸린다. `③ Bean destroy`는 생성의 역순으로, 스레드 하나가 하나씩 처리한다.
+3. 자원이 어느 단계에서 닫히는지는 해당 클래스의 구현과 Spring Data 버전에 따라 달라질 수 있다. (Lettuce는 Spring Data Redis 3.2부터 `② lifecycle stop`으로 변경)
+
+이번 편에서는 `ContextClosedEvent`, `SmartLifecycle`의 phase별 stop, Bean destroy가 실제로 어떤 순서로 실행되는지 테스트 코드와 로그로 확인한다.
 
 2편에서는 이 종료 순서 안에서 `@Async` 풀이 언제 작업을 기다리고, 그때 외부 자원이 어떤 상태인지 이어서 확인한다.
 
@@ -54,12 +87,12 @@ taskExecutor.setAwaitTerminationSeconds(30);
 
 ## 검증 방법
 
-어떻게 동작하는지 직접 확인하기 위해 종료 과정을 찍어 보는 작은 실험장을 만들었다.
+어떻게 동작하는지 직접 확인하기 위해 종료 과정을 찍어 보는 작은 환경을 만들었다.
 실험 코드는 [Spring Shutdown Playground](https://github.com/youngsu5582/playground/tree/acc35fc/spring-shutdown-playground)에서 확인할 수 있다.
 
-- Spring Boot 없이 `spring-context 6.2` 을 사용하고
-	- 테스트에서 `context.close()` 를 직접 부른다(shutdown hook 이 부르는 메소드)
-- 종료 과정에서 일어난 일을 `[경과ms] [스레드] 이벤트` 로 한 줄씩 남긴다
+- Spring Boot 없이 `spring-context 6.2`를 사용하고
+	- 테스트에서 `context.close()`를 직접 부른다(shutdown hook이 부르는 메서드)
+- 종료 과정에서 일어난 일을 `[경과ms] [스레드] 이벤트`로 한 줄씩 남긴다
 	- `① 종료 이벤트` · `② lifecycle stop` · `③ Bean destroy`
 - Spring `DefaultLifecycleProcessor` 의 DEBUG 로그도 같이 켰다
 
@@ -68,15 +101,15 @@ timeline [    0ms] [Test worker] ② stop phase=1000 web-like      ← 실험장
 spring   [Test worker] DefaultLifecycleProcessor - Stopping beans in phase 1000   ← Spring 로그
 ```
 
-## Spring 의 종료
+## Spring의 종료
 
 Spring의 종료는 3단계로 진행된다.
-ECS 가 태스크를 내리면 SIGTERM 을 JVM 에게 전달한다.
+ECS가 태스크를 내리면 SIGTERM을 JVM에 전달한다.
 
-JVM 은 shutdown hook 을 실행하고,
-Spring 이 등록해 둔 hook 이 `ApplicationContext.close()` 를 부른다.
+JVM은 shutdown hook을 실행하고,
+Spring이 등록해 둔 hook이 `ApplicationContext.close()`를 부른다.
 
-그러면, 크게 3개의 메소드를 실행한다.
+그러면, 크게 3개의 메서드를 실행한다.
 
 ```java
 // AbstractApplicationContext.doClose()
@@ -89,17 +122,17 @@ destroyBeans();                               // ③ Bean destroy
 
 | 단계                 | 누가 불리나                                                 | 성격                                |
 | ------------------ | ------------------------------------------------------ | --------------------------------- |
-| ① 종료 이벤트           | `ApplicationListener<ContextClosedEvent>`              | 컨텍스트가 닫힌다는 걸<br />알려주는 알림           |
-| `② lifecycle stop` | `Lifecycle` · `SmartLifecycle` 의 `stop()`              | 하던 일을 멈춘다.<br />다시 `start()` 할 수 있다 |
-| `③ Bean destroy`   | `@PreDestroy` · `DisposableBean.destroy()` · `close()` | 빈을 종료한다.<br />이후로는 쓸 수 없다           |
+| ① 종료 이벤트           | `ApplicationListener<ContextClosedEvent>`              | 컨텍스트가 닫힌다는 걸 알려주는 알림           |
+| `② lifecycle stop` | `Lifecycle` · `SmartLifecycle` 의 `stop()`              | 하던 일을 멈춘다. 다시 `start()` 할 수 있다 |
+| `③ Bean destroy`   | `@PreDestroy` · `DisposableBean.destroy()` · `close()` | 빈을 종료한다. 이후로 쓸 수 없다           |
 
-정말 이 순서인지 확인해 보았다.
+정말 이 순서인지 확인하기 위해
 
 - 종료 이벤트 리스너 하나
-- phase 가 1000·0·-1000 인 `SmartLifecycle` 세 개
+- phase가 1000·0·-1000인 `SmartLifecycle` 세 개
 - 그리고 first → second → third 순서로 만들어지는 빈 세 개
 
- 를 등록하고 컨텍스트를 닫아보았다.
+ 를 등록하고 컨텍스트를 닫아보면?
 
 ```
 ...
@@ -122,21 +155,22 @@ timeline [ 1ms] ③ destroy first
 > 재현: `./gradlew s1 --tests '*threeStagesInOrder'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/acc35fc/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage1/ShutdownStagesTest.java#L35)
 
 - 시작은 작은 phase 부터(−1000 → 0 → 1000), 종료는 그 반대로 처리된다.
-- `③ Bean destroy` 는 Bean 을 만든 순서의 역순이다.
-- `③ Bean destroy` 가 시작될 때 `② lifecycle stop` 처리는 끝난다. 다만 timeout 이 발생했다면 종료되지 않은 작업이 남아 있을 수 있다.
+- `③ Bean destroy`는 Bean을 만든 순서의 역순이다.
+- `③ Bean destroy` 가 시작될 때 `② lifecycle stop` 처리는 끝난다.
+  - 다만 timeout이 발생했다면 종료되지 않은 작업이 남아 있을 수 있다.
 
 ## `② lifecycle stop` 과 phase
 
-`Lifecycle` 은 start, stop, isRunning 메소드를 가지고 있는다.
+`Lifecycle`은 start, stop, isRunning 메서드를 가지고 있다.
 
 - start : 요소를 시작
 - stop : 요소를 중지
 - isRunning : 현재 요소가 실행 중인지 여부
 
-그리고, 이 `Lifecycle` 을 상속하는 `SmartLifecycle`이 존재한다.
+그리고, 이 `Lifecycle`을 상속하는 `SmartLifecycle`이 존재한다.
 
-`SmartLifecycle`은 `phase` 를 통해 시작·종료 순서를 정할 수 있다.
-우리가 흔히 사용하는 빈들은 아래 phase 를 쓰고있다. (소스 코드로 확인)
+`SmartLifecycle`은 `phase`를 통해 시작·종료 순서를 정할 수 있다.
+우리가 흔히 사용하는 빈들은 아래 phase를 쓰고 있다. (소스 코드로 확인)
 
 ![image](https://assets.youngsu5582.today/obsidian/2026/10/15/53e030c527c584dc674b8ae3a5909c0f.png)
 
@@ -150,18 +184,18 @@ timeline [ 1ms] ③ destroy first
 | `0`                 | `LettuceConnectionFactory` (Redis), 일반 `Lifecycle`                     | 일이 쓰는 자원  |
 | `Integer.MIN_VALUE` | Rabbit `CachingConnectionFactory`, Kafka `DefaultKafkaProducerFactory` | 일이 쓰는 자원  |
 
-통상, 만드는 쪽 → 처리하는 쪽 → 자원 순서로 멈춘다.
+> 통상, 만드는 쪽 → 처리하는 쪽 → 자원 순서로 멈춘다.
 
-같은 인프라를 사용해도 분리를 한다.
-Rabbit 은 메시지를 받는 리스너 컨테이너가 `MAX`, 연결 팩토리가 `MIN` 이다.
+- 같은 인프라를 사용해도 분리를 할 수 있다.
+(RabbitMQ 는 메시지를 받는 리스너 컨테이너가 `MAX`, 연결 팩토리가 `MIN`)
 
-> Lifecycle 을 구현하지 않은 빈은 phase 0 이 아니다.
+> Lifecycle을 구현하지 않은 빈은 phase 0이 아니다.
 > lifecycle 대상이 아니라서 `③ Bean destroy` 만 받는다.
 
-### Spring 이 SmartLifecycle 을 close 하는 방법
+### Spring이 SmartLifecycle을 close하는 방법
 
 `SmartLifecycle` 은 `getPhase()` 로 자기 차례를 정한다.
-그리고, `stop(callback)` 이 추가되어, 종료 후 callback 을 실행시켜줄 수 있다.
+그리고, `stop(callback)`이 추가되어, 종료 후 callback을 실행시켜줄 수 있다.
 
 같은 phase 의 빈은 한 묶음으로 `stop(callback)` 을 받고,
 묶음 전체의 callback 이 올 때까지 기다린 뒤 다음 phase 로 넘어간다.
@@ -189,7 +223,7 @@ private void stopBeans() {
 ```
 
 1. 모든 `SmartLifecycle` 빈들을 phase 값으로 그룹핑
-2. phase 가 가장 높은 그룹부터 처리
+2. phase가 가장 높은 그룹부터 처리
 3. 그룹 내 빈의 `stop(callback)` 을 차례대로 호출
 	- 각 빈은 구현에 따라 종료 작업을 동기 또는 비동기로 처리한다.
 4. 그 그룹의 `모든 콜백이 들어올 때까지` or `지정된 시간이 될 때까지` 블로킹 대기
@@ -199,9 +233,9 @@ private void stopBeans() {
 ### timeout-per-shutdown-phase
 
 각 phase에서 `stop(callback)` 호출을 마친 뒤 콜백을 기다리는 상한 시간이다.
-시간이 지나면 callback 을 호출하지 못한 남은 빈을 그대로 두고 다음 phase 로 넘어간다.
+시간이 지나면 callback을 호출하지 못한 남은 빈을 그대로 두고 다음 phase로 넘어간다.
 
-callback 을 끝내 부르지 않는 빈(phase 100)을 넣고 timeout 을 500ms 로 두면 아래 로그가 발생한다.
+callback을 끝내 부르지 않는 빈(phase 100)을 넣고 timeout을 500ms로 두면 아래 로그가 발생한다.
 
 ```
 timeline [   0ms] ② stuck(phase 100) stop 시작 — callback 을 부르지 않는다
@@ -211,9 +245,9 @@ timeline [ 511ms] ② stop phase=0 after-stuck
 
 > 재현: `./gradlew s1 --tests '*phaseTimeoutMovesOn'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/acc35fc/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage1/ShutdownStagesTest.java#L79)
 
-100 phase 는 500ms 가 지나서 끝냈지만, 하나의 빈이 여전히 동작중이라고 로그를 남긴다.
+100 phase는 500ms가 지나서 끝났지만, 하나의 빈이 여전히 동작 중이라고 로그를 남긴다.
 
-그러므로, phase 가 여러 개면 상한도 여러 번 걸린다.
+그러므로, phase가 여러 개면 상한도 여러 번 걸린다.
 `timeout-per-shutdown-phase` 를 길게 설정하면, 각 페이즈마다 오래 대기해 종료가 오래 걸릴 수 있다.
 
 ### 순서의 예외: 의존하는 빈이 먼저 멈춘다
@@ -246,9 +280,9 @@ timeline [    0ms] ② stop phase=0 middle
 
 ## `③ Bean destroy`
 
-###  destroy 는 동기다
+### destroy는 동기다
 
-destroy 메소드는 하나의 스레드가 처리한다.
+destroy 메서드는 하나의 스레드가 처리한다.
 
 ```java
 // DefaultSingletonBeanRegistry.destroySingletons()
@@ -271,7 +305,7 @@ timeline [ 612ms] [Test worker] ③ slow-1 destroy 끝
 
 > 재현: `./gradlew s1 --tests '*destroyIsSequentialOnClosingThread'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/acc35fc/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage1/ShutdownStagesTest.java#L64)
 
-- close 를 부른 스레드(`Test worker`) 하나가 처리한다.
+- close를 부른 스레드(`Test worker`) 하나가 처리한다.
 - 앞 빈이 끝나야 다음 빈이 시작한다.
 
 => 한 빈의 destroy 가 막혀 있으면 그 뒤 빈들은 전부 기다리게 된다.
@@ -298,30 +332,33 @@ timeline [ 0ms] ③ destroyMethod(customClose)
 셋 다 `③ Bean destroy` 에서, 한 빈을 정리할 때 연달아 불린다.
 
 > 흔히 `@PreDestroy` 를 "종료 신호를 받자마자 불리는 곳" 으로 생각하나, `③ Bean destroy` 에서 불린다.
-> 그 전에 `② lifecycle stop` 처리가 끝난다. timeout 이 발생했다면 종료되지 않은 작업이 남아 있을 수 있다.
+> 그 전에 `② lifecycle stop` 처리가 끝난다. timeout이 발생했다면 종료되지 않은 작업이 남아 있을 수 있다.
 
-- `@Bean` 으로 등록한 객체에 `close()`, `shutdown()` 이 있으면, Spring 이 destroy 로 추론해서 부른다.
+- `@Bean`으로 등록한 객체에 `close()`, `shutdown()`이 있으면, Spring이 destroy로 추론해서 부른다.
 
 ## 자원은 각자 다른 단계에서 닫힌다
 
-처음 질문으로 돌아가 Redis, Kafka, DB 연결이 언제 정리되는지 살펴보자.
+Redis, Kafka, DB 와 같은 자원들은 언제 정리될까?
 
-자원이 정리되는 시점은 'Lifecycle 구현 여부', 'destroy 콜백 등록 방식', '각 메소드 내부 동작' 따라 달라진다.
-Lifecycle 종료와 destroy 콜백이 모두 호출될 수 있고, 구현을 확인해야만 한다.
+자원이 정리되는 시점은 'Lifecycle 구현 여부', 'destroy 콜백 등록 방식', '각 메서드 내부 동작'에 따라 달라진다.
+-> Lifecycle 종료와 destroy 콜백이 모두 호출될 수 있고, 구현을 확인해야만 한다.
 
-#### ⭐ 참고 : 버전에 따라 바뀔수 있다
+### ⭐⭐ 참고: 버전에 따라 바뀔 수 있다
 
-3.1 까지는 Redis 는 `③ Bean destroy` 에서 닫혔다. 3.2 부터 `② lifecycle stop` 으로 옮겨 갔다.
+3.1까지는 Redis가 `③ Bean destroy`에서 닫혔다.
+3.2부터 `② lifecycle stop`으로 옮겨 갔다.
 
 | Spring Data Redis | LettuceConnectionFactory               | Redis 가 닫히는 단계 |
 | ----------------- | -------------------------------------- | -------------- |
 | 3.1.x             | `InitializingBean`, `DisposableBean` 뿐 | `③ Bean destroy` |
 | 3.2.x 부터          | `SmartLifecycle` 추가 (phase 0)          | `② lifecycle stop` |
 
-같은 코드라도 Spring Data Redis 버전을 올리면서 Redis 가 닫히는 시점이 한 단계 앞당겨졌다.
+같은 코드라도 Spring Data Redis 버전을 올리면서 Redis가 닫히는 시점이 한 단계 앞당겨졌다.
 컴파일 에러나 경고만으로는 이런 변화를 알아차리기 어렵다.
 
-#### ⭐ 참고 : 내부 구현에 따라, 재연결도 가능하다
+### ⭐ 참고 : 내부 구현에 따라, 처리 방법이 다르다
+
+② lifecycle stop 에서 종료처리를 했더라도, 재연결을 해서 처리해줄 수도 있다.
 
 - Rabbit 과 Kafka 도 `② lifecycle stop` 에서 연결을 정리하지만, 다음 요청이 오면 다시 연결한다.
 - Lettuce 는 멈춘 상태를 기록해 두고, `STARTED` 가 아니면 연결 요청을 거절한다.
@@ -359,6 +396,10 @@ public RedisConnection getConnection() {
     ...
 ```
 
+> 이런 lifecycle 변경은 종료 중 Redis를 사용하는 후처리나 정리 작업에도 영향을 줄 수 있다!
+> [Redis Connection Factory Earlier Graceful Shutdown after Spring 3.2 Upgrade](https://github.com/spring-projects/spring-data-redis/issues/2843)
+> Spring Boot 3.2로 업그레이드한 뒤, `@PreDestroy`에서 `LettuceConnectionFactory has been STOPPED` 예외가 발생한 사례를 다룬 이슈
+
 ---
 
 ## 마무리
@@ -366,10 +407,10 @@ public RedisConnection getConnection() {
 이번 편에서 확인한 것은 세 가지다.
 
 1. Spring 은 `① 종료 이벤트` → `② lifecycle stop` → `③ Bean destroy` 순서로 종료 처리한다.
-2. `timeout-per-shutdown-phase` 는 각 phase 에서 콜백을 기다리는 상한이다.
+2. `timeout-per-shutdown-phase` 는 각 phase 에서 콜백을 기다리는 상한이다. (종료를 기다려주는 최대 시간이 아님)
 3. 자원이 정리되는 시점은 Lifecycle 과 destroy 콜백의 구현에 따라 달라진다.
 
-그럼 처음 질문으로 돌아가 보자. `@Async` 풀은 남은 작업을 어느 단계에서 기다릴까?
+그럼 마지막 질문으로 돌아가 보자. `@Async` 풀은 남은 작업을 어느 단계에서 기다릴까?
 앞에서 본 작업 완료 대기 설정을 켰을 때, 작업이 기다리는 동안 Redis 연결은 살아 있을까?
 
 이는 2편에서 작성한다.
