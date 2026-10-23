@@ -75,7 +75,7 @@ taskExecutor.setAwaitTerminationSeconds(30);
 
 이번 편에서는 `ContextClosedEvent`, `SmartLifecycle`의 phase별 stop, Bean destroy가 실제로 어떤 순서로 실행되는지 테스트 코드와 로그로 확인한다.
 
-2편에서는 이 종료 순서 안에서 `@Async` 풀이 언제 작업을 기다리고, 그때 외부 자원이 어떤 상태인지 이어서 확인한다.
+이어지는 글에서는 이 종료 순서 안에서 `@Async` 풀이 언제 작업을 기다리고, 그때 외부 자원이 어떤 상태인지 이어서 확인한다.
 
 ## 상황과 환경
 
@@ -413,7 +413,7 @@ public RedisConnection getConnection() {
 그럼 마지막 질문으로 돌아가 보자. `@Async` 풀은 남은 작업을 어느 단계에서 기다릴까?
 앞에서 본 작업 완료 대기 설정을 켰을 때, 작업이 기다리는 동안 Redis 연결은 살아 있을까?
 
-이는 2편에서 작성한다.
+이 질문은 후속 글에서 이어서 확인한다.
 
 ## 참고
 

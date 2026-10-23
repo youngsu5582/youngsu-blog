@@ -76,7 +76,7 @@ To answer that question, I first had to confirm what Spring actually waits for d
 
 In this post, we will use test code and logs to verify the actual execution order of `ContextClosedEvent`, phase-by-phase `SmartLifecycle` stopping, and bean destruction.
 
-In Part 2, we will continue by checking when the `@Async` pool waits for work within this shutdown order, and what state external resources are in at that point.
+A follow-up post will continue by checking when the `@Async` pool waits for work within this shutdown order, and what state external resources are in at that point.
 
 ## Situation and environment
 
@@ -413,7 +413,7 @@ This post confirmed three things.
 Now let us return to the final question. At which stage does the `@Async` pool wait for remaining work?
 When the work-completion waiting setting we saw earlier is enabled, does the Redis connection remain alive while the work is waiting?
 
-This will be covered in Part 2.
+This will be covered in a follow-up post.
 
 ## References
 
