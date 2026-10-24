@@ -1,0 +1,436 @@
+---
+title: "How Does Spring Shut Down? — Analyzing the Three Shutdown Stages"
+date: "2026-10-23T00:00:00.000Z"
+description: Trace how Spring executes shutdown events, Lifecycle phases, and bean destruction, including their ordering and timeout policies, using test code and logs.
+categories:
+  - Spring
+tags:
+  - spring-boot
+  - spring-lifecycle
+  - graceful-shutdown
+  - java
+author: Youngsu Lee
+lang: en
+draft: false
+toc: true
+comments: true
+image: /assets/img/thumbnail/2026-10-23-spring-shutdown-3-stages.png
+---
+
+> This English version was translated by Hermes Agent.
+
+> The service discussed in this post accepts text-based requests to start image generation and continues with post-processing on the generated result.
+> Instead of making the request-handling thread wait for post-processing, it saves the request first and hands off post-processing asynchronously after the transaction commits.
+
+The processing flow is:
+
+1. When an API request arrives, the image-generation request state is saved.
+2. After the transaction commits successfully, the image-generation post-processing event (NSFW checks and translation) is handled.
+3. The event listener runs on a separate executor, so the request-handling thread can respond without waiting for post-processing to finish.
+
+The listener can be simplified as follows.
+
+```java
+@Async(AsyncProperties.ASYNC_LISTENER)
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void validate(TextToImageCreatedEvent event) {
+    ...
+}
+```
+
+- The post-processing listener runs only after the transaction that saved the request has committed successfully.
+- `@Async` separates the listener from the request-handling thread and runs it on a separate executor.
+- We manage a separate executor for processing this event.
+
+```java
+@Bean(name = AsyncProperties.ASYNC_LISTENER)
+public Executor asyncListenerExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+
+    ...
+    executor.setCorePoolSize(corePoolSize);
+    executor.setMaxPoolSize(maxPoolSize);
+    executor.setQueueCapacity(queueCapacity);
+    executor.setThreadNamePrefix("listener-");
+
+    executor.initialize();
+    return executor;
+}
+```
+
+We also enabled the setting that allows work already in progress to finish even when the server is shutting down.
+[Baeldung — Spring Boot graceful shutdown](https://www.baeldung.com/spring-boot-graceful-shutdown)
+
+```java
+taskExecutor.setWaitForTasksToCompleteOnShutdown(true);
+taskExecutor.setAwaitTerminationSeconds(30);
+```
+
+Even with this setting enabled, however, we found cases where image-generation post-processing did not finish before the server went down.
+
+At first, I thought:
+
+> “If the shutdown phase timeout is configured too, won't the server wait for the post-processing work to finish before shutting down?”
+
+To answer that question, I first had to confirm what Spring actually waits for during shutdown.
+
+- Does enabling only this setting really provide graceful shutdown?
+- At what point does Spring wait for asynchronous work?
+- How is the phase timeout applied?
+- How does an `@Async` executor handle remaining work during shutdown?
+
+### A three-line summary
+
+1. Spring invokes the shutdown event, Lifecycle shutdown processing, and bean destruction in that order.
+2. `② lifecycle stop` stops beans from the highest phase downward, with a separate timeout for each phase group. `③ Bean destroy` runs in reverse creation order, one bean at a time on a single thread.
+3. The stage at which a resource is closed can vary depending on the implementation of the class and the Spring Data version. (Lettuce changed to `② lifecycle stop` starting with Spring Data Redis 3.2.)
+
+In this post, we will use test code and logs to verify the actual execution order of `ContextClosedEvent`, phase-by-phase `SmartLifecycle` stopping, and bean destruction.
+
+A follow-up post will continue by checking when the `@Async` pool waits for work within this shutdown order, and what state external resources are in at that point.
+
+## Situation and environment
+
+- Spring Boot 3.5 (Spring Framework 6.2)
+- In an ECS EC2 environment, the container receives a shutdown signal (SIGTERM) and is forcibly terminated (SIGKILL) after the time limit expires
+- Settings that were already enabled
+	- `server.shutdown: graceful`
+	- `spring.lifecycle.timeout-per-shutdown-phase: 35s`
+
+## How it was verified
+
+To see how this works directly, I built a small environment that records the shutdown process.
+The experimental code is available in [Spring Shutdown Playground](https://github.com/youngsu5582/playground/tree/acc35fc/spring-shutdown-playground).
+
+- Use `spring-context 6.2` without Spring Boot
+	- Call `context.close()` directly in the test (the method called by the shutdown hook)
+- Record each event during shutdown as `[elapsed ms] [thread] event`
+	- `① shutdown event` · `② lifecycle stop` · `③ Bean destroy`
+- Enable Spring's `DefaultLifecycleProcessor` DEBUG logs as well
+
+```
+timeline [    0ms] [Test worker] ② stop phase=1000 web-like      ← experiment harness output
+spring   [Test worker] DefaultLifecycleProcessor - Stopping beans in phase 1000   ← Spring log
+```
+
+## Spring shutdown
+
+Spring shuts down in three stages.
+When ECS takes down the task, it sends SIGTERM to the JVM.
+
+The JVM runs the shutdown hook,
+and the hook registered by Spring calls `ApplicationContext.close()`.
+
+That, in turn, executes three main methods.
+
+```java
+// AbstractApplicationContext.doClose()
+publishEvent(new ContextClosedEvent(this));   // ① publish shutdown event
+this.lifecycleProcessor.onClose();            // ② lifecycle stop
+destroyBeans();                               // ③ Bean destroy
+```
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/14/13c4efaff1dd36300d317a7081e01ffb.png)
+
+| Stage | What calls it | Nature |
+| ------------------ | ------------------------------------------------------ | --------------------------------- |
+| ① shutdown event | `ApplicationListener<ContextClosedEvent>` | A notification that the context is closing |
+| `② lifecycle stop` | `Lifecycle` · `SmartLifecycle` `stop()` | Stops ongoing work. It can be started again with `start()` |
+| `③ Bean destroy` | `@PreDestroy` · `DisposableBean.destroy()` · `close()` | Shuts down the bean. It cannot be used afterward |
+
+To confirm that this really is the order, register
+
+- one shutdown event listener
+- three `SmartLifecycle` beans with phases 1000, 0, and -1000
+- and three beans created in the order first → second → third
+
+and then close the context:
+
+```
+...
+timeline [ 0ms] ① ContextClosedEvent received
+
+...
+spring   DefaultLifecycleProcessor - Stopping beans in phase 1000
+timeline [ 0ms] ② stop phase=1000 web-like
+spring   DefaultLifecycleProcessor - Stopping beans in phase 0
+timeline [ 0ms] ② stop phase=0 redis-like
+spring   DefaultLifecycleProcessor - Stopping beans in phase -1000
+timeline [ 0ms] ② stop phase=-1000 mq-like
+...
+
+timeline [ 0ms] ③ destroy third
+timeline [ 0ms] ③ destroy second
+timeline [ 1ms] ③ destroy first
+```
+
+> Reproduce with: `./gradlew s1 --tests '*threeStagesInOrder'` · [test code](https://github.com/youngsu5582/playground/blob/acc35fc/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage1/ShutdownStagesTest.java#L35)
+
+- Startup proceeds from the smaller phase to the larger one (−1000 → 0 → 1000), while shutdown proceeds in the opposite direction.
+- `③ Bean destroy` runs in the reverse order in which the beans were created.
+- When `③ Bean destroy` starts, `② lifecycle stop` has finished.
+  - However, if a timeout occurred, unfinished work may still remain.
+
+## `② lifecycle stop` and phases
+
+`Lifecycle` has the `start`, `stop`, and `isRunning` methods.
+
+- start: starts the component
+- stop: stops the component
+- isRunning: indicates whether the component is currently running
+
+There is also `SmartLifecycle`, which extends this `Lifecycle`.
+
+`SmartLifecycle` uses `phase` to determine startup and shutdown order.
+The beans we commonly use have the phases below. (Verified in the source code.)
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/15/53e030c527c584dc674b8ae3a5909c0f.png)
+
+| phase | bean | role |
+| ------------------- | ---------------------------------------------------------------------- | --------- |
+| `Integer.MAX_VALUE` | Rabbit listener container | Produces work |
+| `MAX − 100` | Kafka listener container | Produces work |
+| `MAX − 1024` | Web graceful (Boot) | Produces work |
+| `MAX − 2048` | Web server stop (Boot) | Produces work |
+| `MAX / 2` | `ThreadPoolTaskExecutor` · `ThreadPoolTaskScheduler` | Processes work |
+| `0` | `LettuceConnectionFactory` (Redis), ordinary `Lifecycle` | Resources used by the work |
+| `Integer.MIN_VALUE` | Rabbit `CachingConnectionFactory`, Kafka `DefaultKafkaProducerFactory` | Resources used by the work |
+
+> In general, shutdown proceeds in the order: producers → processors → resources.
+
+- Even components using the same infrastructure can be separated.
+(RabbitMQ has the message-receiving listener container at `MAX` and the connection factory at `MIN`.)
+
+> A bean that does not implement `Lifecycle` is not assigned phase 0.
+> It is not a lifecycle target and only receives `③ Bean destroy`.
+
+### How Spring closes `SmartLifecycle`
+
+A `SmartLifecycle` determines its turn with `getPhase()`.
+It also adds `stop(callback)`, which allows a callback to be run after shutdown completes.
+
+Beans in the same phase receive `stop(callback)` as a group.
+Spring waits until callbacks from the entire group arrive before moving to the next phase.
+
+```java
+// `org.springframework.context.support.DefaultLifecycleProcessor`
+private void stopBeans() {
+    Map<String, Lifecycle> lifecycleBeans = getLifecycleBeans();
+    Map<Integer, LifecycleGroup> phases = new TreeMap<>(Comparator.reverseOrder());  // ← step 2 also happens here
+
+    lifecycleBeans.forEach((beanName, bean) -> {
+        int shutdownPhase = getPhase(bean);
+        // ← 1. group by phase
+        phases.computeIfAbsent(shutdownPhase,
+                phase -> new LifecycleGroup(...)
+        ).add(beanName, bean);
+    });
+
+		// ← 2 & 5. iterate groups in descending order
+    if (!phases.isEmpty()) {
+        phases.values().forEach(LifecycleGroup::stop);
+    }
+}
+
+```
+
+1. Group all `SmartLifecycle` beans by phase value
+2. Process the group with the highest phase first
+3. Call `stop(callback)` for the beans in the group in sequence
+	- Each bean handles its shutdown work synchronously or asynchronously, depending on its implementation.
+4. Block until `all callbacks in the group arrive` or `the specified time elapses`
+	- CountDownLatch
+5. When the group is complete, process the next lower-phase group
+
+### timeout-per-shutdown-phase
+
+This is the upper limit for waiting for callbacks after calling `stop(callback)` for each phase.
+When the time expires, Spring leaves beans whose callbacks have not arrived as they are and moves on to the next phase.
+
+If we add a bean at phase 100 that never calls its callback and set the timeout to 500ms, the following log appears.
+
+```
+timeline [   0ms] ② stuck(phase 100) stop started — callback is never called
+spring   DefaultLifecycleProcessor - Shutdown phase 100 ends with 1 bean still running after timeout of 500ms: [stuck]
+timeline [ 511ms] ② stop phase=0 after-stuck
+```
+
+> Reproduce with: `./gradlew s1 --tests '*phaseTimeoutMovesOn'` · [test code](https://github.com/youngsu5582/playground/blob/acc35fc/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage1/ShutdownStagesTest.java#L79)
+
+Phase 100 ends after 500ms, but the log says that one bean is still running.
+
+Therefore, when there are multiple phases, the upper limit is applied multiple times.
+If `timeout-per-shutdown-phase` is set too high, shutdown can take a long time because Spring may wait for a long time at every phase.
+
+### Exception to the order: dependent beans stop first
+
+There is one exception to the phase order. Before stopping a bean, Spring first stops the beans that depend on it.
+
+```java
+// Summary of DefaultLifecycleProcessor.doStop() (spring-context 6.2)
+String[] dependentBeans = getBeanFactory().getDependentBeans(beanName);
+for (String dependentBean : dependentBeans) {
+		// Stop beans that depend on me first
+    doStop(lifecycleBeans, dependentBean, latch, countDownBeanNames);
+}
+...
+smartLifecycle.stop(callback);
+```
+
+We made a dependent bean at phase -1000 depend on a target at phase 1000 with `@DependsOn`,
+and placed a phase-0 middle bean between them.
+
+```
+timeline [    0ms] ② stop phase=-1000 dependent
+timeline [    0ms] ② stop phase=1000 target
+timeline [    0ms] ② stop phase=0 middle
+```
+
+> Reproduce with: `./gradlew s1 --tests '*dependentStopsBeforeItsPhase'` · [test code](https://github.com/youngsu5582/playground/blob/acc35fc/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage1/ShutdownStagesTest.java#L91)
+
+The dependent bean stopped before the target's turn (phase 1000), ahead of the middle bean at phase 0.
+
+## `③ Bean destroy`
+
+### Destruction is synchronous
+
+A single thread handles destroy methods.
+
+```java
+// DefaultSingletonBeanRegistry.destroySingletons()
+
+// Reverse registration order
+for (int i = disposableBeanNames.length - 1; i >= 0; i--) {
+		// The next bean starts only after this one finishes
+    destroySingleton(disposableBeanNames[i]);
+}
+```
+
+With two beans whose destroy methods each take 300ms, we can see this behavior:
+
+```
+timeline [   0ms] [Test worker] ③ slow-2 destroy started
+timeline [ 308ms] [Test worker] ③ slow-2 destroy finished
+timeline [ 308ms] [Test worker] ③ slow-1 destroy started
+timeline [ 612ms] [Test worker] ③ slow-1 destroy finished
+```
+
+> Reproduce with: `./gradlew s1 --tests '*destroyIsSequentialOnClosingThread'` · [test code](https://github.com/youngsu5582/playground/blob/acc35fc/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage1/ShutdownStagesTest.java#L64)
+
+- One thread, the thread that called `close()` (`Test worker`), handles the work.
+- The next bean starts only after the previous bean finishes.
+
+=> If one bean's destroy method is blocked, every bean after it has to wait.
+
+### Destroy order
+
+- A bean that depends on another bean is destroyed first (`@DependsOn`, constructor injection, and so on).
+- If there are no dependency relationships, destruction proceeds in reverse creation order.
+	- Adding a configuration class or changing an injection relationship can silently reverse the order.
+
+### Destroy order within a single bean
+
+What happens if a single bean has `@PreDestroy`, `DisposableBean.destroy()`, and `@Bean(destroyMethod = …)` all configured?
+
+```
+timeline [ 0ms] ③ @PreDestroy
+timeline [ 0ms] ③ DisposableBean.destroy()
+timeline [ 0ms] ③ destroyMethod(customClose)
+```
+
+> Reproduce with: `./gradlew s1 --tests '*destroyCallbacksInsideOneBean'` · [test code](https://github.com/youngsu5582/playground/blob/acc35fc/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage1/ShutdownStagesTest.java#L53)
+
+All three are called consecutively while cleaning up a bean during `③ Bean destroy`.
+
+> `@PreDestroy` is often thought of as “the place called as soon as the shutdown signal is received,” but it is called during `③ Bean destroy`.
+> `② lifecycle stop` finishes first. If a timeout occurred, unfinished work may still remain.
+
+- If an object registered with `@Bean` has `close()` or `shutdown()`, Spring infers it as a destroy method and calls it.
+
+## Resources close at different stages
+
+When are resources such as Redis, Kafka, and databases cleaned up?
+
+The point at which a resource is cleaned up depends on whether it implements `Lifecycle`, how its destroy callbacks are registered, and what each method does internally.
+-> Both Lifecycle shutdown and destroy callbacks may be invoked, so you have to inspect the implementation.
+
+### ⭐⭐ Note: this can change by version
+
+Up through 3.1, Redis was closed during `③ Bean destroy`.
+Starting with 3.2, it moved to `② lifecycle stop`.
+
+| Spring Data Redis | LettuceConnectionFactory | Stage at which Redis closes |
+| ----------------- | -------------------------------------- | -------------- |
+| 3.1.x | `InitializingBean`, `DisposableBean` only | `③ Bean destroy` |
+| 3.2.x and later | Added `SmartLifecycle` (phase 0) | `② lifecycle stop` |
+
+Even with the same code, upgrading the Spring Data Redis version moved the point at which Redis closes one stage earlier.
+Changes like this are difficult to notice from compiler errors or warnings alone.
+
+### ⭐ Note: the handling can differ depending on the internal implementation
+
+Even if shutdown processing occurs during `② lifecycle stop`, the component may reconnect and continue processing.
+
+- Rabbit and Kafka also clean up their connections during `② lifecycle stop`, but reconnect when the next request arrives.
+- Lettuce records that it has stopped and rejects connection requests unless it is `STARTED`.
+
+```java
+// DefaultKafkaProducerFactory (spring-kafka 3.3.16)
+public int getPhase() {
+    return Integer.MIN_VALUE;
+}
+
+public void stop() {
+    this.running.set(false);
+    // Close the existing producer (do not leave a rejection marker)
+    destroy();
+}
+
+private Producer<K, V> doCreateProducer(String txIdPrefix) {
+    ...
+    // Create a new one if the previous producer was closed and cleared.
+    if (this.producer == null) {
+        this.producer = new CloseSafeProducer<>(createKafkaProducer(), ...);
+    }
+    return this.producer;
+}
+```
+
+```java
+// LettuceConnectionFactory (spring-data-redis 3.2.x and later)
+private int phase = 0;
+
+public RedisConnection getConnection() {
+		// If STOPPED, throw IllegalStateException:
+	// LettuceConnectionFactory has been STOPPED
+    assertStarted();
+    ...
+```
+
+> These Lifecycle changes can also affect post-processing or cleanup work that uses Redis during shutdown!
+> [Redis Connection Factory Earlier Graceful Shutdown after Spring 3.2 Upgrade](https://github.com/spring-projects/spring-data-redis/issues/2843)
+> This issue covers a case where `LettuceConnectionFactory has been STOPPED` occurred in `@PreDestroy` after upgrading to Spring Boot 3.2.
+
+---
+
+## Conclusion
+
+This post confirmed three things.
+
+1. Spring shuts down in the order `① shutdown event` → `② lifecycle stop` → `③ Bean destroy`.
+2. `timeout-per-shutdown-phase` is the upper limit for waiting for callbacks in each phase. (It is not the maximum amount of time Spring waits for shutdown to finish.)
+3. The point at which resources are cleaned up depends on the implementation of Lifecycle and destroy callbacks.
+
+Now let us return to the final question. At which stage does the `@Async` pool wait for remaining work?
+When the work-completion waiting setting we saw earlier is enabled, does the Redis connection remain alive while the work is waiting?
+
+This will be covered in a follow-up post.
+
+## References
+
+- [Spring Framework reference — Startup and Shutdown Callbacks](https://docs.spring.io/spring-framework/reference/core/beans/factory-nature.html)
+- [SmartLifecycle Javadoc (6.2.x)](https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/context/SmartLifecycle.html)
+- [ExecutorConfigurationSupport Javadoc — DEFAULT_PHASE (6.2.x)](https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/scheduling/concurrent/ExecutorConfigurationSupport.html)
+- [LettuceConnectionFactory Javadoc 3.1.x](https://docs.spring.io/spring-data/redis/docs/3.1.x/api/org/springframework/data/redis/connection/lettuce/LettuceConnectionFactory.html) · [3.2.x](https://docs.spring.io/spring-data/redis/docs/3.2.x/api/org/springframework/data/redis/connection/lettuce/LettuceConnectionFactory.html)
+- [Spring Boot — Graceful Shutdown](https://docs.spring.io/spring-boot/3.3/reference/web/graceful-shutdown.html)
+- Spring 6.2 source: `AbstractApplicationContext`, `DefaultLifecycleProcessor`, `DefaultSingletonBeanRegistry`
