@@ -29,6 +29,17 @@ public void validate(TextToImageCreatedEvent event) {
 }
 ```
 
+Here, `AFTER_COMMIT` means that the post-processing listener runs only after the transaction that saved the request has committed successfully. `@Async` separates that listener from the request-handling thread and runs it on a separate executor.
+
+In simplified form, the flow is:
+
+1. An API request arrives, and the image-generation request state is saved to the database.
+2. After the transaction commits successfully, the image-generation post-processing event is handled.
+3. The post-processing listener runs on a separate thread through `@Async`.
+4. The API request can therefore return without waiting for post-processing to finish, but when the server shuts down, it becomes important to understand how remaining work in the executor is handled.
+
+In other words, the flow is split into `save request → commit transaction → handle event → post-process on a separate executor`. The shutdown problem examined in this post begins at this asynchronous boundary.
+
 We also had a separate executor to process this event.
 
 ```java
