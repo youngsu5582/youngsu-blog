@@ -19,12 +19,13 @@ image: /assets/img/thumbnail/2026-10-23-spring-shutdown-3-stages.png
 
 > This English version was translated by Hermes Agent.
 
-The service discussed in this post accepts text-based requests to start image generation and then performs post-processing on the generated result. Instead of making the request-handling thread wait for all post-processing, it first saves the request and hands off the post-processing asynchronously after the transaction commits.
+> The service discussed in this post accepts text-based requests to start image generation and continues with post-processing on the generated result.
+> Instead of making the request-handling thread wait for post-processing, it saves the request first and hands off post-processing asynchronously after the transaction commits.
 
 The processing flow is:
 
 1. When an API request arrives, the image-generation request state is saved.
-2. After the transaction commits successfully, the image-generation post-processing event is handled.
+2. After the transaction commits successfully, the image-generation post-processing event (NSFW checks and translation) is handled.
 3. The event listener runs on a separate executor, so the request-handling thread can respond without waiting for post-processing to finish.
 
 The listener can be simplified as follows.
@@ -37,9 +38,9 @@ public void validate(TextToImageCreatedEvent event) {
 }
 ```
 
-Here, `AFTER_COMMIT` means that the post-processing listener runs only after the transaction that saved the request has committed successfully. `@Async` separates the listener from the request-handling thread and runs it on a separate executor. Because of this asynchronous boundary, shutdown requires us to examine both the remaining work in the executor and the shutdown order of the external resources that work uses.
-
-We also had a separate executor to process this event.
+- The post-processing listener runs only after the transaction that saved the request has committed successfully.
+- `@Async` separates the listener from the request-handling thread and runs it on a separate executor.
+- We manage a separate executor for processing this event.
 
 ```java
 @Bean(name = AsyncProperties.ASYNC_LISTENER)
