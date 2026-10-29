@@ -131,7 +131,7 @@ export const mdxComponents = {
         <pre className="overflow-x-auto rounded-lg border border-border bg-muted text-foreground p-4 my-4 text-sm" {...props}>
           {children}
         </pre>
-        {codeText && <CodeCopyButton code={codeText} />}
+        {codeText && <CodeCopyButton code={codeText} language={typeof dataLanguage === "string" ? dataLanguage : undefined} />}
       </div>
     );
   },
@@ -176,7 +176,7 @@ export const mdxComponents = {
       return (
         <div className="relative group my-4">
           <figure {...props}>{children}</figure>
-          {codeText && <CodeCopyButton code={codeText} />}
+          {codeText && <CodeCopyButton code={codeText} language={typeof (props as Record<string, unknown>)["data-language"] === "string" ? (props as Record<string, string>)["data-language"] : undefined} />}
         </div>
       );
     }

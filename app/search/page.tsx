@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Search, SlidersHorizontal } from "lucide-react";
+import { SearchPageTracking, SearchPageResultLink } from "@/components/search/search-page-tracking";
 
 import {
   buildSearchIndex,
@@ -68,12 +69,12 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const searchIndex = buildSearchIndex();
   const queryMatches = filterSearchItems(searchIndex, { query });
   const facets = getSearchFacets(queryMatches);
-  const results = query
-    ? filterSearchItems(searchIndex, { query, type: selectedType }).slice(0, 30)
-    : [];
+  const allResults = query ? filterSearchItems(searchIndex, { query, type: selectedType }) : [];
+  const results = allResults.slice(0, 30);
 
   return (
     <div className="space-y-8">
+      <SearchPageTracking query={query} resultCount={allResults.length} filter={selectedType} />
       <section className="space-y-3">
         <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
           <Search className="h-3.5 w-3.5" />
@@ -160,8 +161,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         )}
 
         <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-          {results.map((item) => (
-            <Link
+          {results.map((item, index) => (
+            <SearchPageResultLink resultType={item.type} rank={index + 1}
               key={`${item.type}:${item.slug}`}
               href={getItemHref(item)}
               className="block space-y-2 p-4 transition hover:bg-muted/40"
@@ -185,7 +186,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                   <HighlightedText text={item.description} query={query} />
                 </p>
               )}
-            </Link>
+            </SearchPageResultLink>
           ))}
         </div>
 

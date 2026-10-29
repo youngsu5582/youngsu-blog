@@ -1,8 +1,9 @@
-import Link from "next/link";
+import { TranslationLink } from "@/components/post/translation-link";
 import { Languages } from "lucide-react";
 
 interface TranslationNoticeProps {
   currentLang: "ko" | "en";
+  currentSlug: string;
   alternate: {
     title: string;
     slug: string;
@@ -10,7 +11,7 @@ interface TranslationNoticeProps {
   };
 }
 
-export function TranslationNotice({ currentLang, alternate }: TranslationNoticeProps) {
+export function TranslationNotice({ currentLang, currentSlug, alternate }: TranslationNoticeProps) {
   const isEnglishCurrent = currentLang === "en";
 
   return (
@@ -31,12 +32,12 @@ export function TranslationNotice({ currentLang, alternate }: TranslationNoticeP
             </p>
           </div>
         </div>
-        <Link
+        <TranslationLink from={currentLang} to={alternate.lang} contentId={currentSlug}
           href={`/posts/${alternate.slug}`}
           className="inline-flex flex-shrink-0 items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
           {alternate.lang === "ko" ? "한국어로 읽기" : "Read in English"}
-        </Link>
+        </TranslationLink>
       </div>
     </aside>
   );
