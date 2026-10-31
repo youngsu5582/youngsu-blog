@@ -1,0 +1,593 @@
+---
+title: "종료를 기다리게 했는데도 @Async 작업이 실패한 이유"
+date: "2026-10-31T00:00:00.000Z"
+description: 기다리는 설정을 켠 @Async 풀이 Redis 가 멈춘 뒤에야 남은 작업을 기다리는 이유와, 그 사이 넘긴 다음 작업이 로그 한 줄로 사라지는 과정을 테스트 코드와 로그로 확인한다.
+image: /assets/img/thumbnail/2026-10-31-spring-shutdown-async-pool-waiting.png
+categories:
+  - Spring
+tags:
+  - spring-boot
+  - spring-lifecycle
+  - graceful-shutdown
+  - async
+  - java
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+---
+### 3줄 요약
+
+1. `@Async` 풀(`@Async` 가 넘긴 작업을 실행하는 스레드 풀)에 `waitForTasksToCompleteOnShutdown(true)` 를 켜면, 풀은 남은 작업을 `③ Bean destroy` 에서 기다린다. 그때 Redis 연결은 이미 `② lifecycle stop` 에서 끊겨 있다.
+2. 풀마다 차례로 기다리고, `awaitTermination` 을 넘긴 작업은 끊기지도 기다려지지도 않은 채 남는다. 접수를 닫은 풀에 넘긴 "다음 작업" 은 커밋 뒤 콜백 안에서 거절돼, catch 밖에서 로그 한 줄만 남기고 사라진다.
+3. 일을 만드는 쪽이 멈춘 뒤, 자원이 멈추기 전에 접수를 열어 둔 채 풀을 비우는 방법을 실험했다. 다만 idle 관측만으로 모든 작업의 완료를 보장할 수는 없다.
+
+### 대상 독자
+
+- Spring Boot 서비스에서, 배포 때 비동기 작업이 사라지거나 에러가 발생한 개발자
+- `@Async` 풀과 graceful shutdown 을 함께 쓰는 개발자
+- 자주 사용하던 `ThreadPoolTaskExecutor` 의 내부 흐름이 궁금한 개발자
+
+---
+
+> 1편에서는 Spring 이 `① 종료 이벤트` → `② lifecycle stop` → `③ Bean destroy` 순서로 꺼지는 것을 로그로 확인했다. 자세한 순서는 [1편](https://www.youngsu5582.today/posts/spring-shutdown-3-stages-and-lifecycle-phases) 에서.
+>
+> - `① 종료 이벤트` → 종료가 시작됐다고 알리는 단계
+> - `② lifecycle stop` → phase 번호가 큰 빈부터 차례로 멈추는 단계 (phase 는 멈추는 순서 번호이고, 클수록 먼저 멈춘다)
+> - `③ Bean destroy` → 남은 빈을 만든 순서의 역순으로 닫는 단계
+> - Redis 연결 → 캐시 저장소 Redis 에 요청을 보내는 연결. 이 연결은 `②` 에서 멈춘다
+
+이번 편은 1편이 남긴 두 질문에 답한다.
+
+> `@Async` 풀은 남은 작업을 어느 단계에서 기다릴까?
+> 작업 완료 대기 설정을 켰을 때, 작업이 기다리는 동안 Redis 연결은 살아 있을까?
+
+| 용어 | 뜻 |
+|---|---|
+| 접수 | 풀이 새 작업을 받는 일 |
+| `awaitTermination` | 풀이 종료 때 작업을 기다려 주는 최대 시간 설정 |
+
+## 상황과 환경
+
+서비스 환경과 이미 켜져 있던 설정은 다음과 같다.
+
+| 항목       | 값                                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| 버전       | Spring Boot 3.5 (Spring Framework 6.2, Spring Data Redis 3.5)                                         |
+| 인프라      | AWS ECS(컨테이너 실행 서비스, EC2 위에서), 앞단은 ALB(Application Load Balancer, 요청을 나눠 주는 로드밸런서). SIGTERM(종료 요청 신호) 30초 뒤 SIGKILL(강제 종료)                               |
+| 이미 켜진 설정 | `server.shutdown: graceful` · `spring.lifecycle.timeout-per-shutdown-phase: 35s`                      |
+| 후처리      | 커밋 뒤 `@TransactionalEventListener(AFTER_COMMIT)`(커밋 뒤에 불리는 리스너) + `@Async`<br />캐시 삭제(Redis), 생성 태스크 MQ 발행, DB 상태 갱신 등 |
+| 비동기 풀    | `ThreadPoolTaskExecutor`                                                                              |
+
+> `timeout-per-shutdown-phase: 35s` 는 phase 하나의 대기 상한이다. SIGTERM 뒤 강제 종료까지는 30초(ECS stopTimeout)여서, 상한(35초)이 강제 종료 시각보다 길다.
+> 한 phase 가 상한을 다 쓰기 전에 SIGKILL 이 먼저 올 수 있다.
+
+배포할 때 커밋 뒤 비동기 작업이 사라지는 문제가 있었다. 그 문제를 막으려는 설정을 더했다.
+
+```java
+executor.setWaitForTasksToCompleteOnShutdown(true);
+executor.setAwaitTerminationSeconds(30);
+```
+
+⭐⭐ 종료 때 풀이 남은 작업을 기다리게 하려고 더한 위 두 줄을, 이 글에서는 '`기다리는 설정`' 이라고 부른다!
+
+`server.shutdown: graceful` 과는 다른 설정이다. graceful 은 웹 서버가 HTTP 요청을 기다리는 설정이고, 기다리는 설정은 `@Async` 풀이 기다리는 설정이다.
+설정을 켜지 않은 기본값의 풀도 실행 중인 작업은 기다린다 (아래 표). 이름은 위 두 줄을 켠 풀을 가리킨다.
+
+## 검증 방법
+
+1편의 실험장을 이어 쓴다.
+실험 코드는 [Spring Shutdown Playground](https://github.com/youngsu5582/playground/tree/f5080dd/spring-shutdown-playground) 의 stage2~6 과 SIGTERM 데모에 있다.
+
+- 로그 형식은 1편과 같되 `timeline` 접두어는 생략하고, 들여 쓴 줄은 풀 안의 작업이다.
+- Redis, MQ, DB 는 실제 코드를 기반으로 **종료 동작만** 옮긴 가짜 자원이다.
+	- 가짜로 본 결과는 Testcontainers 의 실제 컨테이너들로 다시 확인한다.
+
+| 실제 코드                             | 종료 동작                                               |
+| --------------------------------- | --------------------------------------------------- |
+| `LettuceConnectionFactory`        | `② lifecycle stop` phase 0 에서 멈추고, 이후 연결을 거절한다      |
+| Rabbit `CachingConnectionFactory` | `② lifecycle stop` phase MIN 에서 연결을 끊고, 다음 요청 때 재연결 |
+| `HikariDataSource`                | `③ Bean destroy` 에서 `close()`                       |
+
+### server graceful shutdown?
+
+위 설정이 없으면, 비동기 작업은 아무도 기다려 주지 않을까?
+
+`server.shutdown: graceful` 이라는 설정이 존재한다.
+이름만 보면, 서버 종료가 요청들을 기다려준다는 거 같지만 이 설정은 아래와 같이 동작한다.
+
+1. `server.shutdown: graceful` 은 phase `MAX − 1024` 의 lifecycle 에 처리된다.
+   → 웹 서버가 받은 HTTP 요청만 기다린다.
+2. 요청 스레드가 커밋 뒤 `@Async` 로 넘긴 작업은 다른 스레드 풀에서 돈다
+   → graceful 은 그 풀을 모른다.
+
+=> 비동기 작업이 종료 때 어떻게 되는지는 풀 자신의 설정이 정한다.
+
+## `ThreadPoolTaskExecutor` 가 설정마다 달라지는 구조
+
+`waitForTasksToCompleteOnShutdown` 의 기본값은 `false` 다.
+
+그래서 처음에는 "기본값이면 종료 이벤트가 오자마자 풀이 닫히고, 남은 작업은 거절된다" 고 생각했다.
+검색해서 나오는 글들도 대부분 "기본은 실행 중 작업을 interrupt 한다" 고 설명한다.
+
+하지만, Spring 6.2 의 `ThreadPoolTaskExecutor` 에서 확인해본 결과 다소 다르게 동작했다.
+
+검색 글이 틀린 건 아니다. 6.0 까지는 `③ Bean destroy` 에서 바로 `shutdownNow()` 로 끊었다.
+6.1 부터는 끊기 전에 한 번 기다린다.
+
+`ThreadPoolTaskExecutor` 가 `SmartLifecycle` 이 됐기 때문이다.
+
+기본 phase 는 6.1 에서 `Integer.MAX_VALUE` 였고, 6.2 부터 `MAX / 2` 다.
+
+그래서 1편의 세 단계 모두에 할 일이 있고, 설정에 따라 달라진다.
+
+| 설정   | `① 종료 이벤트`                   | `② lifecycle stop` (`MAX / 2`) | `③ Bean destroy`                             |
+| ---- | ---------------------------- | ------------------------------ | -------------------------------------------- |
+| 기본값  | 표시만 하고<br />계속 접수              | 실행 중인 작업이 끝날 때까지 대기          | 대기열 취소, 실행 중 작업 중단 요청<br />(`shutdownNow()`)    |
+| 기다리는 설정 | 표시만 하고<br />계속 접수 | **건너뛴다**                       | 접수를 닫고 남은 작업을 기다림<br />(`awaitTermination`), 풀마다 차례로 |
+
+### 기본값 — `② stop` 에서 실행 중 작업을 기다린다
+
+아래 그림은 기본값에서 `①` `②` `③` 이 각각 하는 일을 보여 준다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/53b4137542dfce175ddf0c0be2d30196.png)
+
+1. `①` 에서는 `markShutdown()` 표시만 남긴다
+2. `②` 에서는 `paused` 를 켜고, 실행 중인 작업이 0 이 될 때까지 callback 을 미룬다.
+3. `③` 에서는 `shutdownNow()` 로 대기열을 취소하고, 실행 중인 작업에 interrupt 를 건다.
+
+=> 기본값에서는 종료 이벤트가 와도 풀이 접수를 닫진 않는다.
+
+- pool-a 에 500ms 짜리 작업 a1 하나를 넣고 닫으면?
+
+```
+[   11ms] [Test worker] ② pool-a lifecycle stop 시작
+[  512ms] [pool-a-1   ]   task a1 끝
+[  512ms] [pool-a-1   ] ② pool-a lifecycle stop 완료
+[  513ms] [Test worker] ② redis(phase 0) stop
+[  513ms] [Test worker] ③ destroy 단계 시작
+```
+
+재현: `./gradlew s2 --tests '*waitsForRunningTaskInLifecycle'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L86)
+
+1. 작업은 Redis 가 살아 있는 `② lifecycle stop` 에서 처리
+2. 작업이 끝난 뒤에야 Redis 가 멈춘다
+
+- phase timeout 을 1초로 두고 3초짜리 작업을 넣으면?
+
+```
+[   10ms] [Test worker] ② pool-a lifecycle stop 시작
+  spring  Shutdown phase 1073741823 ends with 1 bean still running after timeout of 1000ms: [poolA]
+[ 1020ms] [Test worker] ② redis(phase 0) stop          ← 1초 뒤 다음 phase 로
+[ 1021ms] [Test worker] ③ pool-a destroy 시작
+[ 1021ms] [pool-a-1   ]   task a1 interrupt 됨          ← ③ 의 shutdownNow()
+```
+
+재현: `./gradlew s2 --tests '*interruptsTaskLongerThanPhaseTimeout'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L127)
+
+1. 1초가 지나고 phase 가 종료
+2. destroy 시작
+3. shutdownNow 로 Interrupt
+
+=> 기본값이 생각보다 괜찮았다. phase timeout 까지는 실행 중인 작업을 바로 끊지 않고 기다린다.
+
+- a1(200ms) 이 도는 동안 a2(1.5초) 가 대기열에 있으면?
+
+1. 스레드 하나에 작업 하나가 실행 중이고 하나가 대기열에 있다
+   → 앞 작업이 끝나는 순간 callback 이 불리고, lifecycle 은 다음 phase 로 넘어간다.
+2. 대기열 작업이 그 사이 실행돼도 완료까지 기다리지 않는다
+   → `③ Bean destroy` 에서 대기열에 남은 작업은 취소되고, 실행 중인 작업은 interrupt 될 수 있다.
+
+재현: `./gradlew s2 --tests '*doesNotWaitForQueuedTask'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L107)
+
+=> "실행 중 0" 은 한순간이다. 그 뒤 대기열에서 나온 작업은 `③` 에서 interrupt 된다.
+
+아래 그림은 a1(200ms) 이 실행 중이고 a2(1.5초) 가 대기열에 있을 때,
+`②` 가 a1 만 기다리고 넘어가는 순간을 보여 준다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/219b59b570192c5b194b3f49cf5fbb65.png)
+
+### `waitForTasksToCompleteOnShutdown(true)`
+
+`②` 를 건너뛰고 `③` 에서 접수만 닫는다
+
+`executor.setWaitForTasksToCompleteOnShutdown(true);` 를 킨다면?
+if 문 분기를 탄다. (기본값은 `else` 쪽이다.)
+
+```java
+// ExecutorConfigurationSupport.shutdown() — ③ 의 destroy() 가 부른다 (로그 생략)
+if (this.waitForTasksToCompleteOnShutdown) {
+    this.executor.shutdown();
+}
+else {
+    for (Runnable remainingTask : this.executor.shutdownNow()) {
+        cancelRemainingTask(remainingTask);
+    }
+}
+awaitTerminationIfNecessary(this.executor);
+```
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/fe25cbdc45cc7cc3b9e59f64485c9a5d.png)
+
+1. `①` 에서 `lateShutdown = true` 표시만 남긴다 → 접수는 계속 받는다.
+2. `②` 의 `stop(callback)` 은 `lateShutdown` 을 보고 바로 `callback.run()` 을 부른다 → 기다리지 않는다.
+3. `③` 은 위 `shutdown()` 의 `if` 쪽이다 → `executor.shutdown()` 으로 접수만 닫고, 대기열은 계속 실행된다.
+
+Javadoc 도 같은 내용이다.
+
+> The executor will not go through a coordinated lifecycle stop phase then but rather only stop and wait for task completion on its own shutdown.
+
+-> 설정을 켜면, 다 같이 멈추는 시간에는 멈추지 않고 그냥 지나간다.
+자기 차례의 정리 시간에서 멈추고, 작업이 끝나기를 기다린다.
+=> `② lifecycle stop` 을 건너뛰고 `③ Bean destroy` 에서 대기한다.
+
+확인을 위해, 풀 2개에 1.5초짜리 작업을 하나씩 넣고 `awaitTermination` 은 1초로 두고 테스트를 해보면?
+
+```
+[   13ms] ② pool-a lifecycle stop 시작
+[   13ms] ② pool-a lifecycle stop 완료        ← 같은 ms. 기다리지 않는다
+
+[   13ms] ② redis(phase 0) stop              ← 작업이 도는 중에 Redis 가 멈춘다
+```
+
+재현: `./gradlew s2 --tests '*waitsInDestroyOnePoolAtATime'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L176)
+
+### `awaitTermination`
+
+`③` 에서 종료 스레드를 붙잡는 상한선이다.
+
+```java
+// spring-context 6.2 — ③ shutdown() 의 마지막 줄 (요약)
+private void awaitTerminationIfNecessary(ExecutorService executor) {
+    if (this.awaitTerminationMillis > 0) {
+        if (!executor.awaitTermination(this.awaitTerminationMillis, TimeUnit.MILLISECONDS)) {
+	        // 끝. shutdownNow() 는 없다
+            logger.warn("Timed out while waiting for executor ... to terminate");
+        }
+    }
+}
+```
+
+`waitForTasksToCompleteOnShutdown` 플래그 없이 `awaitTermination` 만 주면,
+`③` 에서 `shutdownNow()` 로 interrupt 를 건 뒤 스레드가 빠져나오기를 그 시간만큼 기다린다.
+
+앞의 풀 2개 실험 로그의 뒷부분이다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/8acccf3370eb796b045f375b1130e234.png)
+
+```
+[   13ms] ③ pool-b destroy 시작               ← 생성 역순: pool-b 먼저
+  spring  Timed out while waiting for executor 'poolB' to terminate
+[ 1019ms] ③ pool-b destroy 끝                 ← 1초 뒤. 작업은 끊지 않았다
+
+[ 1020ms] ③ pool-a destroy 시작               ← pool-b 를 다 기다린 뒤에야 시작
+[ 1515ms]   task a1 끝
+[ 1515ms]   task b1 끝                        ← 1초를 넘겼지만 끊기지 않았다
+```
+
+1. 기다리는 곳은 `③ Bean destroy` 다 → 그때 Redis 는 이미 `② lifecycle stop` 에서 멈췄다.
+2. destroy 는 동기다 → 풀끼리 차례로 기다리고, 자기 차례가 아닌 풀은 계속 접수하고 실행한다.
+
+#### 작업을 종료시키진 않는다
+
+처음에 가장 헷갈린 부분이다.
+`awaitTermination` 은 1초인데, `③` 이 시작될 때 작업이 1.5초 남아 있으면?
+
+```
+[  135ms] [Test worker] ③ pool-a destroy 시작
+  spring  Timed out while waiting for executor 'poolA' to terminate
+[ 1138ms] [Test worker] ③ pool-a destroy 끝      ← 1초 뒤 기다리기를 포기하고 다음 빈으로
+
+[ 1139ms] [Test worker] ③ db close
+[ 1139ms] [Test worker] ③ redis destroy
+[ 1640ms] [pool-a-1   ]   task A 끝              ← 자원이 다 닫힌 뒤에 혼자 끝났다
+```
+
+재현: `./gradlew s4 --tests '*waitForTasksTimeoutWhileChainedTaskIsRunning'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L84)
+
+1. destroy 는 1초만 기다린다 → 1.5초를 다 기다려 주지 않는다.
+2. 시간이 넘으면 `awaitTermination` 은 `false` 를 돌려주고 Spring 은 warn 로그만 남긴다 → `shutdownNow()` 를 부르지 않으므로 A 는 끊기지 않는다 ( `task A interrupt 됨` 은 찍히지 않았다 ).
+3. 남은 0.5초 동안 A 는 아무도 기다리지 않는 상태로 돈다 → DB 와 Redis 는 이미 닫힌 상태
+
+=> `awaitTermination` N초는 종료 스레드가 기다리는 최대 시간이고, 작업의 마감 시각은 아니다.
+
+아래 그림은 `awaitTermination` 1초 동안 pool-a destroy 와 작업 A 가 시간 축에서 어떻게 겹치는지 보여 준다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/32b629c95b3c90f735ca7873facc9503.png)
+
+> 테스트에서 `task A 끝` 이 찍힌 건 `context.close()` 뒤에 풀 스레드를 따로 기다리기 때문이다.
+> 진짜 SIGTERM 이면 shutdown hook(`context.close()`) 이 끝나는 순간 JVM 이 멈추고, 남은 작업은 interrupt 도 `finally` 도 없이 잘린다.
+
+## 비동기 풀과 외부 자원
+
+그러면, 비동기 풀에서 외부 자원(DB, MQ, Redis) 등을 사용하면 어떻게 될까?
+이를 테스트 하기 위해 `③ Bean destroy` 에서 기다리기 시작한 순간 외부 자원에 한 번씩 쓰는 작업을 넣었다.
+
+```
+real redis → 실패 IllegalStateException: LettuceConnectionFactory has been STOPPED. Use start() to initialize it
+```
+
+재현: `./gradlew s5 --tests '*waitForTasksWithRealLettuce'` (Docker 필요) · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage5/RealLettuceTest.java#L48)
+
+설정에 따른 결과를 정리해보면? 아래와 같다.
+
+| 설정                                | Redis  | MQ        | DB     |
+| --------------------------------- | ------ | --------- | ------ |
+| 기본값 (`②` 에서 대기)                   | 성공     | 성공        | 성공     |
+| 기다리는 설정 (`③` 에서 대기)                 | **실패** | 성공 (재연결)  | 성공     |
+| 기다리는 설정 + DataSource 를 풀보다 늦게 생성   | **실패** | 성공        | **실패** |
+
+DB 가 성공한 건 **우연**이다.
+
+1. `③ Bean destroy` 는 생성 역순이다
+2. 풀 빈은 DataSource 에 의존하지 않는다
+
+→ DataSource 가 Async 풀보다 늦게 만들어지면 DB 까지 실패한다.
+
+재현: `./gradlew s3 --tests '*waitForTasksModeWithDataSourceCreatedLater'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage3/ResourcesDuringShutdownTest.java#L106)
+
+### ⭐ 참고 : 검색하면 나오는 방법이 지금은 위험한 이유
+
+"`waitForTasksToCompleteOnShutdown(true)` + `setAwaitTerminationSeconds()` 로 비동기 작업을 처리한다" 는 글이 꽤 있다. 하지만, 효과는 스프링 버전과 빈의 종료 순서에 따라 달라질 수 있다.
+
+| Spring Data Redis | Redis 가 닫히는 단계     | 풀이 `③` 에서 기다릴 때 Redis  |
+| ----------------- | ------------------ | ---------------------- |
+| 3.1.x             | `③ Bean destroy`   | 풀이 먼저 destroy 되면 살아 있다 |
+| 3.2.x 부터          | `② lifecycle stop` | 이미 멈춰 있다               |
+
+1. 3.1 까지는 Redis 도 `③ Bean destroy` 에서 닫혔다
+   → 풀을 먼저 destroy 하는 구성이면 `awaitTermination` 대기 중 Redis 의 destroy 도 미룰 수 있었다.
+2. 3.2 부터 Redis 가 `② lifecycle stop` 으로 옮겨 갔다
+   → 풀이 `③` 에서 기다릴 때는 Redis 가 이미 멈춘 뒤다.
+
+[Redis Connection Factory Earlier Graceful Shutdown after Spring 3.2 Upgrade - LettuceConnectionFactory SmartLifecycle Backward Compatibility](https://github.com/spring-projects/spring-data-redis/issues/2843)
+
+=> destroy 단계일 때는 이미 Lifecycle 을 사용하는 자원들이 종료 처리가 된 상태일 수 있다.
+두 설정만으로는 작업이 끊기지 않게 기다릴 수는 있지만, 필요한 외부 자원 없이 처리하게 될 수 있다.
+
+## 비동기 체인이 조용히 끊기는 과정
+
+앞에서 기다리는 설정의 풀은 `③` 에서 `shutdown()` 으로 접수를 닫고,
+`awaitTermination` 동안 실행 중인 작업을 기다려 준다고 했다.
+
+그 작업이 다음 작업을 넘기는 체인이라면?
+
+실서비스에는 비동기 작업이 다음 비동기 작업을 넘기는 체인이 흔하다.
+여기서는 `CreateTask` 가 태스크를 저장하고 커밋하면,
+`ProduceTask` 가 이어 받아 Redis 대기열과 MQ 에 넣는다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/f24ee0db66e149ea8a04383d75079c85.png)
+
+1. `CreateTask` 는 `@Async` + `@Transactional` 이다
+   → pool-a 스레드에서 저장하고 이벤트를 발행한다.
+2. `ProduceTask` 는 `@TransactionalEventListener(AFTER_COMMIT)` 리스너다
+   → 커밋 뒤 `afterCompletion` 콜백에서 불린다.
+3. `ProduceTask` 도 `@Async` 다
+   → 콜백이 하는 일은 pool-a 에 넘기는 것뿐이고, 실행은 그 뒤다.
+
+- 두 번째 고리(`ProduceTask` 넘기기)는 내 코드가 아니라 Spring 의 커밋 뒤 콜백이 한다.
+(넘기다 거절돼도 `createTask` 의 catch 는 이미 끝난 뒤라 받을 수 없다.)
+
+### 기다리는 동안 다음 작업이 들어오면?
+
+pool-a 의 차례가 오면 순서는 아래와 같다.
+
+1. `shutdown()` 으로 접수를 닫는다.
+2. `awaitTermination` 동안 실행 중인 `CreateTask` 는 계속 돌고, 커밋한다.
+3. 커밋 뒤 콜백이 `ProduceTask` 를 같은 pool-a 에 넘긴다
+   → 이미 닫혀 `TaskRejectedException` 으로 거절된다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/0a355d27ac11f3c84061da877ff370c3.png)
+
+```
+[   19ms] [Test worker] ③ pool-a destroy 시작
+[   20ms] [pool-a-1   ]   submit B
+[   20ms] [pool-a-1   ]   submit B 거절됨 (TaskRejectedException)
+```
+
+재현: `./gradlew s4 --tests '*waitForTasksRejectsChainedTask'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L68)
+
+=> 기다려 주는 설정이 첫 작업(`CreateTask`)은 끝까지 돌게 하고, 다음 작업(`ProduceTask`)은 거절한다.
+
+이 예외는 **AFTER_COMMIT 콜백 안에서 나서 로그만 남고 사라진다.**
+
+```java
+// TransactionSynchronizationUtils.invokeAfterCompletion (spring-tx 6.2)
+try {
+    synchronization.afterCompletion(completionStatus);
+} catch (Throwable ex) {
+	// 삼킨다
+    logger.error("TransactionSynchronization.afterCompletion threw exception", ex);
+}
+```
+
+진짜 Redis · RabbitMQ · PostgreSQL 로 돌려 보면,
+태스크는 DB 에 생성됐는데 큐에는 없고 요청 상태도 `REQUESTED` 그대로다.
+
+에러 상태는 찍히지 않고, 남는 흔적은 Spring 의 ERROR 로그 한 줄뿐이다.
+
+재현 (Docker 필요): `./gradlew s6 --tests '*waitForTasksProduceAfterCommit'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage6/RealChainTest.java#L124)
+
+## 접수를 열어 두고, `② lifecycle stop` 에서 풀 비우기
+
+여기까지 내용을 기반으로 정리하면, 두 설정은 각자 반씩만 맞았다.
+
+- 기본값은 `②` 에서 기다리니 Redis 가 살아 있다. 하지만 실행 중인 작업만 기다리고, 대기열과 다음 작업은 `③ destroy` 에서 끊긴다.
+- 기다리는 설정은 끝까지 기다린다. 하지만 자리가 `③ destroy` 이라 Redis 는 이미 멈췄고, 기다리는 동안 넘긴 다음 작업은 거절된다.
+
+=> 풀고 싶은 것은 둘을 합친 것이다. **외부 자원이 멈추기 전에, 대기열과 다음 작업까지 끝날 때까지 기다린다.**
+
+작업이 쓰는 자원을 살려 두려면 1편 phase 표의 순서를 그대로 따라야 한다.
+**일을 만드는 쪽 정지 → 일을 처리하는 쪽(풀) 비우기 → 일이 쓰는 자원 정지**
+
+=> 그 자리는 phase 사다리의 `MAX / 2` 와 `0` 사이다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/fcf5abe9745a7c6edd7eac147910f68d.png)
+
+### 실제 코드
+
+아래 코드는 참고를 위한 샘플 코드이다
+
+```java
+/**
+ * 웹 서버·리스너가 멈춘 뒤, Redis(phase 0)가 멈추기 전에 풀을 비운다.
+ * 접수는 닫지 않고, 모든 풀이 "실행 중 0 + 대기열 0" 으로 연속해서 관측될 때까지 기다린다.
+ */
+public class IdleDrainLifecycle implements SmartLifecycle {
+
+    private static final int REQUIRED_IDLE_CHECKS = 2;
+
+    // 필드(pools, timeout, running)·생성자·start()·isRunning() 은 생략
+
+    @Override
+    public int getPhase() {
+        return ExecutorConfigurationSupport.DEFAULT_PHASE - 1;
+    }
+
+    @Override
+    public void stop() {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        int idleStreak = 0;
+        while (System.nanoTime() < deadline && idleStreak < REQUIRED_IDLE_CHECKS) {
+            idleStreak = allIdle() ? idleStreak + 1 : 0;
+            sleep(20);
+        }
+        if (idleStreak < REQUIRED_IDLE_CHECKS) {
+            log.warn("비동기 풀 종료 대기 시간 초과 …");
+        }
+        running = false;
+    }
+
+    private boolean allIdle() {
+        return pools.stream().allMatch(pool -> {
+            ThreadPoolExecutor executor = pool.getThreadPoolExecutor();
+            return executor.getActiveCount() == 0 && executor.getQueue().isEmpty();
+        });
+    }
+}
+```
+
+전체 구현: [IdleDrainLifecycle.java](https://github.com/youngsu5582/playground/blob/spring-shutdown-answers/spring-shutdown-playground/app/src/main/java/playground/shutdown/drain/IdleDrainLifecycle.java)
+
+코드를 위에서부터 읽으면 이렇다.
+
+1. `getPhase()` 는 `MAX/2 − 1` 이다
+   → 풀(`MAX/2`) 과 Redis(`0`) 사이, 일을 만드는 쪽이 멈춘 뒤 Redis 가 멈추기 전의 자리다.
+2. `stop()` 은 종료 스레드를 붙잡고 20ms 마다 `allIdle()` 을 본다
+   → 기다리는 동안 다음 phase 로 넘어가지 않으니 Redis 는 살아 있다.
+3. `allIdle()` 은 모든 풀의 실행 중 수(`getActiveCount()`)와 대기열이 둘 다 0 인지만 본다
+   → 접수는 건드리지 않는다. 비우는 도중 넘어온 체인 작업도 받고, 접수는 그 뒤 `③ Bean destroy` 에서 닫힌다.
+4. idle 이 연속 2회(`REQUIRED_IDLE_CHECKS`) 여야 끝난다
+   → 작업이 대기열에서 막 꺼내져 아직 실행 중으로 집계되기 전의 틈을 넘기려는 것이다.
+5. `deadline` 을 넘기면 warn 만 남기고 끝낸다
+   → 작업을 끊지 않고 다음 phase 로 넘어간다. phase timeout 으로는 이 대기를 끊을 수 없어서 자체 deadline 을 둔다.
+
+풀 설정은 `waitForTasksToCompleteOnShutdown(true)` 를 그대로 두고 `setAwaitTerminationSeconds` 만 뺀다.
+
+- 플래그는 풀 자신의 lifecycle stop 이 따로 기다리지 않게 하려고 둔다.
+- `awaitTermination` 을 빼서 `③` 에서 풀마다 차례로 블로킹하던 대기를 없앤다 → 대기는 `②` 의 drain 이 맡는다. `shutdown()` 은 `③` 에서 그대로 불린다.
+
+```
+[   14ms] [Test worker] ② drain(idle 대기) 시작
+[   16ms] [pool-a-1   ]   submit B
+[   17ms] [pool-a-1   ]   task B 시작
+[  322ms] [pool-a-1   ]   B redis → 성공
+[  377ms] [Test worker] ② drain(idle 대기) 끝         ← B 까지 끝난 뒤
+[  378ms] [Test worker] ② pool-a lifecycle stop 시작
+[  378ms] [Test worker] ② redis(phase 0) stop
+```
+
+재현: `./gradlew s4 --tests '*idleDrainRunsChainedTask'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L139)
+진짜 Lettuce: `./gradlew s5 --tests '*idleDrainWithRealLettuce'` · [테스트 코드](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage5/RealLettuceTest.java#L56)
+
+1. drain 도중 넘긴 B 는 접수됐고 Redis 호출도 성공했다.
+2. drain 은 B 까지 끝난 뒤에 끝났고, 그다음에야 Redis 가 멈췄다.
+
+### SIGTERM 으로 비교
+
+진짜 SIGTERM 으로, 풀에 400ms 마다 Redis 를 부르는 작업을 넣고 종료 신호를 보내자.
+
+```
+# setWaitForTasksToCompleteOnShutdown + setAwaitTerminationSeconds 설정
+[ 1216ms] [pool-a-1                 ]   redis 호출 4회차 → 성공
+>>> kill -TERM
+[ 1330ms] [SpringContextShutdownHook] ② redis(phase 0) stop → 이후 연결 거절
+[ 1330ms] [SpringContextShutdownHook] ③ pool-a destroy 시작
+[ 1619ms] [pool-a-1                 ]   redis 호출 5회차 → 실패 … has been STOPPED
+  … 8회차까지 전부 실패
+
+# IdleDrain
+>>> kill -TERM
+[ 1387ms] [SpringContextShutdownHook] ② drain(idle 대기) 시작
+[ 1622ms] [pool-a-1                 ]   redis 호출 5회차 → 성공
+  … 8회차까지 전부 성공
+[ 3287ms] [SpringContextShutdownHook] ② drain(idle 대기) 끝
+[ 3289ms] [SpringContextShutdownHook] ② redis(phase 0) stop
+```
+
+재현: `./scripts/02-sigterm-demo.sh wait` · `./scripts/02-sigterm-demo.sh drain` · [스크립트](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/scripts/02-sigterm-demo.sh)
+
+같은 작업, 같은 SIGTERM 인데
+기다리는 설정은 종료 신호 뒤 Redis 호출이 전부 실패했고, IdleDrain 은 전부 성공했다.
+
+아래 그림은 같은 SIGTERM 시점을 기준으로 기다리는 설정과 IdleDrain 의 Redis 호출 결과를 나란히 보여 준다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/68243a8adb7a7ffa2b17f80d235f266f.png)
+
+### 정리
+
+아래 그림과 표는 기본값, 기다리는 설정, IdleDrain 이 풀을 기다리는 곳과 다음 작업의 운명을 한곳에 모은 것이다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/10/31/234fe7e3fc06249a951c2f5ccb8b066a.png)
+
+| 방식            | 풀을 기다리는 곳                        | 종료 중 넘긴 다음 작업 | 그 작업의 Redis 호출 |
+| ------------- | -------------------------------- | ------------- | -------------- |
+| 기본값           | `②` `MAX / 2` — 실행 중 0 이 되는 순간까지 | 접수            | 기다려 주지 않는다     |
+| 기다리는 설정         | `③` — 풀마다 차례로                    | 자기 destroy 전이면 접수, 뒤면 **거절** | `③` 에서 실패 / 실행 안 됨 |
+| IdleDrain     | `②` `MAX/2 − 1` — 풀이 빌 때까지        | 접수            | 성공             |
+
+그림의 `strictEarlyShutdown(true)` 는 종료 이벤트에서 바로 접수를 닫는 옵션이며,
+이 글에서는 다루지 않았다.
+
+### IdleDrain 을 그냥 사용하면 되나?
+
+아니다.
+
+IdleDrain 은 기다리는 자리를 외부 자원 앞으로 옮기면,
+체인에 들어가는 작업까지 살릴 수 있다는 것을 확인한 실험이다.
+
+그대로 운영 코드의 정답으로 쓰기에는 걸리는 것이 세 가지다.
+
+1. 끝났다는 판단이 관측에 기댄다 → idle 을 두 번 봐도 원자적 보장이 아니다.
+2. 순서를 직접 지켜야 한다 → 생산자는 먼저 멈추고, 자원은 풀이 빌 때까지 멈추면 안 된다.
+3. 계획된 종료에서만 돈다 → SIGKILL 이나 크래시에서는 종료 콜백이 돌지 않는다.
+
+그래서 답은 작업의 성격에 따라 갈린다.
+
+- 캐시 삭제처럼 유실돼도 되는 작업 → 전제를 지키는 IdleDrain 처럼, Redis 가 멈추기 전에 기다리는 것으로 위험을 충분히 줄인다.
+- 태스크 발행처럼 유실되면 안 되는 작업 → 종료 대기로는 지킬 수 없다. 작업 정보를 커밋과 함께 저장해 두고 재시작 뒤 다시 처리하는 방식이 필요하다. 이 방식을 트랜잭셔널 아웃박스(transactional outbox)라고 부른다.
+
+---
+
+## 마무리
+
+이번 내용을 통해 얻는 결론은 아래와 같다.
+
+- `@Async` 풀이 어디서 기다리는지는 graceful 이 아니라 풀 설정이 정한다.
+- 기다리는 설정은 Redis 가 이미 멈춘 `③` 에서 `awaitTermination` 까지만 기다리고, 그 사이 넘긴 다음 작업은 로그 한 줄로 사라진다.
+- 풀은 자원이 멈추기 전에 비워야 하고, 유실되면 안 되는 작업은 영속화로 지킨다.
+
+당연한 설정에도 의심을 가지고, 탐구를 해보자.
+사소한 설정이 의도하지 않은 변경이나 동작을 유발시킬 수 있다!
+
+## 참고
+
+- [Spring 은 어떻게 꺼지는가 — 종료 3단계 분석하기 (1편)](https://www.youngsu5582.today/posts/spring-shutdown-3-stages-and-lifecycle-phases)
+- [ExecutorConfigurationSupport Javadoc (6.2.x)](https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/scheduling/concurrent/ExecutorConfigurationSupport.html)
+- [ThreadPoolTaskExecutor Javadoc — setStrictEarlyShutdown (6.2.x)](https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/scheduling/concurrent/ThreadPoolTaskExecutor.html)
+- [spring-framework #30831 — executor·scheduler 의 SmartLifecycle 일시정지·재개 (6.1)](https://github.com/spring-projects/spring-framework/issues/30831)
+- [LettuceConnectionFactory Javadoc 3.1.x](https://docs.spring.io/spring-data/redis/docs/3.1.x/api/org/springframework/data/redis/connection/lettuce/LettuceConnectionFactory.html) · [3.2.x](https://docs.spring.io/spring-data/redis/docs/3.2.x/api/org/springframework/data/redis/connection/lettuce/LettuceConnectionFactory.html)
+- [안종혁 — Spring Boot 의 Graceful Shutdown 옵션을 Async 용 쓰레드 풀과 함께 쓰면 어떻게 될까?](https://dkswhdgur246.tistory.com/102)
+- [TransactionalEventListener Javadoc (6.2.x)](https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/transaction/event/TransactionalEventListener.html)
+- Spring 6.2 소스: `ExecutorConfigurationSupport`, `ExecutorLifecycleDelegate`, `ThreadPoolTaskExecutor`, `TransactionSynchronizationUtils`, `TransactionalApplicationListenerSynchronization`
