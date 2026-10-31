@@ -50,7 +50,6 @@ This post answers the two questions Part 1 left open.
 |---|---|
 | intake | the pool accepting new tasks |
 | `awaitTermination` | the setting for the maximum time the pool waits for tasks at shutdown |
-| `waitForTasksToCompleteOnShutdown` | a flag that, at shutdown, does not interrupt running tasks and lets the queue run to the end |
 
 ## Situation and environment
 
@@ -76,13 +75,13 @@ executor.setAwaitTerminationSeconds(30);
 
 ⭐⭐ In this post, the two lines above, which we added so the pool waits for remaining tasks at shutdown, are called the '`wait setting`'!
 
-> It is a different setting from `server.shutdown: graceful`. Graceful is the setting where the web server waits for HTTP requests, and the wait setting is the one where the `@Async` pool waits.
-> A pool with the default values, without the setting, also waits for tasks that are running (see the table below). The name refers to a pool with the two lines above turned on.
+It is a different setting from `server.shutdown: graceful`. Graceful is the setting where the web server waits for HTTP requests, and the wait setting is the one where the `@Async` pool waits.
+A pool with the default values, without the setting, also waits for tasks that are running (see the table below). The name refers to a pool with the two lines above turned on.
 
 ## How it was verified
 
-> We continue using the test bed from Part 1.
-> The experiment code is in stage2~6 and the SIGTERM demo of the [Spring Shutdown Playground](https://github.com/youngsu5582/playground/tree/f5080dd/spring-shutdown-playground).
+We continue using the test bed from Part 1.
+The experiment code is in stage2~6 and the SIGTERM demo of the [Spring Shutdown Playground](https://github.com/youngsu5582/playground/tree/f5080dd/spring-shutdown-playground).
 
 - The log format is the same as in Part 1, except the `timeline` prefix is omitted, and indented lines are tasks inside a pool.
 - Redis, MQ, and DB are fake resources that reproduce **only the shutdown behavior** of the real code.
@@ -117,16 +116,14 @@ Most articles you find by searching also explain that "by default, running tasks
 
 But when I checked in Spring 6.2's `ThreadPoolTaskExecutor`, it behaved somewhat differently.
 
-> The articles are not wrong. Up to 6.0, `③ Bean destroy` cut tasks off immediately with `shutdownNow()`.
-> From 6.1, it waits once before cutting them off.
+The articles are not wrong. Up to 6.0, `③ Bean destroy` cut tasks off immediately with `shutdownNow()`.
+From 6.1, it waits once before cutting them off.
 
 That is because `ThreadPoolTaskExecutor` became a `SmartLifecycle`.
 
-> The default phase was `Integer.MAX_VALUE` in 6.1, and it is `MAX / 2` from 6.2.
+The default phase was `Integer.MAX_VALUE` in 6.1, and it is `MAX / 2` from 6.2.
 
 So all three stages from Part 1 have something to do, and it varies with the setting.
-
-> A phase is a number for the stop order, and a larger one stops first. The pool's phase is `MAX / 2`.
 
 | Setting   | `① shutdown event`                   | `② lifecycle stop` (`MAX / 2`) | `③ Bean destroy`                             |
 | ---- | ---------------------------- | ------------------------------ | -------------------------------------------- |
@@ -155,7 +152,7 @@ The figure below shows what `①`, `②`, and `③` each do with the default.
 [  513ms] [Test worker] ③ destroy stage started
 ```
 
-> Reproduce with: `./gradlew s2 --tests '*waitsForRunningTaskInLifecycle'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L86)
+Reproduce with: `./gradlew s2 --tests '*waitsForRunningTaskInLifecycle'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L86)
 
 1. The task is handled in `② lifecycle stop`, while Redis is alive.
 2. Redis stops only after the task has finished.
@@ -170,7 +167,7 @@ The figure below shows what `①`, `②`, and `③` each do with the default.
 [ 1021ms] [pool-a-1   ]   task a1 interrupted          ← shutdownNow() of ③
 ```
 
-> Reproduce with: `./gradlew s2 --tests '*interruptsTaskLongerThanPhaseTimeout'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L127)
+Reproduce with: `./gradlew s2 --tests '*interruptsTaskLongerThanPhaseTimeout'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L127)
 
 1. After 1 second, the phase ends.
 2. Destroy starts.
@@ -180,25 +177,12 @@ The figure below shows what `①`, `②`, and `③` each do with the default.
 
 - What if a1 (200ms) is running while a2 (1.5 seconds) is in the queue?
 
-```
-[  133ms] [Test worker] ② pool-a lifecycle stop started
-[  334ms] [pool-a-1   ]   task a1 finished
-[  334ms] [pool-a-1   ] ② pool-a lifecycle stop finished
-...
-[  336ms] [Test worker] ③ pool-a destroy started
-[  336ms] [Test worker] ③ pool-a destroy finished
-[  336ms] [Test worker] ③ db close
-[  337ms] [Test worker] ③ mq destroy → connections refused afterward
-[  337ms] [Test worker] ③ redis destroy
-[  337ms] [pool-a-1   ]   task a2 interrupted
-```
-
 1. One task is running on the one thread and one is in the queue
    → the moment the earlier task finishes, the callback is called and the lifecycle moves on to the next phase.
 2. Even if the queued task runs in the meantime, it is not waited for until completion
    → in `③ Bean destroy`, tasks left in the queue are cancelled, and running tasks may be interrupted.
 
-> Reproduce with: `./gradlew s2 --tests '*doesNotWaitForQueuedTask'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L107)
+Reproduce with: `./gradlew s2 --tests '*doesNotWaitForQueuedTask'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L107)
 
 => "0 running" is a single instant. A task that comes out of the queue after that is interrupted in `③`.
 
@@ -237,9 +221,9 @@ The Javadoc says the same.
 
 > The executor will not go through a coordinated lifecycle stop phase then but rather only stop and wait for task completion on its own shutdown.
 
-> -> With the setting on, the pool does not stop during the time when everything stops together; it just passes through.
-> It stops in its own cleanup turn and waits for tasks to finish.
-> => It skips `② lifecycle stop` and waits in `③ Bean destroy`.
+-> With the setting on, the pool does not stop during the time when everything stops together; it just passes through.
+It stops in its own cleanup turn and waits for tasks to finish.
+=> It skips `② lifecycle stop` and waits in `③ Bean destroy`.
 
 To check, what if we put one 1.5-second task into each of 2 pools, set `awaitTermination` to 1 second, and run the test?
 
@@ -250,7 +234,7 @@ To check, what if we put one 1.5-second task into each of 2 pools, set `awaitTer
 [   13ms] ② redis(phase 0) stop              ← Redis stops while the task is running
 ```
 
-> Reproduce with: `./gradlew s2 --tests '*waitsInDestroyOnePoolAtATime'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L176)
+Reproduce with: `./gradlew s2 --tests '*waitsInDestroyOnePoolAtATime'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage2/ExecutorModesTest.java#L176)
 
 ### `awaitTermination`
 
@@ -268,8 +252,8 @@ private void awaitTerminationIfNecessary(ExecutorService executor) {
 }
 ```
 
-> If you give only `awaitTermination`, without the `waitForTasksToCompleteOnShutdown` flag,
-> `③` interrupts with `shutdownNow()` and then waits that long for the threads to get out.
+If you give only `awaitTermination`, without the `waitForTasksToCompleteOnShutdown` flag,
+`③` interrupts with `shutdownNow()` and then waits that long for the threads to get out.
 
 Here is the latter part of the log from the two-pool experiment above.
 
@@ -303,7 +287,7 @@ This is the part that confused me most at first.
 [ 1640ms] [pool-a-1   ]   task A finished              ← it finished on its own after the resources were all closed
 ```
 
-> Reproduce with: `./gradlew s4 --tests '*waitForTasksTimeoutWhileChainedTaskIsRunning'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L84)
+Reproduce with: `./gradlew s4 --tests '*waitForTasksTimeoutWhileChainedTaskIsRunning'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L84)
 
 1. Destroy waits only 1 second → it does not wait out the full 1.5 seconds.
 2. When time runs out, `awaitTermination` returns `false` and Spring only leaves a warn log → it does not call `shutdownNow()`, so A is not interrupted (`task A interrupted` was not printed).
@@ -327,7 +311,7 @@ To test this, we put in a task that writes to each external resource once at the
 real redis → failed IllegalStateException: LettuceConnectionFactory has been STOPPED. Use start() to initialize it
 ```
 
-> Reproduce with: `./gradlew s5 --tests '*waitForTasksWithRealLettuce'` (requires Docker) · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage5/RealLettuceTest.java#L48)
+Reproduce with: `./gradlew s5 --tests '*waitForTasksWithRealLettuce'` (requires Docker) · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage5/RealLettuceTest.java#L48)
 
 Here is a summary of the results by setting.
 
@@ -344,7 +328,7 @@ The DB succeeding is **a coincidence**.
 
 → If the DataSource is created later than the Async pool, even the DB fails.
 
-> Reproduce with: `./gradlew s3 --tests '*waitForTasksModeWithDataSourceCreatedLater'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage3/ResourcesDuringShutdownTest.java#L106)
+Reproduce with: `./gradlew s3 --tests '*waitForTasksModeWithDataSourceCreatedLater'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage3/ResourcesDuringShutdownTest.java#L106)
 
 ### ⭐ Note: why the method you find by searching is risky now
 
@@ -405,7 +389,7 @@ When pool-a's turn comes, the order is as follows.
 [   20ms] [pool-a-1   ]   submit B rejected (TaskRejectedException)
 ```
 
-> Reproduce with: `./gradlew s4 --tests '*waitForTasksRejectsChainedTask'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L68)
+Reproduce with: `./gradlew s4 --tests '*waitForTasksRejectsChainedTask'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L68)
 
 => The wait setting lets the first task (`CreateTask`) run to the end, and rejects the next task (`ProduceTask`).
 
@@ -426,7 +410,7 @@ the task was created in the DB but is not in the queue, and the request state is
 
 No error state is recorded, and the only trace left is a single ERROR log line from Spring.
 
-> Reproduce (requires Docker): `./gradlew s6 --tests '*waitForTasksProduceAfterCommit'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage6/RealChainTest.java#L124)
+Reproduce (requires Docker): `./gradlew s6 --tests '*waitForTasksProduceAfterCommit'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage6/RealChainTest.java#L124)
 
 ## Keep intake open and drain the pool in `② lifecycle stop`
 
@@ -437,9 +421,6 @@ Based on everything so far, each of the two settings was only half right.
 
 => What we want to solve is the combination of the two. **Before the external resources stop, wait until the queue and the next tasks are finished.**
 
-> This experiment is not the answer.
-> It is an experiment to confirm where we should wait, and the reasons it is not the answer are at the very end, in "Can we just use IdleDrain?"
-
 To keep the resources a task uses alive, we have to follow the order in the Part 1 phase table as is.
 **Stop the side that produces work → drain the side that processes work (the pool) → stop the resources the work uses**
 
@@ -449,7 +430,7 @@ To keep the resources a task uses alive, we have to follow the order in the Part
 
 ### The actual code
 
-> The code below is sample code for reference.
+The code below is sample code for reference.
 
 ```java
 /**
@@ -490,12 +471,12 @@ public class IdleDrainLifecycle implements SmartLifecycle {
 }
 ```
 
-> Full implementation: [IdleDrainLifecycle.java](https://github.com/youngsu5582/playground/blob/spring-shutdown-answers/spring-shutdown-playground/app/src/main/java/playground/shutdown/drain/IdleDrainLifecycle.java)
+Full implementation: [IdleDrainLifecycle.java](https://github.com/youngsu5582/playground/blob/spring-shutdown-answers/spring-shutdown-playground/app/src/main/java/playground/shutdown/drain/IdleDrainLifecycle.java)
 
 Reading the code from the top, it goes like this.
 
 1. `getPhase()` is `MAX/2 − 1`
-   → between the pool (`MAX/2`) and Redis (`0`): after the producers stop and before Redis stops. (In practice it was called even before the pool — see ⭐ below.)
+   → between the pool (`MAX/2`) and Redis (`0`): after the producers stop and before Redis stops.
 2. `stop()` holds the shutdown thread and checks `allIdle()` every 20ms
    → it does not move to the next phase while waiting, so Redis is alive.
 3. `allIdle()` only checks that the number of running tasks (`getActiveCount()`) and the queue are both 0 for every pool
@@ -520,19 +501,11 @@ For the pool settings, keep `waitForTasksToCompleteOnShutdown(true)` as is and r
 [  378ms] [Test worker] ② redis(phase 0) stop
 ```
 
-> Reproduce with: `./gradlew s4 --tests '*idleDrainRunsChainedTask'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L139)
-> With real Lettuce: `./gradlew s5 --tests '*idleDrainWithRealLettuce'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage5/RealLettuceTest.java#L56)
+Reproduce with: `./gradlew s4 --tests '*idleDrainRunsChainedTask'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L139)
+With real Lettuce: `./gradlew s5 --tests '*idleDrainWithRealLettuce'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage5/RealLettuceTest.java#L56)
 
 1. B, handed off during the drain, was accepted and its Redis call succeeded.
 2. The drain finished after B finished, and only then did Redis stop.
-
-#### ⭐ Note: why the drain was called before the pool stopped
-
-I gave the drain phase `MAX/2 − 1`, so I expected it to be called **after** the pool (`MAX/2`) stopped. The measurement is the opposite.
-In the log above, `drain started` (14ms) comes before `pool-a lifecycle stop started` (378ms), and in the Spring log too, the drain is called first inside `Stopping beans in phase 1073741823` (the pool's phase).
-
-1. The drain bean references the pool bean → it becomes a **bean that depends on** the pool. (Part 1's "exception to the order")
-2. `DefaultLifecycleProcessor` stops dependent beans first, regardless of phase, just before stopping the first pool.
 
 ### Comparing with SIGTERM
 
@@ -556,7 +529,7 @@ With a real SIGTERM, put a task that calls Redis every 400ms into the pool and s
 [ 3289ms] [SpringContextShutdownHook] ② redis(phase 0) stop
 ```
 
-> Reproduce with: `./scripts/02-sigterm-demo.sh wait` · `./scripts/02-sigterm-demo.sh drain` · [script](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/scripts/02-sigterm-demo.sh)
+Reproduce with: `./scripts/02-sigterm-demo.sh wait` · `./scripts/02-sigterm-demo.sh drain` · [script](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/scripts/02-sigterm-demo.sh)
 
 Same task, same SIGTERM, but
 with the wait setting, every Redis call after the shutdown signal failed, and with IdleDrain, every one succeeded.
@@ -567,7 +540,7 @@ The figure below puts the Redis call results of the wait setting and IdleDrain s
 
 ### Summary
 
-The figure and table below gather, in one place, where the default, the wait setting, and the two kinds of drain wait for the pool, and what happens to the next task.
+The figure and table below gather, in one place, where the default, the wait setting, and IdleDrain wait for the pool, and what happens to the next task.
 
 ![image](https://assets.youngsu5582.today/obsidian/2026/10/31/234fe7e3fc06249a951c2f5ccb8b066a.png)
 
@@ -575,15 +548,10 @@ The figure and table below gather, in one place, where the default, the wait set
 | ------------- | -------------------------------- | ------------- | -------------- |
 | Default           | `②` `MAX / 2` — until the instant running reaches 0 | Accepted            | Not waited for     |
 | Wait setting         | `③` — one pool after another                    | Accepted if before its own destroy, **rejected** if after | Fails in `③` / not executed |
-| Drain that closes intake first | `②` `MAX/2 − 1`                  | **Rejected**        | Not executed         |
 | IdleDrain     | `②` `MAX/2 − 1` — until the pool is empty        | Accepted            | Success             |
 
-> `strictEarlyShutdown(true)` in the figure is an option that closes intake right at the shutdown event,
-> and this post does not cover it.
-
-> The "drain that closes intake first" in the table was the first attempt before IdleDrain. It is a `SmartLifecycle` that calls `shutdown()` on all 4 pools at once and waits together until a single deadline.
-> The Redis problem was solved, but in the chain experiment the next task was rejected. That is natural, since intake was closed first.
-> Reproduce with: `./gradlew s4 --tests '*shutdownFirstDrainRejectsChainedTask'` · [test code](https://github.com/youngsu5582/playground/blob/f5080dd/spring-shutdown-playground/app/src/test/java/playground/shutdown/stage4/AsyncChainTest.java#L128)
+`strictEarlyShutdown(true)` in the figure is an option that closes intake right at the shutdown event,
+and this post does not cover it.
 
 ### Can we just use IdleDrain?
 
