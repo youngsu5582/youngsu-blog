@@ -1,0 +1,135 @@
+---
+title: Spring Proxy
+date: "Sun Nov 01 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: Spring Proxy 와 JDK, CGLIB 에 대해 간결히 설명한다.
+categories:
+  - Spring
+tags:
+  - spring
+  - spring-aop
+  - dynamic-proxy
+  - cglib
+---
+
+## JDK Dynamic Proxy
+
+JDK 에서 제공해주는 Proxy 생성해주는 방식
+
+- Interface 기반으로 Proxy 생성
+
+```java
+interface OrderService {
+    void placeOrder();
+}
+```
+
+```java
+public class OrderServiceImpl implements OrderService {
+    @Override
+    public void placeOrder() {
+        System.out.println("주문 처리");
+    }
+}
+```
+
+```java
+OrderService proxy = (OrderService) Proxy.newProxyInstance(
+        OrderService.class.getClassLoader(),
+        new Class<?>[]{OrderService.class},
+        (proxyObject, method, args) -> {
+
+            // 부가 기능
+            Object result = method.invoke(target, args);
+
+            // 부가 기능
+            return result;
+        }
+)
+```
+
+1. 인터페이스를 선언하고
+2. 서비스가 인터페이스를 구현하고
+3. Proxy 는 interface 기반 객체를 생성하고, 부가 기능 추가하고 구현체를 호출한다.
+
+## CGLIB Proxy
+
+Class 의 byte code 를 조작해 동적으로 Proxy 객체 생성
+
+- 원본 클래스를 상속받은 클래스 생성
+- 클래스를 런타임에 생성
+- 기존 메소드를 오버라이딩 해서 부가기능 수행
+
+```java
+class OrderProxy extends OrderService {
+    private final OrderService target;
+
+    @Override
+    public void placeOrder() {
+        // 부가 기능
+        target.placeOrder();
+        // 부가 기능
+}
+```
+
+### final
+
+- final class 는 상속할 수 없어서 만들 수 없다.
+- final method 는 오버라이딩 할 수 없고, Advice 를 실행할 수 없다.
+
+### Spring Boot Proxy
+
+Spring Boot 는 기본적으로 CGLIB 를 사용한다.
+(인터페이스가 있어도 CGLIB 사용 가능)
+
+아래, 설정시 가능할 때는 인터페이스 기반 Proxy 사용
+
+```java
+spring:
+  aop:
+    proxy-target-class: false
+```
+
+AopUtils 를 통해 확인 가능하다.
+
+```java
+AopUtils.isAopProxy(bean);
+AopUtils.isJdkDynamicProxy(bean);
+AopUtils.isCglibProxy(bean);
+AopUtils.getTargetClass(bean);
+```
+
+### 주의사항
+
+- Self Invocation
+
+```java
+@Service
+public class OrderService {
+
+    public void placeOrder() {
+        saveOrder();
+    }
+
+    @Transactional
+    public void saveOrder() {
+        // DB 저장
+    }
+}
+```
+
+placeOrder 는 Proxy Class 로 진입하고
+saveOrder 는 Proxy 클래스가 자기 자신의 메소드를 직접 호출한다.
+
+-  final method + NPE
+
+Proxy 객체는 멤버 변수의 필드를 자동 복사하지 않을 수 있다.
+
+> 왜 복사하지 않는가?
+> 대부분은 Method Interceptor 통해 원본객체를 통해 접근하므로 필요가 없다.
+> 추가로, [objenesis](https://github.com/easymock/objenesis) 를 통해 생성자 호출 없이 인스턴스화를 한다고 한다.
+
+-> Proxy 가 실제 코드를 호출 시에 NPE 가 발생할 수 있다.
+
+> JDK Dyanmic Proxy 는 Advice 를 적용할 수 있다.
+> 인터페이스에 선언된 메서드를 JDK Proxy가 가로채고, 실제 구현체의 final 메서드를 호출하는 구조
+> -> 구현체의 메서드가 final인지 여부는 상관이 없다.
