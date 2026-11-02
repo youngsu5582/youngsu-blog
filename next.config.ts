@@ -46,6 +46,7 @@ const nextConfig: NextConfig = {
       // Redirect routes that moved to a different content collection or taxonomy slug.
       { source: "/popular", destination: "/posts", permanent: true },
       { source: "/posts/cloudfront", destination: "/notes/cloudfront", permanent: true },
+      { source: "/posts/optimistic-lock-retry", destination: "/notes/optimistic-lock-retry", permanent: true },
       { source: `/articles/tags/${encodeURIComponent("클린코드")}`, destination: tagPath("클린코드"), permanent: true },
       { source: "/tags/batch-insert", destination: tagPath("Batch Insert"), permanent: true },
       { source: `/tags/${encodeURIComponent("쉘-스크립트")}`, destination: tagPath("쉘 스크립트"), permanent: true },
