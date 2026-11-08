@@ -1,0 +1,579 @@
+---
+title: "After WOOWACON 2026"
+date: "2026-11-08T00:00:00.000Z"
+description: Notes from three AI sessions at WOOWACON 2026 (a writing skill, multilingual translation, and Baemin's search agent), and how all three kept LLM output under code control instead of trusting it as-is.
+image: /assets/img/thumbnail/2026-11-08-woowacon-2026-reflections.png
+categories:
+  - Retrospective
+  - AI
+tags:
+  - WOOWACON
+  - Conference
+  - LLM
+  - AI Agent
+  - Technical Writing
+author: Youngsu Lee
+lang: en
+draft: false
+toc: true
+comments: true
+---
+
+> This English version was translated by Claude.
+
+The theme and direction of this year's WOOWACON was AI.
+
+- How people use AI in their existing work
+- How a whole team uses AI
+- New features built with LLMs
+- Paying down debt that had been pushed down the priority list, using LLMs
+
+The talks covered topics like these.
+I'll write up only the ones that left an impression, lightly, and finish with my own thoughts at the end.
+
+The three sessions dealt with different jobs (writing, multilingual translation, conversational search), but they shared one thing: none of them trusted the LLM's response as-is, and all of them controlled it with code. I'll organize each session around how it did that control.
+
+## The sessions I attended
+
+I wrote up the three sessions below.
+
+| Time  | Session                               |
+| ----- | ------------------------------------- |
+| 10:50 | "Hey AI, your writing is so Bamti-na": 18 years of records turned into an AI skill |
+| 13:50 | Solving a 5-year multilingual homework with LLMs |
+| 14:50 | A deterministic system on a probabilistic model: building Baemin's agent |
+
+## 10:50 — "Hey AI, your writing is so Bamti-na"
+
+(Bamti-na is recent Korean slang for something that looks tacky and awkward.)
+
+> One-line review: Even in a subjective area like writing, you can extract quantitative checks (regex checks) and get a clear, non-probabilistic result out of an LLM.
+
+- The speaker
+	- A DR (Developer Relations) manager at Woowa Brothers who reviews and manages technical writing
+	- A developer who designs and shares skills (files that bundle work instructions for an AI) so the whole company can use them
+	- An educator who teaches frontend developers at Woowa Tech Course and is writing a book about that process
+
+### DR manager: the review comments I leave most often
+
+The feedback I usually leave on technical writing was common across posts.
+
+- Reader and purpose: the intro should state the background, the target reader, and what they will get from reading
+- Evidence: the reasons behind claims, plus numbers and examples
+- Title and body: conclusion first, and a title that tells you the topic on its own
+
+### If you just write the rules down, will the AI follow them on its own?
+
+I moved the review comments I left most often into the skill as instructions.
+-> The instructions kept growing one by one.
+-> As they piled up, even the things that used to be followed were often missed.
+
+=> So I changed the order.
+
+1. A regex detector underlines first. (translationese, long sentences, etc.)
+2. Two helper AIs split the work of pointing out "AI smell" and "sentence rules", and give fixes.
+3. The main AI only picks which of the points and fixes need to be checked.
+
+> The detector gathers the candidates, and the AI only judges and chooses.
+
+> For the details of skills, see the talk video that will be posted later.
+
+### Why do we need a skill?
+
+Based on the above, I built a skill with the flow below.
+
+> The picture below was made by having an LLM organize it from the photos I took of the talk.
+
+![Flow of the writing skill](https://assets.youngsu5582.today/obsidian/2026/11/08/7e3bd2ce879e2e16c0861b6e39c2b324.png)
+
+I ran a blind test with the skill I built. I had people inside the company vote blind on which of the four texts below was the best.
+
+- A text I fixed myself without LLM help / a text fixed with the skill / a text fixed by an LLM / the original
+
+The text fixed by hand and the text fixed with the skill took first and second place.
+
+So the result is similar to a text a person fixed by hand. Why use a skill, then?
+
+-> A skill let us set out guidelines and conventions.
+EX) A model without the skill deletes metaphors or makes up numbers that are not in the draft. - `p99 dropped from 4.2s to 0.9s` (`p99 4.2초에서 0.9초로 줄었습니다`)
+
+-> It can follow internal company rules.
+EX) At Woowa Brothers, the draft is written in WordPress, uploaded to Google Docs, and commented on there.
+The reviewer used to do this by hand. Now an LLM moves it over automatically and even leaves the comments.
+
+### Reduce the AI smell, bring back the human smell
+
+> The second half talks from the point of view of writing a book.
+
+People still don't like AI that much.
+Just changing the author label to "AI" on the same introduction dropped the score by 0.81 on a 7-point scale. - the AI bias effect
+(This is a figure the talk mentioned, and I could not find the original source.)
+
+That is why we need to reduce the AI smell in writing and bring back the human smell.
+
+### How do you write the core point?
+
+The intent of the `Mission` (`미션`) chapter was
+
+```
+강의를 듣고 배우는 시간보다, 직접 문제를 풀고 경험하는 시간을 늘리고 싶었어요.
+```
+
+(In English: "I wanted to increase the time spent solving problems and experiencing things myself, rather than the time spent listening to lectures and learning.")
+The speaker said that writing it as-is gives the usual level of writing.
+
+Even the same idea can come out completely different depending on how you deliver it.
+
+- Etymology: 學 is to learn, 習 is to practice. Let's increase the time for 習. (學 = 배우다, 習 = 익히다)
+- Metaphor: You are cycling to Jamsu Bridge, and the pedals feel heavy. What then?
+- Scene description: The explanation is over, but you freeze in front of an empty code window.
+- Question: As much time as you spent learning, did you have time to use it?
+
+Right now, the speaker prefers to unfold the writing through etymology.
+
+> Because AI is trained mostly on Western-based material,
+> the speaker said AI rarely writes based on etymology, so it reads as human.
+
+### Let's get reviews from imaginary people
+
+There is a dataset called [Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea).
+Extract personas who would read your writing from this dataset, and have them read the content as those personas.
+
+> I tried it myself, and if you tell Claude `Extract people from this dataset who would fit ~~~.` (`~~~ 에 어울릴 사람들 추출해줘.`), it does a good job.
+
+- An open-source persona dataset synthesized from the distributions of real South Korean demographics, geography, and personality traits
+- Attributes such as name, gender, age, marital status, education level, occupation, and region of residence are synthesized from the data
+
+![Review received from the persona dataset](https://assets.youngsu5582.today/obsidian/2026/11/08/f31dbb13e04cb16e0f5fb798a8808730.png)
+
+---
+
+## 13:50 — Solving a 5-year multilingual homework with LLMs
+
+> One-line review: It uses an LLM, but the architecture is no different from before. People set the standard, and the AI does the work.
+
+> The story of solving the Baemin app's multilingual support (Japanese, Chinese, English) with LLMs
+
+There was always a need for translation.
+
+- Easy use for foreign tourists
+- Easy use for foreigners living in Korea
+
+### Why it was put off for 5 years
+
+But there were real difficulties.
+
+- The wall of definition: how do you render 'Dubai chewy cookie' (a trendy Korean dessert)?
+- The wall of building: a real-time translation pipeline, quality control at large scale
+- The wall of operations: continuously processing new and edited content
+
+And because of what Baemin is, the data was not easy. Hundreds of thousands of stores, tens of millions of menus, about 100GB.
+(The speaker said it would take a human translator hundreds of years to do it by hand.)
+
+It was not a high enough priority to process that much.
+=> But as LLM performance went up, it was judged worth trying as a PoC.
+
+### Why Java?
+
+> The situation in January 2026
+
+Java had weak references from users of LLM services.
+
+But an LLM service is also a kind of external API from a modularity point of view.
+In the end, it comes down to server problems.
+
+- Stateless inference -> assembly is the server's job
+- SSE (Server-Sent Events) streaming and concurrent request handling
+- Resource control and failure isolation
+
+and so on. These are familiar areas in Java too.
+
+As of January 2026, they judged Spring AI's standard to be lacking,
+so they built it with a dedicated Bedrock SDK client plus a model-agnostic layer.
+
+### Problems in the first structure, and the fixes
+
+1. They sent a whole menu board to translation at once, and these problems came up.
+
+- Duplicate translation
+- Omissions caused by JSON parsing failures
+
+So they split it down to the menu-name level and detected changes at the field level.
+
+2. There are cases where the translation is not done properly.
+
+- 공기밥 -> Air Rice (공기밥 is "a bowl of rice", but 공기 was translated literally as "air")
+
+To avoid wrong translations and unnecessary translation requests,
+they made it look up a cache with a translation dictionary.
+
+3. The results differed from domain to domain.
+
+- When there is a term like `One-house delivery` (`한 집 배달`), each owner or domain used a different translation style, or the results were inconsistent
+
+They built a common translation API to manage it consistently, and managed a standard dictionary.
+-> Even so, manual work was needed. (one character off, a different space, and so on)
+
+### Adding domain knowledge with RAG
+
+To remove the manual work, they introduced RAG (Retrieval-Augmented Generation, a method that finds related material and puts it into the prompt together).
+
+- They turned words into vectors and stored them.
+
+> They said they used titan-embed-text from Amazon Bedrock
+
+1. Convert the text to translate into a vector
+2. Look up the vector dictionary
+3. Request the translation
+	- If the vector value matches, skip the translation
+	- If the vector value is below the threshold, pass it along together
+
+While doing the vectorization, there were cases where the value is the same but the vector similarity is very different.
+
+- The vector similarity between 10,000 원 and 만원 is very different. (both are the same amount, written two ways)
+
+They changed it to clean the text with server code first, and then make the request.
+
+### Choosing the model
+
+When they applied it to the real product, cost came up as a problem.
+
+They compared and verified the performance of 3 models.
+
+- Gemma, Haiku, Qwen
+
+Among them, Gemma scored best overall, so it was chosen.
+In addition, being able to self-host is a big plus.
+
+- Cost structure
+- Scalability
+- Data boundary
+- Latency and quality control
+
+### The final translation system structure
+
+The final system they built is as below.
+
+> The picture below was made by having an LLM organize it from the photos I took of the talk.
+
+![Multilingual translation system structure](https://assets.youngsu5582.today/obsidian/2026/11/08/2ab61566e2335fcbdbe2ff5728fc59ac.png)
+
+1. A worker receives store-change and menu-change events.
+2. The worker puts a message on a queue.
+3. The `translation LLM module` (`번역 LLM 모듈`) called LLM Translator handles it.
+4. It propagates back to the worker queue.
+5. The worker queue loads the multilingual data into the Food Data Hub, which manages the displayed data.
+
+With this architecture, they are now automating existing work and improving processes.
+
+#### Multilingual translation agent
+
+In the past, to edit a displayed phrase, you had
+
+- Extract the phrase -> multilingual translation & Excel download -> request the developer to apply it -> convert to a `message.properties` file -> reflect it in server code -> production deploy
+
+a complex and inefficient structure like this,
+and now they provide a multilingual agent that handles this process automatically.
+
+#### Strengthening translation quality with automatic review
+
+This system also had problems.
+
+- Inconsistent terms
+- Phrases exceeding the length limit
+- Conflicts with the UX guide
+
+=> They introduced an automatic review process to improve this.
+
+1. Translation request
+2. Call the translation tool
+3. Look up the standard dictionary
+4. Multilingual translation by an open LLM
+5. Multilingual review by Amazon Bedrock
+6. If it does not meet the review threshold, send a Slack alert
+
+-> The owner can check Slack and then improve it
+
+---
+
+## 14:50 — A deterministic system on a probabilistic model
+
+> One-line review: Even if the LLM's results are not structured, that does not mean we cannot control it quantitatively.
+
+> The story of building Baemin's conversational search agent (Java + Spring AI 2.0 + Spring Boot 4)
+
+How do you build a deterministic system on top of a model that answers probabilistically?
+
+### Choosing the model
+
+#### Quality and performance
+
+You need to set standards for quality and performance.
+
+- Quality: the accuracy of the AI model's responses
+	- Understanding intent
+	- Expected behavior
+	- Factual accuracy
+	- Expression and policy
+
+- Performance: response speed and throughput
+	- First meaningful utterance
+	- Answer completion
+	- Failure rate
+	- Latency
+
+Performance is easy to set a standard for.
+But quality is a vague area, so you can only know by running real scenarios.
+
+#### Cost
+
+For a customer-facing service, if you don't consider this, the service cannot survive!
+
+- Convert token cost into cost per request
+- Apply prompt caching
+	- If the front part is the same, it reuses the earlier computation and processes input tokens cheaper and faster
+	- `cache_write` costs 1.2 to 2 times, so using it wrong makes it more expensive
+
+#### Availability
+
+AI services stop more often than other computing equipment.
+
+Just looking at the public figures introduced in the talk (I could not find the original source)
+
+- OpenAI API: 99.99%
+- ChatGPT: 99.72%
+- Claude API: 99.78%
+
+they fall short of the five nines (99.999%) that other services aim for.
+-> They made the models redundant.
+
+- Models from the same company can fail together, so use a different family
+- GPT in the daytime, Gemma 4 at night and as the fallback
+
+=> A model is not fixed. You should be able to review and adopt a new model at any time, based on the standards that fit your service.
+
+### Context data
+
+To respond with more meaningful data, they used two kinds of data.
+
+- Short-term context: the conversation going back and forth now, information exchanged during the conversation, and the card view information shown on screen
+- Context data: the user's navigation path in the app, address, and recent order history
+
+![Short-term context and context data](https://assets.youngsu5582.today/obsidian/2026/11/08/85b149acd8cf375d58eb79a24cad174b.png)
+
+### Choosing the structure
+
+They had to build how the LLM works inside the app.
+The ways an LLM handles a task are as below.
+
+#### How the task is handled
+
+There are four types, depending on who decides the flow.
+
+| Type             | Who decides the flow | How it works                            | When to use it                                  |
+| -------------- | --------- | -------------------------------- | -------------------------------------- |
+| Single call         | None        | Call the model once and turn the input straight into output      | When input and output are simple, when one judgment is enough        |
+| Workflow (fixed control) | Code        | Code decides the order, and the model handles only one step at a time | When the work is clearly defined, when the same input needs the same result |
+| Workflow (dynamic control) | Router LLM   | A router LLM picks the execution path for each request        | When the list of branches is fixed, but only natural language tells you which branch |
+| Fully autonomous         | Model        | The model picks tools and decides the next action and when to stop | When you cannot decide in advance what to do<br />(coding, research, long tasks) |
+
+#### trade-off
+
+Going from single call to fully autonomous, these four things grow.
+
+| Item     | Single call | Workflow (fixed) | Workflow (dynamic) | Fully autonomous |
+| ------ | ------ | ----------- | ----------- | ------ |
+| Cost     | Low     | ↗           | ↗           | High     |
+| Latency   | Short     | ↗           | ↗           | Long     |
+| Feature complexity | Low     | ↗           | ↗           | High     |
+| Hard to trace | Easy     | ↗           | ↗           | Hard    |
+
+At first they made it fully autonomous with MCP (Model Context Protocol, a convention for a model to call external tools) attached everywhere, but tracing, cost, and maintenance were hard.
+
+- Execution control: tool selection and intermediate judgments are hard to trace with code, logs, and metrics
+- Response time: some requests reason and call more than needed
+- Cost: since the AI holds the execution authority, token usage, cost, and response delay differ every time
+- Verification and maintenance: the more features, the bigger the prompt, and it is hard to find the problem step and fix only that part
+
+=> They switched to the workflow type.
+
+#### Agent flow
+
+> The picture below was made by having an LLM organize it from the photos I took of the talk.
+
+![Search agent flow](https://assets.youngsu5582.today/obsidian/2026/11/08/3b18dace517bcb839b41804633538ad1.png)
+
+It performs defined features in a fixed procedure. It has the advantages below.
+
+- Consistent answers within a set time and conditions
+- A visible system that several people can maintain
+
+When the user's conversation comes in, one turn begins.
+
+1. Intent classification
+
+It collects the `short-term context` (`단기 컨텍스트`), the `context data` (`맥락 컨텍스트`), and the `long-term context` (`장기 컨텍스트`) from `User Context`.
+Based on these contexts, it classifies the intent (system translation).
+
+For example, if the request "gukbap under 10,000 won, fastest delivery first" comes in, the intent classification LLM turns it only into a fixed category like `search(keyword="국밥", …)` (system translation).
+
+2. Domain classification
+
+Domain classification is a more refined classification based on conditions.
+Like which store to order from, or picking a menu.
+
+3. Handler execution
+
+Based on the category from the intent and the results from the category, it runs a handler.
+
+- Only the handler fixed for a specific intent runs
+- Internal API calls, DB calls, MCP calls, and so on vary freely depending on the implementation
+- Validation, retry policy, and so on also vary freely depending on the implementation
+
+> The picture below was made by having an LLM organize it from the photos I took of the talk.
+
+![Handler execution](https://assets.youngsu5582.today/obsidian/2026/11/08/90193895c8e0d32b35941bc7e7b3e492.png)
+
+With this flow they got the following.
+
+- Decomposition: encapsulate responsibility at the step level
+- Measurement and tracing: token use and latency can be traced per step
+- Optimization: prompt optimization and testing per step
+- Debugging: analyze which step failed, for fast debugging
+- Partial fixes: fix and deploy per unit
+
+That was the hopeful part, and below are the problems they actually had to solve.
+
+### Troubleshooting
+
+There were also moments when things did not go as designed.
+
+#### Prompt mimicry
+
+The wording of the instructions in the prompt came back in the LLM's response and was rendered as is on a screen button.
+
+- The result header name became -> `The branch we found is pork belly` (`확인된 갈래는 삼겹살이에요`)
+
+You have to consider whether it is okay for it to appear on screen.
+
+#### Negative prompts
+
+They set a negative prompt to stop it from doing what it can't do, and it refused things against the intent.
+
+- Set the prompt `Do not guide app screen paths` (`앱 화면 경로 안내 금지`) -> it also refused `Where do I see my order history?` (`주문내역 어디서 봐?`)
+
+They changed it to tell the model what is possible, instead of using negative prompts.
+
+#### Refusing what it can't do
+
+A feature it can't do is prevented from being attempted in the first place.
+
+- There is no "close" feature from the start -> it assumes it can do it and keeps trying
+
+They made it handle this based on a maximum number of failures.
+
+#### I'll stop searching
+
+The user said they would stop searching now, and it would not let them stop.
+
+- They made it refuse what it can't do. -> It refused, saying that stopping the search is something it can't do
+
+They solve it with guidelines and preprocessing.
+
+### Testing the agent
+
+The traditional test pyramid was `unit -> integration -> E2E` (`단위 -> 통합 -> E2E`).
+It assumed that 'the same input gives the same output'.
+
+-> An LLM gives different output even for the same input, so you can't verify with assert, and the number of test cases (TC) is close to infinite.
+
+=> They set a lower bound and verified against it.
+
+- LLM-as-Judge: one model scores with a rubric
+- LLM-as-Jury: several large language models vote
+- Calibration: check whether the confidence an AI model outputs matches actual correctness, and adjust it
+
+### Wrap-up
+
+We don't make the model deterministic, and we can't.
+What we build is a design that can hold the model's lower bound.
+
+- The order is decided by workflow-based code
+- Each time we fix something, tests check the change line and the lower bound
+- Improve based on customer metrics. Only users can tell you the real quality.
+	- Sentiment analysis of utterances
+	- Order conversion rate
+	- Session conversion rate
+	- Time to drop-off
+
+## Takeaways
+
+Besides these, I also heard experiences of using AI in many areas, such as spreading AI across a team, QA, and data analysis.
+
+### How to use AI is not settled yet
+
+Each team differed in how it uses AI, how it applies AI to code and services, and its standards.
+
+For example,
+
+- One team got read access to the code of the 'calling' and 'called' services, and built a graph that connects these flows and a system that detects changes
+- The QA team parses code -> turns it into a matrix, so that intent and code do not drift apart (see the photo)
+
+![QA team's code parsing matrix](https://assets.youngsu5582.today/obsidian/2026/11/08/8587ef57ba6b89d904b5624044409b4f.png)
+
+- When implementing services, some built their own on the AWS Bedrock Client, and some implemented features with Spring AI
+
+LLMs have only recently been commercialized.
+
+Existing finance and retail services were computerized over decades.
+
+- Late 1970s online systems -> 1999 internet banking
+- 1996 Interpark, the first online shopping mall in Korea
+
+But LLM services have been around for only about 4 years, since ChatGPT came out in November 2022.
+It is still a turbulent period, and no one knows what will happen next.
+
+### Still, the same direction
+
+I found things these talks had in common.
+
+1. They don't trust the LLM's response as-is
+2. They manage LLM requests and responses as a module too
+
+They did not just do a simple `request - response` (`요청 - 응답`) with the LLM. They thought about ways to refine or control it.
+
+- In writing, regex provides the candidates
+- Code -> parse into a syntax tree, then request
+- Modularize LLM requests and responses and manage them like an external API
+- Intentionally control LLM work as a workflow type, not an autonomous type
+
+In the end, it reminded me of what Hyangro (a Korean developer known by that handle) said: don't depend on what you can't control.
+
+![Scene from the Woowahan Tech Seminar talk on developer principles](https://assets.youngsu5582.today/obsidian/2026/11/08/5a125e14347e475892d677d29bb84e50.png)
+
+[Woowahan Tech Seminar - "Developer Principles" by three tech leaders](https://www.youtube.com/watch?v=DJCmvzhFVOI)
+
+- Can you trust an LLM?
+-> Impossible.
+
+Instead of trusting the LLM's response unconditionally, we handle it with `score-based trust / alerts` (`점수 기반 신뢰 / 알림`).
+If we can't decide, we gather the information and pass it to the user, going through a judgment step.
+
+- Can you always get the LLM's result the way you want?
+-> Impossible.
+We control the request we send to the LLM (syntax tree parsing), or control the response we get from the LLM (JSON validation, modularization).
+
+Judging and thinking clearly about what to trust and what to control is, I think, the right attitude for those of us who use LLMs.
+
+### Let's try various things
+
+There is still no settled answer.
+Even if there were one, in front of models that keep changing, we can't be sure of that answer.
+
+Still, there are things you can't know without trying.
+
+- In technical writing, an LLM still does not unfold sentences through etymology (the 10:50 session above)
+
+- When told to refuse what it can't do, the search agent even refuses `I'll stop searching` (`검색 그만할게요`) (the 14:50 session above)
+
+Instead of repeating the form I always used, let's attach it to many domains and tasks ourselves, and build up my own standards for dealing with LLMs.
