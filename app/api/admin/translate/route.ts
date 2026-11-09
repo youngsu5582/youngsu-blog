@@ -3,6 +3,8 @@ import fs from "fs";
 import matter from "gray-matter";
 import { executeAi, type AiProvider } from "@/lib/ai-provider";
 import { resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { submitWorkbenchTemplate } from "@/lib/workbench";
+import { WORKBENCH_TEMPLATES } from "@/lib/workbench-templates";
 
 export async function POST(req: Request) {
   try {
@@ -26,6 +28,18 @@ export async function POST(req: Request) {
     // Read Korean MDX file
     const raw = fs.readFileSync(resolved.absPath, "utf-8");
     const { data: frontmatter, content } = matter(raw);
+
+    if (provider === "workbench") {
+      const jobUuid = await submitWorkbenchTemplate(WORKBENCH_TEMPLATES.translate.name, {
+        title: String(frontmatter.title || ""),
+        description: String(frontmatter.description || ""),
+        categories: Array.isArray(frontmatter.categories) ? frontmatter.categories.join(", ") : "",
+        tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.join(", ") : "",
+        content,
+      });
+      // 원문은 작업 결과와 합쳐 화면에 돌아간다(readAiResult).
+      return NextResponse.json({ success: true, originalContent: content, workbench: { jobUuid, feature: "translate" } });
+    }
 
     // Construct translation prompt
     const prompt = `You are a professional technical translator. Translate the following Korean blog post to English.

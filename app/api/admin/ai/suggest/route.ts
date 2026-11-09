@@ -3,6 +3,8 @@ import fs from "fs";
 import matter from "gray-matter";
 import { executeAi, getAvailableProviders, type AiProvider } from "@/lib/ai-provider";
 import { resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { submitWorkbenchTemplate } from "@/lib/workbench";
+import { WORKBENCH_TEMPLATES } from "@/lib/workbench-templates";
 
 export async function POST(req: Request) {
   const { filePath, existingCategories, existingTags, provider } = await req.json();
@@ -48,11 +50,27 @@ export async function POST(req: Request) {
   const raw = fs.readFileSync(resolved.absPath, "utf-8");
   const { content, data } = matter(raw);
   const truncatedContent = content.substring(0, 3000); // Limit for API
+  const categoryList = Array.isArray(existingCategories) ? existingCategories.join(", ") : "";
+  const tagList = Array.isArray(existingTags) ? existingTags.join(", ") : "";
+
+  if (selectedProvider === "workbench") {
+    try {
+      const jobUuid = await submitWorkbenchTemplate(WORKBENCH_TEMPLATES.suggest.name, {
+        title: String(data.title || ""),
+        content: truncatedContent,
+        existing_categories: categoryList,
+        existing_tags: tagList,
+      });
+      return NextResponse.json({ success: true, workbench: { jobUuid, feature: "suggest" } });
+    } catch (err) {
+      return NextResponse.json({ error: `워크벤치 요청 실패: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+    }
+  }
 
   const prompt = `다음은 기술 블로그 포스트 내용입니다. 이 포스트에 적합한 메타데이터를 JSON으로 제안해주세요.
 
-기존 카테고리 목록: [${existingCategories.join(", ")}]
-기존 태그 목록: [${existingTags.join(", ")}]
+기존 카테고리 목록: [${categoryList}]
+기존 태그 목록: [${tagList}]
 
 규칙:
 - description: 1-2문장으로 포스트 요약 (한국어)

@@ -5,6 +5,7 @@ import { Loader2, Languages, Check, Sparkles, Save, AlertTriangle, Search, Filte
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { TagInput } from "@/components/admin/tag-input";
+import { readAiResult } from "@/lib/admin-ai-client";
 
 interface PostInfo {
   filePath: string;
@@ -112,7 +113,7 @@ export default function TranslatePage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readAiResult(res);
 
       if (data.success) {
         setTranslation(data.translation);

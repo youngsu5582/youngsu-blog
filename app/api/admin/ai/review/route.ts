@@ -4,6 +4,8 @@ import matter from "gray-matter";
 import { executeAi, getAvailableProviders, type AiProvider } from "@/lib/ai-provider";
 import { resolveRepoFilePath } from "@/lib/admin-content-paths";
 import { buildAiReviewPrompt } from "@/lib/admin-ai-review-prompt";
+import { submitWorkbenchTemplate } from "@/lib/workbench";
+import { WORKBENCH_TEMPLATES } from "@/lib/workbench-templates";
 
 export async function POST(req: Request) {
   try {
@@ -37,6 +39,18 @@ export async function POST(req: Request) {
 
     const raw = fs.readFileSync(resolved.absPath, "utf-8");
     const { data, content } = matter(raw);
+
+    if (selectedProvider === "workbench") {
+      const jobUuid = await submitWorkbenchTemplate(WORKBENCH_TEMPLATES.review.name, {
+        title: String(data.title || ""),
+        description: String(data.description || ""),
+        categories: Array.isArray(data.categories) ? data.categories.join(", ") : "",
+        tags: Array.isArray(data.tags) ? data.tags.join(", ") : "",
+        draft: String(data.draft ?? ""),
+        content,
+      });
+      return NextResponse.json({ success: true, workbench: { jobUuid, feature: "review" } });
+    }
 
     const prompt = buildAiReviewPrompt(data, content);
 

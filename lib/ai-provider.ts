@@ -2,8 +2,20 @@ import { execSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { isWorkbenchConfigured } from "@/lib/workbench";
 
-export type AiProvider = "claude-cli" | "gemini-cli" | "codex-cli" | "hermes-agent" | "openai-api" | "gemini-api";
+/**
+ * `workbench` 는 프롬프트를 받지 않는다. 기능마다 워크벤치 템플릿에 변수를 채워 부르므로
+ * 각 라우트가 [executeAi] 대신 `submitWorkbenchTemplate` 으로 보낸다.
+ */
+export type AiProvider =
+  | "workbench"
+  | "claude-cli"
+  | "gemini-cli"
+  | "codex-cli"
+  | "hermes-agent"
+  | "openai-api"
+  | "gemini-api";
 
 export interface AiProviderInfo {
   id: AiProvider;
@@ -54,10 +66,16 @@ function checkCliAvailable(command: string): boolean {
 }
 
 /**
- * 사용 가능한 AI 프로바이더 목록 반환
+ * 사용 가능한 AI 프로바이더 목록 반환. 순서가 곧 기본 선택 순서라 워크벤치를 맨 앞에 둔다.
  */
 export function getAvailableProviders(): AiProviderInfo[] {
   const providers: AiProviderInfo[] = [
+    {
+      id: "workbench",
+      label: "Workbench",
+      available: isWorkbenchConfigured(),
+      type: "api",
+    },
     {
       id: "claude-cli",
       label: "Claude CLI",
@@ -305,6 +323,10 @@ export async function executeAi(request: AiRequest): Promise<AiResponse> {
           : "API 키가 설정되지 않았습니다"
       }`,
     };
+  }
+
+  if (provider === "workbench") {
+    return { success: false, provider, error: "워크벤치는 기능별 템플릿으로 부릅니다" };
   }
 
   // 타입에 따라 실행

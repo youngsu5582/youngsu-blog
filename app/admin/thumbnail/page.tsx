@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Image as ImageIcon, Loader2, Sparkles, Save, Search, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
+import { readAiResult } from "@/lib/admin-ai-client";
 
 interface PostInfo {
   filePath: string;
@@ -26,6 +27,7 @@ export default function ThumbnailPage() {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generatedMime, setGeneratedMime] = useState("image/png");
   const [generatedPrompt, setGeneratedPrompt] = useState<string>("");
   const [generationMethod, setGenerationMethod] = useState<string>("");
   const [filename, setFilename] = useState("");
@@ -94,10 +96,11 @@ export default function ThumbnailPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readAiResult(res);
 
       if (data.success) {
         setGeneratedImage(data.base64);
+        setGeneratedMime(data.mime || "image/png");
         setGeneratedPrompt(data.prompt || "");
         setGenerationMethod(data.method || "");
 
@@ -401,7 +404,7 @@ export default function ThumbnailPage() {
 
           <div className="rounded-md border border-border overflow-hidden bg-muted/30">
             <img
-              src={`data:image/png;base64,${generatedImage}`}
+              src={`data:${generatedMime};base64,${generatedImage}`}
               alt="생성된 썸네일 미리보기"
               className="w-full h-auto"
             />

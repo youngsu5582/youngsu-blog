@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit, AlertTriangle, Eye } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import { readAiResult } from "@/lib/admin-ai-client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -346,7 +347,7 @@ export default function PublishPage() {
           provider: selectedProvider,
         }),
       });
-      const data = await res.json();
+      const data = await readAiResult(res);
       if (data.success) {
         setPendingAiSuggestion({
           filePath: editingPost,
@@ -402,7 +403,7 @@ export default function PublishPage() {
           model: selectedThumbnailModel || "gemini-2.5-flash-image",
         }),
       });
-      const genData = await genRes.json();
+      const genData = await readAiResult(genRes);
 
       if (!genData.success) {
         setResult({ success: false, message: genData.error || "썸네일 생성 실패" });
@@ -430,7 +431,7 @@ export default function PublishPage() {
         });
 
         // Store preview
-        updateThumbnailPreview((prev) => new Map(prev).set(editingPost, `data:image/png;base64,${genData.base64}`));
+        updateThumbnailPreview((prev) => new Map(prev).set(editingPost, `data:${genData.mime || "image/png"};base64,${genData.base64}`));
 
         // Track generated file
         updateGeneratedFiles((prev) => {
@@ -476,7 +477,7 @@ export default function PublishPage() {
           provider: selectedProvider,
         }),
       });
-      const transData = await transRes.json();
+      const transData = await readAiResult(transRes);
 
       if (!transData.success) {
         setResult({ success: false, message: transData.error || "번역 실패" });
@@ -551,7 +552,7 @@ export default function PublishPage() {
           provider: selectedProvider,
         }),
       });
-      const data = await res.json();
+      const data = await readAiResult(res);
       if (data.success) {
         setReviewContent((prev) => new Map(prev).set(editingPost, data.review));
         setShowReview(true);
