@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Loader2, Rocket, Search, Check, Image as ImageIcon, Languages, FileText, Sparkles, GitPullRequest, GitCommit, AlertTriangle, Eye } from "lucide-react";
 import { TagInput } from "@/components/admin/tag-input";
+import { readAiResult } from "@/lib/admin-ai-client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -346,7 +347,7 @@ export default function PublishPage() {
           provider: selectedProvider,
         }),
       });
-      const data = await res.json();
+      const data = await readAiResult(res);
       if (data.success) {
         setPendingAiSuggestion({
           filePath: editingPost,
@@ -402,7 +403,7 @@ export default function PublishPage() {
           model: selectedThumbnailModel || "gemini-2.5-flash-image",
         }),
       });
-      const genData = await genRes.json();
+      const genData = await readAiResult(genRes);
 
       if (!genData.success) {
         setResult({ success: false, message: genData.error || "썸네일 생성 실패" });
@@ -423,20 +424,21 @@ export default function PublishPage() {
       const saveData = await saveRes.json();
 
       if (saveData.success) {
-        // Update frontmatter with thumbnail URL
+        // Update frontmatter with thumbnail URL — 저장 라우트는 공개 주소를 filePath 로 준다.
         updateFrontmatter(editingPost, {
           ...editing.frontmatter,
-          image: saveData.imagePath,
+          image: saveData.filePath,
         });
 
         // Store preview
-        updateThumbnailPreview((prev) => new Map(prev).set(editingPost, `data:image/png;base64,${genData.base64}`));
+        updateThumbnailPreview((prev) => new Map(prev).set(editingPost, `data:${genData.mime || "image/png"};base64,${genData.base64}`));
 
         // Track generated file
         updateGeneratedFiles((prev) => {
           const next = new Map(prev);
           const existing = next.get(editingPost) || [];
-          next.set(editingPost, [...existing, saveData.savedPath]);
+          // 공개 주소(/assets/...)를 커밋할 저장소 경로로 바꾼다.
+          next.set(editingPost, [...existing, `public${saveData.filePath}`]);
           return next;
         });
 
@@ -476,7 +478,7 @@ export default function PublishPage() {
           provider: selectedProvider,
         }),
       });
-      const transData = await transRes.json();
+      const transData = await readAiResult(transRes);
 
       if (!transData.success) {
         setResult({ success: false, message: transData.error || "번역 실패" });
@@ -508,7 +510,7 @@ export default function PublishPage() {
           const entry = next.get(editingPost);
           if (entry) {
             entry.post.hasEnVersion = true;
-            entry.post.enFilePath = saveData.enPath;
+            entry.post.enFilePath = saveData.filePath;
             entry.includeEn = true;
             next.set(editingPost, { ...entry });
           }
@@ -519,7 +521,7 @@ export default function PublishPage() {
         updateGeneratedFiles((prev) => {
           const next = new Map(prev);
           const existing = next.get(editingPost) || [];
-          next.set(editingPost, [...existing, saveData.enPath]);
+          next.set(editingPost, [...existing, saveData.filePath]);
           return next;
         });
 
@@ -551,7 +553,7 @@ export default function PublishPage() {
           provider: selectedProvider,
         }),
       });
-      const data = await res.json();
+      const data = await readAiResult(res);
       if (data.success) {
         setReviewContent((prev) => new Map(prev).set(editingPost, data.review));
         setShowReview(true);

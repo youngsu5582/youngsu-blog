@@ -18,6 +18,8 @@ function getGitInfo() {
 
 export default function SettingsPage() {
   const apiKeys = [
+    { name: "WORKBENCH_BASE_URL", label: "Workbench 주소" },
+    { name: "WORKBENCH_API_KEY", label: "Workbench 서비스 키" },
     { name: "OPENAI_API_KEY", label: "OpenAI API Key" },
     { name: "GEMINI_API_KEY", label: "Gemini API Key" },
     { name: "GOOGLE_API_KEY", label: "Google API Key" },

@@ -5,6 +5,7 @@ const routes = [
   "app/api/admin/ai/suggest/route.ts",
   "app/api/admin/ai/review/route.ts",
   "app/api/admin/translate/route.ts",
+  "app/api/admin/thumbnail/route.ts",
 ];
 
 describe("admin AI route content path safety", () => {

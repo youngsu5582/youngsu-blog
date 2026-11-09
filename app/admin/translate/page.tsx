@@ -5,6 +5,7 @@ import { Loader2, Languages, Check, Sparkles, Save, AlertTriangle, Search, Filte
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { TagInput } from "@/components/admin/tag-input";
+import { readAiResult } from "@/lib/admin-ai-client";
 
 interface PostInfo {
   filePath: string;
@@ -112,7 +113,7 @@ export default function TranslatePage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readAiResult(res);
 
       if (data.success) {
         setTranslation(data.translation);
@@ -139,20 +140,26 @@ export default function TranslatePage() {
     setResult(null);
 
     try {
-      const res = await fetch("/api/admin/translate/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          originalPath: selectedPost,
-          title: translation.title,
-          description: translation.description,
-          categories: translation.categories,
-          tags: translation.tags,
-          content: translation.content,
-        }),
-      });
+      const save = (overwrite: boolean) =>
+        fetch("/api/admin/translate/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            originalPath: selectedPost,
+            title: translation.title,
+            description: translation.description,
+            categories: translation.categories,
+            tags: translation.tags,
+            content: translation.content,
+            overwrite,
+          }),
+        }).then((r) => r.json());
 
-      const data = await res.json();
+      let data = await save(false);
+      // 번역본이 이미 있으면 저장 라우트가 409 로 덮어쓸지 묻는다. 확인을 받은 뒤에만 덮어쓴다.
+      if (!data.success && data.requiresOverwrite && window.confirm("이미 영어 번역본이 있습니다. 덮어쓸까요?")) {
+        data = await save(true);
+      }
 
       if (data.success) {
         setResult({

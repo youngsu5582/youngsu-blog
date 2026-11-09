@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import matter from "gray-matter";
-import path from "path";
-import { BLOG_REPO_ROOT } from "@/lib/blog-repo-root";
+import { resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { submitWorkbenchTemplate } from "@/lib/workbench";
+import { WORKBENCH_TEMPLATES, WORKBENCH_THUMBNAIL_MODEL } from "@/lib/workbench-templates";
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +15,28 @@ export async function POST(req: Request) {
 
     const selectedModel = model || "gemini-2.5-flash-image";
 
+    // 다른 AI 라우트와 같은 검사로 content/ 아래 글만 읽는다. 절대 경로를 받으면 아무 파일이나 읽어 외부 모델에 보낼 수 있다.
+    const resolved = typeof filePath === "string" ? resolveRepoFilePath(filePath, ["content/"]) : null;
+    if (!resolved || !fs.existsSync(resolved.absPath)) {
+      return NextResponse.json({ error: "파일을 찾을 수 없습니다" }, { status: 404 });
+    }
+
+    const raw = fs.readFileSync(resolved.absPath, "utf-8");
+    const { data, content } = matter(raw);
+
+    const title = data.title || "Untitled";
+    const description = data.description || "";
+    const contentPreview = content.slice(0, 2000);
+
+    // 워크벤치는 화풍 지시까지 템플릿이 갖고 있어, 프롬프트를 따로 짓는 단계 없이 한 번에 만든다.
+    if (selectedModel === WORKBENCH_THUMBNAIL_MODEL) {
+      const jobUuid = await submitWorkbenchTemplate(WORKBENCH_TEMPLATES.thumbnail.name, {
+        title: String(title),
+        description: String(description),
+      });
+      return NextResponse.json({ success: true, workbench: { jobUuid, feature: "thumbnail" } });
+    }
+
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -21,22 +44,6 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
-
-    // Read MDX file
-    const absPath = filePath.startsWith("/")
-      ? filePath
-      : path.resolve(BLOG_REPO_ROOT, filePath);
-
-    if (!fs.existsSync(absPath)) {
-      return NextResponse.json({ error: "파일을 찾을 수 없습니다" }, { status: 404 });
-    }
-
-    const raw = fs.readFileSync(absPath, "utf-8");
-    const { data, content } = matter(raw);
-
-    const title = data.title || "Untitled";
-    const description = data.description || "";
-    const contentPreview = content.slice(0, 2000);
 
     // Step 1: Generate image prompt using Gemini text API
     const promptGenerationRequest = {

@@ -15,7 +15,8 @@
     "blog:migrate": "tsx scripts/migrate-posts.ts",
     "blog:translate": "tsx scripts/translate-post.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "workbench:sync": "tsx scripts/workbench-sync.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1068.0",
