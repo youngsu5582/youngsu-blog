@@ -99,6 +99,14 @@ Translate to English and return JSON only.`;
       }
     }
 
+    // JSON 을 찾지 못한 글을 그대로 두면 아래의 원문 대체 때문에 한국어 원문이 "번역" 으로 성공 처리된다.
+    if (!translation || typeof translation !== "object") {
+      return NextResponse.json({
+        success: false,
+        error: "번역 응답에서 JSON 을 찾지 못했습니다. 다시 시도해주세요.",
+      });
+    }
+
     return NextResponse.json({
       success: true,
       provider: response.provider,

@@ -87,9 +87,11 @@ describe("Admin publish page", () => {
         }
 
         if (url === "/api/admin/translate/save" && init?.method === "POST") {
+          // 실제 저장 라우트와 같은 모양 — 성공하면 영어 파일의 저장소 경로를 filePath 로 준다.
           return Promise.resolve(new Response(JSON.stringify({
             success: true,
-            enPath: "content/posts/translated-post-en.mdx"
+            filePath: "content/posts/translated-post-en.mdx",
+            existed: true
           }), { status: 200 }));
         }
 
@@ -176,6 +178,45 @@ describe("Admin publish page", () => {
     const saveCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([url]) => url === "/api/admin/translate/save");
     expect(JSON.parse(String(saveCall?.[1]?.body)).overwrite).toBe(true);
   });
+
+  it("워크벤치로 만든 썸네일은 저장된 주소로 frontmatter 를 채우고 발행 커밋에 넣는다", async () => {
+    const base = fetch as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    const respond = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/admin/thumbnail/models") {
+        return respond({ models: [{ id: "workbench", displayName: "Workbench · gpt-image-2", description: "" }] });
+      }
+      if (url === "/api/admin/thumbnail" && init?.method === "POST") {
+        return respond({ success: true, workbench: { jobUuid: "job-t", feature: "thumbnail" } });
+      }
+      if (url === "/api/admin/workbench/jobs/job-t?feature=thumbnail") {
+        return respond({ success: true, base64: "iVBORw0KGgo=", mime: "image/png", prompt: "", method: "workbench · gpt-image-2" });
+      }
+      if (url === "/api/admin/thumbnail/save" && init?.method === "POST") {
+        // 실제 저장 라우트와 같은 모양 — 공개 주소를 filePath 로 준다.
+        return respond({ success: true, filePath: "/assets/img/thumbnail/new-post.png", existed: false, frontmatterUpdated: true, updatedFiles: [] });
+      }
+      return base(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PublishPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /새 글/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "생성하기" }));
+
+    expect(await screen.findByText("썸네일 생성 완료!", undefined, { timeout: 5000 })).toBeTruthy();
+    expect((screen.getByPlaceholderText("https://... 또는 /assets/img/...") as HTMLInputElement).value)
+      .toBe("/assets/img/thumbnail/new-post.png");
+
+    fireEvent.click(screen.getByRole("button", { name: /발행하기/ }));
+    fireEvent.click(screen.getByRole("button", { name: "확인" }));
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/admin/publish")).toBe(true));
+    const publishCall = fetchMock.mock.calls.find(([url]) => url === "/api/admin/publish");
+    const body = JSON.parse(String(publishCall?.[1]?.body));
+    expect(body.posts[0].frontmatter.image).toBe("/assets/img/thumbnail/new-post.png");
+    expect(body.posts[0].generatedFiles).toContain("public/assets/img/thumbnail/new-post.png");
+  }, 10_000);
 
   it("품질 보완 필요 필터로 설명/썸네일 누락 글만 볼 수 있다", async () => {
     render(<PublishPage />);

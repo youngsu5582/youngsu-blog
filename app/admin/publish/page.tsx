@@ -424,10 +424,10 @@ export default function PublishPage() {
       const saveData = await saveRes.json();
 
       if (saveData.success) {
-        // Update frontmatter with thumbnail URL
+        // Update frontmatter with thumbnail URL — 저장 라우트는 공개 주소를 filePath 로 준다.
         updateFrontmatter(editingPost, {
           ...editing.frontmatter,
-          image: saveData.imagePath,
+          image: saveData.filePath,
         });
 
         // Store preview
@@ -437,7 +437,8 @@ export default function PublishPage() {
         updateGeneratedFiles((prev) => {
           const next = new Map(prev);
           const existing = next.get(editingPost) || [];
-          next.set(editingPost, [...existing, saveData.savedPath]);
+          // 공개 주소(/assets/...)를 커밋할 저장소 경로로 바꾼다.
+          next.set(editingPost, [...existing, `public${saveData.filePath}`]);
           return next;
         });
 
@@ -509,7 +510,7 @@ export default function PublishPage() {
           const entry = next.get(editingPost);
           if (entry) {
             entry.post.hasEnVersion = true;
-            entry.post.enFilePath = saveData.enPath;
+            entry.post.enFilePath = saveData.filePath;
             entry.includeEn = true;
             next.set(editingPost, { ...entry });
           }
@@ -520,7 +521,7 @@ export default function PublishPage() {
         updateGeneratedFiles((prev) => {
           const next = new Map(prev);
           const existing = next.get(editingPost) || [];
-          next.set(editingPost, [...existing, saveData.enPath]);
+          next.set(editingPost, [...existing, saveData.filePath]);
           return next;
         });
 
