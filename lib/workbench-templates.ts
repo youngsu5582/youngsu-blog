@@ -79,23 +79,23 @@ export const WORKBENCH_TEMPLATES: Record<WorkbenchFeature, WorkbenchTemplate> = 
     inputImageCount: 0,
     option: {
       type: "text-generate",
-      instructions: "You are a professional technical translator. Translate Korean technical blog posts into natural English.",
-      prompt: `Translate the following Korean blog post to English.
+      instructions: "당신은 한국어 기술 블로그 글을 자연스러운 영어로 옮기는 전문 기술 번역가입니다.",
+      prompt: `다음 한국어 블로그 글을 영어로 번역해 주세요. 결과의 모든 값은 영어로 씁니다.
 
-IMPORTANT INSTRUCTIONS:
-1. Translate the frontmatter fields (title, description, categories, tags) and the markdown content
-2. Keep ALL code blocks, URLs, image links, and technical terms UNCHANGED
-3. Preserve ALL markdown formatting (headings, lists, links, emphasis, etc.)
-4. Tags should be lowercase English words (e.g., "동시성" → "concurrency")
-5. Categories should be proper English (e.g., "백엔드" → "Backend")
+지켜야 할 것:
+1. frontmatter(제목 · 설명 · 카테고리 · 태그)와 본문 마크다운을 모두 번역합니다
+2. 코드 블록, URL, 이미지 링크, 기술 용어는 바꾸지 않습니다
+3. 마크다운 서식(제목, 목록, 링크, 강조 등)을 그대로 유지합니다
+4. 태그는 소문자 영어 단어로 씁니다 (예: "동시성" → "concurrency")
+5. 카테고리는 대문자로 시작하는 영어로 씁니다 (예: "백엔드" → "Backend")
 
-ORIGINAL FRONTMATTER:
-Title: {{title}}
-Description: {{description}}
-Categories: {{categories}}
-Tags: {{tags}}
+원문 frontmatter:
+제목: {{title}}
+설명: {{description}}
+카테고리: {{categories}}
+태그: {{tags}}
 
-ORIGINAL CONTENT:
+원문 본문:
 {{content}}`,
       output: {
         type: "json-schema",
@@ -117,21 +117,21 @@ ORIGINAL CONTENT:
       type: "image-generate",
       size: { type: "ratio", ratio: "16:9", resolution: "1k" },
       quality: "auto",
-      prompt: `Create a thumbnail for a tech blog post in a cute, kawaii illustration style.
+      prompt: `기술 블로그 글의 썸네일을 귀여운 카와이 일러스트 스타일로 만들어 주세요.
 
-Blog post:
-- Title: {{title}}
-- Description: {{description}}
+블로그 글:
+- 제목: {{title}}
+- 설명: {{description}}
 
-STYLE:
-- Kawaii cartoon illustration with a pastel palette (soft blue, pink, yellow, mint, lavender)
-- A cute chibi young male programmer mascot with short brown hair
-- Infographic / card layout with rounded shapes and tech elements (code symbols, screens, clouds, gears) related to the topic
-- Clean, uncluttered, balanced composition
+스타일:
+- 파스텔 색감(연한 파랑, 분홍, 노랑, 민트, 라벤더)의 카와이 카툰 일러스트
+- 짧은 갈색 머리의 귀여운 치비 스타일 젊은 남자 개발자 마스코트
+- 둥근 도형과 글 주제에 맞는 기술 요소(코드 기호, 화면, 구름, 톱니바퀴)를 담은 인포그래픽 · 카드 레이아웃
+- 깔끔하고 여백이 있는 균형 잡힌 구도
 
-TEXT IN IMAGE:
-- Show the title "{{title}}" prominently, in Korean exactly as given
-- Large, bold, legible sans-serif lettering (like Pretendard or Noto Sans KR) with strong contrast`,
+이미지 속 글자:
+- 제목 "{{title}}" 을 주어진 한국어 그대로 크게 넣습니다
+- Pretendard 나 Noto Sans KR 같은 굵고 읽기 쉬운 고딕체로, 배경과 대비가 강하게 씁니다`,
     },
   },
 };
