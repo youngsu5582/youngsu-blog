@@ -128,6 +128,10 @@ pnpm start    # 빌드된 서버 실행
 `.env.local` 파일 생성:
 
 ```bash
+# Admin AI 기능의 기본 경로 (선택 — 없으면 아래 키의 프로바이더를 쓴다)
+WORKBENCH_BASE_URL=https://workbench.youngsu5582.today
+WORKBENCH_API_KEY=pawb_...     # 워크벤치 콘솔에서 블로그용 서비스의 키를 발급
+
 # AI 기능 (선택 — 없으면 해당 기능 비활성화)
 OPENAI_API_KEY=sk-...          # AI 메타데이터 제안, 번역
 GEMINI_API_KEY=AIza...         # AI 메타데이터 제안, 썸네일 생성
@@ -135,6 +139,31 @@ GOOGLE_API_KEY=AIza...         # Google Translate 번역
 ```
 
 > AI API 키가 없어도 블로그의 모든 기본 기능은 정상 작동합니다.
+
+## Admin AI 와 워크벤치
+
+Admin 의 메타데이터 제안 · 발행 전 리뷰 · 영어 번역 · 썸네일은 [워크벤치](https://github.com/youngsu5582/personal-ai-workbench)(내 AI 작업 서버)의 템플릿으로 부른다.
+워크벤치가 설정돼 있으면 프로바이더 · 썸네일 모델 목록의 맨 앞에 `Workbench` 가 오고, 없으면 기존 프로바이더가 그대로 쓰인다.
+
+```
+Admin 버튼 → 블로그 API 라우트 ──(서비스 키)──▶ 워크벤치  POST /api/templates/{uuid}/jobs  {variables}
+                                   ◀── 작업 uuid
+화면이 몇 초마다 → /api/admin/workbench/jobs/{uuid} ──▶ 워크벤치  GET /api/jobs/{uuid}
+                                   ◀── 끝나면 기능마다 기존과 같은 모양의 응답 → 제안 diff · 번역 저장 · 썸네일 저장
+```
+
+- 키는 블로그 서버에만 있고 브라우저로 나가지 않는다. 요청을 수 분씩 붙잡지 않으므로 긴 번역 · 이미지 생성도 응답 시간 제한에 끊기지 않는다.
+- 프롬프트 · 모델 · 출력 모양의 정본은 `lib/workbench-templates.ts` 다. 바꾼 뒤 `pnpm workbench:sync` 로 워크벤치에 반영한다(이름으로 찾아 만들거나 고친다. `--dry-run` 으로 미리 본다).
+  워크벤치 콘솔에서 고친 내용은 다음 sync 에 덮이므로, 콘솔은 결과를 보고 시험 실행하는 데 쓴다.
+- 템플릿 변수와 라우트가 보내는 변수가 다르면 워크벤치가 거절한다. `__tests__/workbench-templates.test.ts` 가 둘을 대조한다.
+- 비용 · 실패 사유 · 결과물은 워크벤치 콘솔의 작업 내역과 사용량에 남는다.
+
+처음 붙일 때:
+
+1. 워크벤치 콘솔에서 블로그용 서비스를 만들고 그 서비스의 키를 발급한다.
+2. Admin 이 도는 환경에 `WORKBENCH_BASE_URL` · `WORKBENCH_API_KEY` 를 넣는다.
+3. 같은 값으로 `pnpm workbench:sync` 를 한 번 실행한다 — 템플릿이 키의 서비스에 만들어진다.
+4. Admin 을 다시 띄우고, 설정 화면에서 두 값이 설정됨으로 보이는지 확인한다.
 
 ## 콘텐츠 관리
 
