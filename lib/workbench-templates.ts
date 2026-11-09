@@ -115,7 +115,8 @@ export const WORKBENCH_TEMPLATES: Record<WorkbenchFeature, WorkbenchTemplate> = 
     inputImageCount: 0,
     option: {
       type: "image-generate",
-      size: { type: "ratio", ratio: "16:9", resolution: "1k" },
+      // 해상도는 긴 변이다. 16:9 @ 1k 는 1024x576 이라 OpenAI 의 최소 픽셀 수에 못 미쳐 거절된다. 2k 는 2048x1152.
+      size: { type: "ratio", ratio: "16:9", resolution: "2k" },
       quality: "auto",
       prompt: `기술 블로그 글의 썸네일을 귀여운 카와이 일러스트 스타일로 만들어 주세요.
 
