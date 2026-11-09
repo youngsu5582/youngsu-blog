@@ -22,7 +22,10 @@ export const WORKBENCH_THUMBNAIL_MODEL = "workbench";
 
 /** 실제 호출로 확인된 모델 중 가장 싸고, strict JSON Schema 를 지킨다. */
 const TEXT_MODEL = "gpt-6-luna";
-const IMAGE_MODEL = "gpt-image-2";
+/** 리뷰는 글 전체를 읽고 발행 여부까지 판단하므로 메타데이터 · 번역과 따로 고른다. 실제 호출로 확인된 모델이다. */
+const REVIEW_MODEL = "gpt-5.6-terra";
+/** 미검증. 첫 실행이 실패하면 실제 호출로 확인된 gpt-image-2 로 되돌린다. */
+const IMAGE_MODEL = "gpt-image-2.5-sunburst";
 
 /** OpenAI strict 모드는 모든 속성이 required 이고 추가 속성이 없어야 받는다. */
 function strictObject(properties: Record<string, unknown>) {
@@ -59,7 +62,7 @@ export const WORKBENCH_TEMPLATES: Record<WorkbenchFeature, WorkbenchTemplate> = 
   },
   review: {
     name: "블로그 · 발행 전 리뷰",
-    model: TEXT_MODEL,
+    model: REVIEW_MODEL,
     inputImageCount: 0,
     option: {
       type: "text-generate",
