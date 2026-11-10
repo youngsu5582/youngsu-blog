@@ -26,21 +26,19 @@ export async function toFeatureResult(
     return { success: true, base64, mime, prompt: "", method: label };
   }
 
-  const text = job.texts[0];
-  if (text === undefined) return { success: false, error: "워크벤치 작업에 글 결과가 없습니다" };
-  if (feature === "review") return { success: true, provider: label, review: text };
-
-  // 제안 · 번역은 JSON Schema 로 받았으니 객체가 아니면 약속이 깨진 것이다. 원문으로 대신하지 않고 실패로 알린다.
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = null;
+  const content = job.texts[0];
+  if (content === undefined) return { success: false, error: "워크벤치 작업에 글 결과가 없습니다" };
+  if (feature === "review") {
+    return typeof content === "string"
+      ? { success: true, provider: label, review: content }
+      : { success: false, error: "워크벤치 리뷰 결과가 글이 아닙니다" };
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { success: false, error: "워크벤치 응답을 JSON 으로 읽지 못했습니다" };
+
+  // 제안 · 번역은 JSON Schema 로 받았고, 워크벤치는 그 답을 객체로 준다. 객체가 아니면 약속이 깨진 것이다. 원문으로 대신하지 않고 실패로 알린다.
+  if (!content || typeof content !== "object" || Array.isArray(content)) {
+    return { success: false, error: "워크벤치 응답이 JSON 객체가 아닙니다" };
   }
   return feature === "suggest"
-    ? { success: true, model: label, suggestion: parsed }
-    : { success: true, provider: label, translation: parsed };
+    ? { success: true, model: label, suggestion: content }
+    : { success: true, provider: label, translation: content };
 }

@@ -67,11 +67,11 @@ describe("워크벤치 클라이언트", () => {
       .mockResolvedValueOnce(json({
         status: "CLOSED",
         model: "gpt-image-2",
-        tasks: [{ status: "SUCCEEDED", texts: [{ content: "글" }], files: [{ sha256: "abc" }] }],
+        tasks: [{ status: "SUCCEEDED", texts: [{ content: "글" }, { content: { title: "Title" } }], files: [{ sha256: "abc" }] }],
       }));
 
     expect(await readWorkbenchJob("j")).toEqual({ done: false, status: "DISPATCHED" });
     expect(await readWorkbenchJob("j")).toMatchObject({ done: true, failure: "요금 한도" });
-    expect(await readWorkbenchJob("j")).toEqual({ done: true, model: "gpt-image-2", failure: null, texts: ["글"], files: ["abc"] });
+    expect(await readWorkbenchJob("j")).toEqual({ done: true, model: "gpt-image-2", failure: null, texts: ["글", { title: "Title" }], files: ["abc"] });
   });
 });
