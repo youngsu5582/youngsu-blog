@@ -1,11 +1,11 @@
 import { buildAiReviewPrompt } from "@/lib/admin-ai-review-prompt";
 
 /**
- * Admin 의 AI 기능이 워크벤치에서 쓰는 템플릿.
+ * Admin 의 AI 기능이 워크벤치에서 쓰는 템플릿의 처음 정의.
  *
- * 프롬프트 · 모델 · 출력 모양은 여기가 정본이고, `pnpm workbench:sync` 가 이름으로 찾아 워크벤치에 만들거나 고친다.
- * 워크벤치 콘솔에서 고친 내용은 다음 sync 에 덮인다 — 콘솔은 결과를 보고 시험 실행하는 곳이다.
- * 블로그는 실행할 때 변수만 채워 보낸다. 변수 이름은 영문자 · 숫자 · 밑줄이다.
+ * `pnpm workbench:sync` 가 이름으로 찾아 없는 템플릿만 이 정의로 만든다. 만든 뒤에는 워크벤치 콘솔이 정본이라,
+ * 프롬프트 · 모델 · 크기는 콘솔에서 고친다. 블로그는 템플릿을 이름으로 찾으므로 콘솔에서 이름을 바꾸면 못 찾는다.
+ * 블로그는 실행할 때 변수만 채워 보낸다. 콘솔에서 고칠 때도 변수 이름은 그대로 둔다 — 다르면 워크벤치가 거절한다.
  */
 export type WorkbenchFeature = "suggest" | "review" | "translate" | "thumbnail";
 
