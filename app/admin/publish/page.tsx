@@ -123,7 +123,11 @@ interface AiProvider {
 interface PendingAiSuggestion {
   filePath: string;
   model: string;
-  suggestion: Partial<Pick<Frontmatter, "description" | "categories" | "tags">>;
+  /** 서버가 정본 카테고리 · 태그로 다듬은 제안(refineSuggestion). newTags 는 기존에 없던 태그다. */
+  suggestion: Partial<Pick<Frontmatter, "description" | "categories" | "tags">> & {
+    newTags?: string[];
+    droppedCategories?: string[];
+  };
 }
 
 // Helper function to detect non-ASCII characters in filename
@@ -832,6 +836,21 @@ export default function PublishPage() {
                       <p>{formatAiDiff("설명", editing.frontmatter.description, pendingAiSuggestion.suggestion.description)}</p>
                       <p>{formatAiDiff("카테고리", editing.frontmatter.categories, pendingAiSuggestion.suggestion.categories)}</p>
                       <p>{formatAiDiff("태그", editing.frontmatter.tags, pendingAiSuggestion.suggestion.tags)}</p>
+                      {!!pendingAiSuggestion.suggestion.newTags?.length && (
+                        <p className="flex flex-wrap items-center gap-1">
+                          {pendingAiSuggestion.suggestion.newTags.map((tag) => (
+                            <span key={tag} className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                              새 태그 {tag}
+                            </span>
+                          ))}
+                          <span className="text-[10px]">— 기존 글에 없는 태그예요. 필요할 때만 남기세요.</span>
+                        </p>
+                      )}
+                      {!!pendingAiSuggestion.suggestion.droppedCategories?.length && (
+                        <p className="text-[10px]">
+                          카테고리 목록에 없어 뺀 제안: {pendingAiSuggestion.suggestion.droppedCategories.join(", ")}
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <button

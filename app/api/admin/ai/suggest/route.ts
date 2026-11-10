@@ -3,11 +3,13 @@ import fs from "fs";
 import matter from "gray-matter";
 import { executeAi, getAvailableProviders, type AiProvider } from "@/lib/ai-provider";
 import { resolveRepoFilePath } from "@/lib/admin-content-paths";
+import { collectionOf, loadSuggestVocabulary } from "@/lib/suggest-vocabulary";
+import { formatTagList, refineSuggestion, SUGGEST_RULES } from "@/lib/taxonomy-vocabulary";
 import { submitWorkbenchTemplate } from "@/lib/workbench";
 import { WORKBENCH_TEMPLATES } from "@/lib/workbench-templates";
 
 export async function POST(req: Request) {
-  const { filePath, existingCategories, existingTags, provider } = await req.json();
+  const { filePath, provider } = await req.json();
 
   // Check for available AI providers
   const availableProviders = getAvailableProviders();
@@ -50,8 +52,11 @@ export async function POST(req: Request) {
   const raw = fs.readFileSync(resolved.absPath, "utf-8");
   const { content, data } = matter(raw);
   const truncatedContent = content.substring(0, 3000); // Limit for API
-  const categoryList = Array.isArray(existingCategories) ? existingCategories.join(", ") : "";
-  const tagList = Array.isArray(existingTags) ? existingTags.join(", ") : "";
+  // 화면이 보낸 목록은 표기가 섞여 있어 쓰지 않는다. 정본 카테고리와 자주 쓰는 태그(정본으로 모은 횟수)를 보낸다.
+  const collection = collectionOf(resolved.repoPath);
+  const vocabulary = loadSuggestVocabulary(collection);
+  const categoryList = vocabulary.categories.join(", ");
+  const tagList = formatTagList(vocabulary.frequentTags);
 
   if (selectedProvider === "workbench") {
     try {
@@ -61,7 +66,8 @@ export async function POST(req: Request) {
         existing_categories: categoryList,
         existing_tags: tagList,
       });
-      return NextResponse.json({ success: true, workbench: { jobUuid, feature: "suggest" } });
+      // 결과를 다듬을 때 같은 어휘를 다시 만들 수 있게 컬렉션을 넘긴다.
+      return NextResponse.json({ success: true, workbench: { jobUuid, feature: "suggest", context: collection } });
     } catch (err) {
       return NextResponse.json({ error: `워크벤치 요청 실패: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
     }
@@ -69,13 +75,10 @@ export async function POST(req: Request) {
 
   const prompt = `다음은 기술 블로그 포스트 내용입니다. 이 포스트에 적합한 메타데이터를 JSON으로 제안해주세요.
 
-기존 카테고리 목록: [${categoryList}]
-기존 태그 목록: [${tagList}]
+카테고리 목록: [${categoryList}]
+자주 쓰는 태그: [${tagList}]
 
-규칙:
-- description: 1-2문장으로 포스트 요약 (한국어)
-- categories: 기존 카테고리에서 선택하되, 적절한 것이 없으면 새로 만들어도 됨 (최대 2개)
-- tags: 기존 태그에서 선택하되, 적절한 것이 없으면 새로 만들어도 됨 (최대 5개)
+${SUGGEST_RULES}
 
 포스트 제목: ${data.title || ""}
 포스트 내용:
@@ -98,7 +101,7 @@ ${truncatedContent}
     return NextResponse.json({
       success: true,
       model: response.provider,
-      suggestion: response.result,
+      suggestion: refineSuggestion(response.result, vocabulary),
     });
   } catch (err) {
     return NextResponse.json({ error: `AI 요청 실패: ${String(err)}` }, { status: 500 });

@@ -9,6 +9,8 @@
 export interface WorkbenchPending {
   jobUuid: string;
   feature: string;
+  /** 결과를 다듬는 데 필요한 접수 때의 정보(제안이면 글의 컬렉션). 그대로 돌려보낸다. */
+  context?: string;
 }
 
 interface Options {
@@ -30,7 +32,8 @@ export async function readAiResult(res: Response, options: Options = {}): Promis
   // 접수 응답의 나머지(번역 원문 등)는 결과와 합쳐 돌려준다.
   const extras = { ...data };
   delete extras.workbench;
-  const url = `/api/admin/workbench/jobs/${encodeURIComponent(pending.jobUuid)}?feature=${encodeURIComponent(pending.feature)}`;
+  const url = `/api/admin/workbench/jobs/${encodeURIComponent(pending.jobUuid)}?feature=${encodeURIComponent(pending.feature)}`
+    + (pending.context ? `&context=${encodeURIComponent(pending.context)}` : "");
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await sleep(intervalMs);
