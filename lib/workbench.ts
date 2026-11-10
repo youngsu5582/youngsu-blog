@@ -88,7 +88,7 @@ export async function submitWorkbenchTemplate(name: string, variables: Record<st
 
 export type WorkbenchJob =
   | { done: false; status: string }
-  | { done: true; model: string; failure: string | null; texts: string[]; files: string[] };
+  | { done: true; model: string; failure: string | null; texts: unknown[]; files: string[] };
 
 interface JobResponse {
   status: string;
@@ -97,7 +97,8 @@ interface JobResponse {
   tasks?: {
     status: string;
     failureReason?: string | null;
-    texts?: { content: string }[];
+    /** 요청한 형식이 모양을 정한다 — `text` 면 문자열, `json-schema` 면 워크벤치가 파싱해 둔 객체다. */
+    texts?: { content: unknown }[];
     files?: { sha256: string }[];
   }[];
 }
