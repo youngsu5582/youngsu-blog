@@ -151,6 +151,28 @@ describe("Admin publish page", () => {
     expect(screen.getByText("ai-tag")).toBeTruthy();
   });
 
+  it("AI 제안의 새 태그와 목록에 없어 뺀 카테고리를 diff 에서 알린다", async () => {
+    const base = fetch as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/admin/ai/suggest" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          success: true,
+          model: "test-ai-model",
+          suggestion: { categories: ["백엔드"], tags: ["java", "graalvm-native"], newTags: ["graalvm-native"], droppedCategories: ["동시성"] },
+        }), { status: 200 }));
+      }
+      return base(input, init);
+    }));
+
+    render(<PublishPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /새 글/ }));
+    fireEvent.click(screen.getByRole("button", { name: "AI 도움받기" }));
+
+    expect(await screen.findByText("새 태그 graalvm-native")).toBeTruthy();
+    expect(screen.queryByText("새 태그 java")).toBeNull();
+    expect(screen.getByText("카테고리 목록에 없어 뺀 제안: 동시성")).toBeTruthy();
+  });
+
   it("AI 리뷰 결과를 점수와 최종 판단 요약으로 보여준다", async () => {
     render(<PublishPage />);
 
