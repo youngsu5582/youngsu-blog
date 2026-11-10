@@ -1,4 +1,5 @@
 import { buildAiReviewPrompt } from "@/lib/admin-ai-review-prompt";
+import { SUGGEST_RULES } from "@/lib/taxonomy-vocabulary";
 
 /**
  * Admin 의 AI 기능이 워크벤치에서 쓰는 템플릿.
@@ -43,13 +44,10 @@ export const WORKBENCH_TEMPLATES: Record<WorkbenchFeature, WorkbenchTemplate> = 
       type: "text-generate",
       prompt: `다음 기술 블로그 포스트에 맞는 메타데이터를 제안해주세요.
 
-기존 카테고리 목록: [{{existing_categories}}]
-기존 태그 목록: [{{existing_tags}}]
+카테고리 목록: [{{existing_categories}}]
+자주 쓰는 태그: [{{existing_tags}}]
 
-규칙:
-- description: 1-2문장으로 포스트 요약 (한국어)
-- categories: 기존 카테고리에서 선택하되, 적절한 것이 없으면 새로 만들어도 됨 (최대 2개)
-- tags: 기존 태그에서 선택하되, 적절한 것이 없으면 새로 만들어도 됨 (최대 5개)
+${SUGGEST_RULES}
 
 포스트 제목: {{title}}
 포스트 내용:

@@ -30,6 +30,14 @@ describe("readAiResult", () => {
     expect(data).toEqual({ success: true, originalContent: "원문", translation: { title: "Title" } });
   });
 
+  it("접수 때 받은 context 를 결과 조회에 그대로 넘긴다", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(json({ success: true, suggestion: {} }));
+
+    await readAiResult(json({ success: true, workbench: { jobUuid: "job-1", feature: "suggest", context: "library" } }), { fetcher, sleep: instant });
+
+    expect(fetcher).toHaveBeenCalledWith("/api/admin/workbench/jobs/job-1?feature=suggest&context=library");
+  });
+
   it("정한 시간 안에 끝나지 않으면 작업 uuid 와 함께 실패로 알린다", async () => {
     const fetcher = vi.fn().mockImplementation(() => Promise.resolve(json({ pending: true, status: "DISPATCHED" })));
 
