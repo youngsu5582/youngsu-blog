@@ -22,6 +22,7 @@ Status: active
 - [x] 테스트 561/561 (Node 22), build 성공, 수정 파일 lint OK
 - [x] `fix/mobile-responsive` 브랜치로 커밋·PR (origin/main 기준 worktree, analytics 미커밋 작업과 분리)
 - [ ] Vercel preview 로 실기기 확인
+- [x] `/notes` 2차 (사용자 요청): 필터 칩을 모바일에서 카테고리·태그 각 한 줄 가로 스와이프로 — 첫 노트 y 1661→338px. 리스트 행은 제목 첫 줄·날짜/분류 둘째 줄. 카드 펼침 2304px 넘침 수정 (본문을 button 밖으로, col-span-full 을 그리드 아이템에)
 
 ## 참고
 - Node 26 에서는 vitest 26개 실패 — `localStorage` 가 undefined (Node 25+ 전역 localStorage 가 jsdom 을 가림). 변경과 무관, Node 22 에선 전부 통과.

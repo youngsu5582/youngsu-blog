@@ -52,6 +52,10 @@ function ReferenceLinks({ references }: { references?: Reference[] }) {
 
 type ViewMode = "list" | "card" | "timeline";
 
+// 모바일: 한 줄 가로 스와이프 (본문 좌우 여백 px-6 만큼 화면 끝까지 늘림) / sm 이상: 기존처럼 줄바꿈
+const filterRowClass =
+  "-mx-6 px-6 py-0.5 flex gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible";
+
 export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] }) {
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
@@ -116,8 +120,9 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
         </div>
       </div>
 
-      {/* Category + Tag filter */}
-      <div className="flex flex-wrap gap-1.5">
+      {/* Category + Tag filter — 카테고리 줄과 태그 줄을 나눈다 */}
+      <div className="space-y-2">
+      <div className={filterRowClass}>
         <button
           onClick={() => { setSelectedTag(null); setSelectedCategory(null); }}
           className={`text-[11px] px-2.5 py-1 rounded-full transition-colors ${
@@ -137,6 +142,8 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
             {name} <span className="opacity-50">{count}</span>
           </button>
         ))}
+      </div>
+      <div className={filterRowClass}>
         {tags.map(({ name, count }) => (
           <button
             key={`tag-${name}`}
@@ -148,6 +155,7 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
             #{name} <span className="opacity-50">{count}</span>
           </button>
         ))}
+      </div>
       </div>
 
       {/* Results */}
@@ -163,19 +171,30 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                 <div className="rounded-lg border border-border/40 overflow-hidden">
                 <button
                   onClick={() => setExpandedSlug(isExpanded ? null : note.slug)}
-                  className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
+                  className="w-full text-left flex items-start sm:items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
                 >
                   {isExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                    <ChevronDown className="h-3.5 w-3.5 mt-1 sm:mt-0 text-primary flex-shrink-0" />
                   ) : (
-                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <ChevronRight className="h-3.5 w-3.5 mt-1 sm:mt-0 text-muted-foreground flex-shrink-0" />
                   )}
-                  <span className="text-xs text-muted-foreground font-mono w-20 flex-shrink-0">
+                  {/* 모바일: 제목(첫 줄) → 날짜·분류(둘째 줄) / sm 이상: 날짜 | 제목 | 분류 한 줄 */}
+                  <div className="flex-1 min-w-0 flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1">
+                  <span className="order-2 sm:order-none text-xs text-muted-foreground font-mono sm:w-20 flex-shrink-0">
                     {new Date(note.date).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}
                   </span>
-                  <span className={`text-sm font-medium flex-1 truncate ${isExpanded ? "text-primary" : ""}`}>
+                  <span className={`order-1 sm:order-none basis-full sm:basis-auto sm:flex-1 min-w-0 text-sm font-medium sm:truncate ${isExpanded ? "text-primary" : ""}`}>
                     {note.title}
                   </span>
+                  <div className="order-3 sm:order-none flex flex-wrap sm:flex-nowrap gap-x-1.5 min-w-0 sm:flex-shrink-0">
+                    {note.categories.slice(0, 1).map((cat) => (
+                      <span key={cat} className="text-[10px] text-primary/60 dark:text-primary/70">{cat}</span>
+                    ))}
+                    {note.tags.slice(0, 2).map((t) => (
+                      <span key={t} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{t}</span>
+                    ))}
+                  </div>
+                  </div>
                   {isExpanded && (
                     <Link
                       href={`/notes/${note.slug}`}
@@ -186,17 +205,9 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                       <Maximize2 className="h-3 w-3" />
                     </Link>
                   )}
-                  <div className="flex gap-1.5 flex-shrink-0">
-                    {note.categories.slice(0, 1).map((cat) => (
-                      <span key={cat} className="text-[10px] text-primary/60 dark:text-primary/70">{cat}</span>
-                    ))}
-                    {note.tags.slice(0, 2).map((t) => (
-                      <span key={t} className="text-[10px] text-violet-500/70 dark:text-violet-400/70">#{t}</span>
-                    ))}
-                  </div>
                 </button>
                 {isExpanded && (
-                  <div className="px-4 pb-4 pl-12 prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                  <div className="px-4 pb-4 sm:pl-12 prose prose-sm prose-neutral dark:prose-invert max-w-none">
                     <MDXContent code={note.body} />
                     <ReferenceLinks references={note.references} />
                   </div>
@@ -209,15 +220,25 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
       ) : view === "card" ? (
         /* Card grid view */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((note, index) => (
-            <AnimateIn key={note.slug} delay={index * 100}>
-              <button
-                onClick={() => setExpandedSlug(expandedSlug === note.slug ? null : note.slug)}
-                className={`text-left rounded-lg border p-4 transition-all hover:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/8 ${
-                  expandedSlug === note.slug ? "border-primary/30 bg-primary/5 col-span-full" : "border-border/40"
+          {filtered.map((note, index) => {
+            const isExpanded = expandedSlug === note.slug;
+            return (
+            // 그리드 칸은 AnimateIn 이다 — 펼친 카드가 한 줄을 다 쓰도록 col-span 을 여기에 둔다
+            <AnimateIn
+              key={note.slug}
+              delay={index * 100}
+              className={`min-w-0 ${isExpanded ? "col-span-full" : ""}`}
+            >
+              <div
+                className={`rounded-lg border transition-all hover:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/8 ${
+                  isExpanded ? "border-primary/30 bg-primary/5" : "border-border/40"
                 }`}
               >
-              <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={() => setExpandedSlug(isExpanded ? null : note.slug)}
+                className="w-full text-left p-4"
+              >
+              <div className="flex flex-wrap items-center gap-2 mb-2">
                 {note.categories.slice(0, 1).map((cat) => (
                   <span key={cat} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/8 text-primary border border-primary/20">{cat}</span>
                 ))}
@@ -229,12 +250,13 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
               <p className="text-[11px] text-muted-foreground">
                 {new Date(note.date).toLocaleDateString("ko-KR")} · {note.readingTime}분
               </p>
-              {expandedSlug === note.slug && (
-                <div className="mt-3 pt-3 border-t border-border/30">
+              </button>
+              {/* 본문은 버튼 밖 — 버튼 안에 두면 긴 코드 줄만큼 카드가 늘어나 화면을 밀고, 복사 버튼이 버튼 안에 중첩된다 */}
+              {isExpanded && (
+                <div className="mx-4 mb-4 pt-3 border-t border-border/30">
                   <Link
                     href={`/notes/${note.slug}`}
                     className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mb-3"
-                    onClick={(e) => e.stopPropagation()}
                   >
                     <Maximize2 className="h-3 w-3" />
                     전체 보기
@@ -244,9 +266,10 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                   </div>
                 </div>
               )}
-              </button>
+              </div>
             </AnimateIn>
-          ))}
+            );
+          })}
         </div>
       ) : (
         /* Timeline view */
@@ -267,7 +290,7 @@ export function NotesView({ notes, tags }: { notes: NoteData[]; tags: TagInfo[] 
                   <p className={`text-sm font-medium mt-0.5 ${isExpanded ? "text-primary" : "hover:text-primary transition-colors"}`}>
                     {note.title}
                   </p>
-                  <div className="flex gap-1.5 mt-1">
+                  <div className="flex flex-wrap gap-x-1.5 mt-1">
                     {note.categories.slice(0, 1).map((cat) => (
                       <span key={cat} className="text-[10px] text-primary/60 dark:text-primary/70">{cat}</span>
                     ))}
