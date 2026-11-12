@@ -139,7 +139,8 @@ export const mdxComponents = {
     // 인라인 코드 (className이 없으면 인라인)
     if (!className) {
       return (
-        <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+        // 공백 없는 긴 SQL·로그 한 줄이 줄 끝을 넘을 때만 끊는다 (표 열 폭 계산엔 영향 없음)
+        <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono wrap-break-word" {...props}>
           {children}
         </code>
       );

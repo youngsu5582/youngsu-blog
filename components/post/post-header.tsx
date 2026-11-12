@@ -31,12 +31,12 @@ export function PostHeader({ title, date, author, categories, tags, readingTime 
       <h1 className="text-3xl font-bold tracking-tight lg:text-4xl mb-5 leading-tight">{title}</h1>
 
       {/* Meta */}
-      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 sm:gap-x-4 text-sm text-muted-foreground whitespace-nowrap">
         <span className="flex items-center gap-1.5">
           <User className="h-3.5 w-3.5" />
           {author}
         </span>
-        <span className="text-border">|</span>
+        <span className="hidden sm:inline text-border">|</span>
         <span className="flex items-center gap-1.5">
           <Calendar className="h-3.5 w-3.5" />
           {new Date(date).toLocaleDateString("ko-KR", {
@@ -47,7 +47,7 @@ export function PostHeader({ title, date, author, categories, tags, readingTime 
         </span>
         {readingTime && (
           <>
-            <span className="text-border">|</span>
+            <span className="hidden sm:inline text-border">|</span>
             <span className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5" />
               {readingTime}분 읽기

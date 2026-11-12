@@ -44,8 +44,9 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
       </div>
 
       {/* Type 필터 + 뷰 토글 */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
+      {/* 좁은 화면에선 필터·토글이 줄바꿈되고, 버튼 라벨은 글자 단위로 쪼개지지 않게 */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2 [&>a]:whitespace-nowrap">
           <a
             href={`/library${viewMode === "list" ? "?view=list" : ""}`}
             className={`text-sm px-3 py-1.5 rounded-md transition-colors ${
