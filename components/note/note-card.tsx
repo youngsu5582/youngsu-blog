@@ -49,8 +49,8 @@ export function NoteCard({
           </h2>
 
           {/* Meta + Tags */}
-          <div className="flex items-center gap-4 pt-1">
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 pt-1">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground whitespace-nowrap">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
                 {new Date(date).toLocaleDateString("ko-KR", {
@@ -69,7 +69,7 @@ export function NoteCard({
 
             {tags.length > 0 && (
               <>
-                <span className="text-border">|</span>
+                <span className="hidden sm:block text-border">|</span>
                 <div className="flex flex-wrap gap-1.5">
                   {tags.slice(0, 3).map((tag) => {
                     const colorClass = getTagColorClass(tag);

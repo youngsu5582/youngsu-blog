@@ -17,7 +17,7 @@ export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
   return (
     <nav aria-label="Breadcrumb" className={cn("mb-6", className)}>
       <ol className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <li className="flex items-center gap-1.5">
+        <li className="flex items-center gap-1.5 shrink-0">
           <Link
             href="/"
             className="hover:text-foreground transition-colors inline-flex items-center gap-1"
@@ -27,23 +27,28 @@ export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
             <span className="hidden sm:inline">홈</span>
           </Link>
         </li>
-        {items.map((item, index) => (
-          <li key={item.href} className="flex items-center gap-1.5">
-            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
-            {item.current || index === items.length - 1 ? (
-              <span className="text-foreground font-medium truncate max-w-[200px] sm:max-w-none">
-                {item.label}
-              </span>
-            ) : (
-              <Link
-                href={item.href}
-                className="hover:text-foreground transition-colors truncate max-w-[150px] sm:max-w-none"
-              >
-                {item.label}
-              </Link>
-            )}
-          </li>
-        ))}
+        {items.map((item, index) => {
+          const isLast = item.current || index === items.length - 1;
+          return (
+            // 마지막 항목만 줄어들며 말줄임 — 고정 max-w 대신 남은 폭에 맞춘다
+            <li
+              key={item.href}
+              className={cn("flex items-center gap-1.5", isLast ? "min-w-0" : "shrink-0")}
+            >
+              <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
+              {isLast ? (
+                <span className="text-foreground font-medium truncate">{item.label}</span>
+              ) : (
+                <Link
+                  href={item.href}
+                  className="hover:text-foreground transition-colors truncate max-w-[150px] sm:max-w-none"
+                >
+                  {item.label}
+                </Link>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </nav>
   );

@@ -30,7 +30,7 @@ export function ArticleCard({
 }: ArticleCardProps) {
   return (
     <article className="group theme-card py-6 first:pt-0 relative before:absolute before:left-0 before:top-6 before:bottom-6 before:w-0.5 before:bg-[var(--color-articles)] before:opacity-0 before:transition-opacity before:duration-200 hover:before:opacity-100">
-      <div className="flex gap-5">
+      <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
         {/* Content */}
         <div className="flex-1 min-w-0 space-y-2.5">
           {/* Status + Categories */}
@@ -71,8 +71,8 @@ export function ArticleCard({
           )}
 
           {/* Meta + Tags */}
-          <div className="flex items-center gap-4 pt-1">
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 pt-1">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground whitespace-nowrap">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
                 {new Date(date).toLocaleDateString("ko-KR", { year: "numeric", month: "short", day: "numeric" })}
@@ -87,7 +87,7 @@ export function ArticleCard({
 
             {tags.length > 0 && (
               <>
-                <span className="text-border">|</span>
+                <span className="hidden sm:block text-border">|</span>
                 <div className="flex flex-wrap gap-1.5">
                   {tags.slice(0, 3).map((tag) => {
                     const colorClass = getTagColorClass(tag);
@@ -109,7 +109,7 @@ export function ArticleCard({
         {/* Thumbnail */}
         {image && (
           <Link href={`/articles/${slug}`} className="flex-shrink-0">
-            <div className="w-48 h-28 rounded-lg overflow-hidden bg-muted">
+            <div className="w-full sm:w-48 h-44 sm:h-28 rounded-lg overflow-hidden bg-muted">
               <Image
                 src={image}
                 alt={title}
@@ -117,7 +117,7 @@ export function ArticleCard({
                 height={384}
                 className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                 loading="lazy"
-                sizes="192px"
+                sizes="(max-width: 640px) 100vw, 192px"
                 quality={90}
               />
             </div>
