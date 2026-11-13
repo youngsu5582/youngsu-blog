@@ -13,17 +13,25 @@ import { ArrowLeft } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
 import type { Metadata } from "next";
 import { siteConfig } from "@/config/site";
+import { locales, type Locale } from "@/lib/i18n";
 
+/*
+ * 공개 주소는 /tags/{tag}?lang=en 그대로다. next.config 의 rewrite 가 /tags/{tag}/{lang} 으로 옮긴다.
+ * 이 페이지에서 searchParams 를 읽으면 빌드 때 미리 만들 수 없어 요청마다 서버에서 렌더링되므로
+ * (Vercel Active CPU 대부분이 여기서 나왔다) 언어는 경로 파라미터로만 받는다.
+ */
 interface TagPageProps {
-  params: Promise<{ tag: string }>;
-  searchParams: Promise<{ lang?: string }>;
+  params: Promise<{ tag: string; lang: string }>;
 }
 
 export async function generateStaticParams() {
   const tags = getAllTags();
-  return tags.map(({ name }) => ({
-    tag: encodeURIComponent(name),
-  }));
+  return tags.flatMap(({ name }) =>
+    locales.map((lang) => ({
+      tag: name,
+      lang,
+    })),
+  );
 }
 
 export async function generateMetadata({ params }: TagPageProps): Promise<Metadata> {
@@ -42,12 +50,14 @@ export async function generateMetadata({ params }: TagPageProps): Promise<Metada
   };
 }
 
-export default async function TagPage({ params, searchParams }: TagPageProps) {
-  const { tag } = await params;
-  const sp = await searchParams;
+export default async function TagPage({ params }: TagPageProps) {
+  const { tag, lang: langParam } = await params;
+  if (!locales.includes(langParam as Locale)) {
+    notFound();
+  }
+  const lang = langParam as Locale;
   const decoded = decodeURIComponent(tag);
   const canonicalTag = getCanonicalTagName(decoded) ?? decoded;
-  const lang = (sp.lang as "ko" | "en") || "ko";
 
   const { posts, articles, notes } = getContentByTag(canonicalTag, lang);
   const totalCount = posts.length + articles.length + notes.length;

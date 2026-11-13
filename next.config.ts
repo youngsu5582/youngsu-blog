@@ -53,6 +53,28 @@ const nextConfig: NextConfig = {
       { source: `/tags/${encodeURIComponent("쉘-스크립트")}`, destination: tagPath("쉘 스크립트"), permanent: true },
     ];
   },
+  async rewrites() {
+    /*
+     * 태그·카테고리 페이지는 빌드 때 언어(·부모 카테고리)별로 미리 만들어 둔다.
+     * 공개 주소의 ?lang= · ?parent= 를 여기서 경로 파라미터로 옮겨, 페이지가 searchParams 를 읽지 않게 한다
+     * (읽는 순간 요청마다 서버 렌더링 → Vercel Active CPU 대부분이 여기서 나왔다).
+     * 같은 source 는 위에서부터 첫 규칙이 적용되므로 조건이 구체적인 것을 먼저 둔다.
+     */
+    const isEn = { type: "query" as const, key: "lang", value: "en" };
+    const hasParent = { type: "query" as const, key: "parent", value: "(?<parent>.+)" };
+    return {
+      beforeFiles: [
+        { source: "/tags/:tag", has: [isEn], destination: "/tags/:tag/en" },
+        { source: "/tags/:tag", destination: "/tags/:tag/ko" },
+        { source: "/categories/:category", has: [isEn, hasParent], destination: "/categories/:category/en/:parent" },
+        { source: "/categories/:category", has: [hasParent], destination: "/categories/:category/ko/:parent" },
+        { source: "/categories/:category", has: [isEn], destination: "/categories/:category/en" },
+        { source: "/categories/:category", destination: "/categories/:category/ko" },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
   experimental: {
     // Keep homelab builds within the small admin container's memory budget.
     cpus: 1,

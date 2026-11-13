@@ -1,6 +1,6 @@
 # Plan: 모바일 레이아웃 깨짐 수정
 Created: 2026-11-13
-Status: active
+Status: completed
 
 ## 진단 (375px · 320px, Playwright 실측)
 - `/posts` 등 PostCard 목록: 썸네일 `w-48` 고정폭이 옆에 붙어 화면이 523px 까지 밀림
@@ -21,11 +21,11 @@ Status: active
 - [x] 재측정: 320/375 전 페이지 넘침 0, 768/1280 회귀 없음
 - [x] 테스트 561/561 (Node 22), build 성공, 수정 파일 lint OK
 - [x] `fix/mobile-responsive` 브랜치로 커밋·PR (origin/main 기준 worktree, analytics 미커밋 작업과 분리)
-- [ ] Vercel preview 로 실기기 확인
+- [x] Vercel preview 로 실기기 확인 → #49 머지, 운영 375px 넘침 0 확인
 - [x] `/notes` 2차 (사용자 요청): 필터 칩을 모바일에서 카테고리·태그 각 한 줄 가로 스와이프로 — 첫 노트 y 1661→338px. 리스트 행은 제목 첫 줄·날짜/분류 둘째 줄. 카드 펼침 2304px 넘침 수정 (본문을 button 밖으로, col-span-full 을 그리드 아이템에)
 
 ## 참고
 - Node 26 에서는 vitest 26개 실패 — `localStorage` 가 undefined (Node 25+ 전역 localStorage 가 jsdom 을 가림). 변경과 무관, Node 22 에선 전부 통과.
 
 ## Resume Point
-브랜치 `fix/mobile-responsive` PR 의 Vercel preview 로 실기기 확인 → 이상 없으면 머지.
+완료 (#49 squash 머지 c72a77c).
