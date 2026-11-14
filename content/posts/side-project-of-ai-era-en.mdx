@@ -1,0 +1,231 @@
+---
+title: What It Means to Build Side Projects in the Age of AI
+date: "Sat Nov 14 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: 
+categories: []
+tags: []
+image: /assets/img/thumbnail/side-project-of-ai-era.png
+author: 이영수
+lang: en
+---
+
+It’s been nearly four years since the age of AI began, with ChatGPT launching around November 2022.
+I think it was around Opus 4.6 that I first realized LLMs had started to beat me at coding.
+
+Before that, LLMs were good at handling one-off requests, but they struggled to manage or control an entire codebase.
+
+- If you asked them to add a new method to classes implementing an interface, they would miss some of them
+- No matter what, they would add extra spaces or introduce typos
+- If connections were broken due to asynchronous processes or events, they couldn’t trace what happened
+- They lacked the context needed to understand and work on the entire codebase
+
+Opus 4.6 was different.
+
+- Support for a 1M-token context
+- Improved agentic coding capabilities
+
+More than anything, it felt like it was actually writing code by using tools!
+Instead of stitching together chat responses that came in disjointed chunks like before, it made changes directly, tested them, and iterated.
+
+Around that time, `Ralph loop` also became popular. The idea was that, with a well-written specification, development could be completed all the way through.
+
+But even that started to feel unnecessary when a flagship model called Fable & Mythos appeared. It no longer needed to be carefully guided: with just a rough outline, it could make decisions on its own and build something in no time.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/fa4f9e236c669bf6fe2d9eed98631182.png)
+
+
+Fable has continued to evolve, with releases up to version 5.2.
+
+## Why Don’t We Build Side Projects?
+
+So why on earth don’t we build side projects?
+The cost of writing code has fallen so much, development takes less time, and we can even work in parallel!
+
+[2025 Year in Review - Trying to Finish Side Projects in Small Steps](https://www.youngsu5582.today/posts/2025-reflection#233-%EC%82%AC%EC%9D%B4%EB%93%9C-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8-%EC%9E%91%EA%B2%8C-%EC%9E%91%EA%B2%8C-%EC%99%84%EC%84%B1-%EC%8B%9C%EC%BC%9C%EB%B3%B4%EA%B8%B0)
+
+In last year’s retrospective, I said I would make sure to finish a side project this year.
+
+### Attempts
+
+In fact, during the first half of this year, I tried to work on several different side projects in my own way.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/7cdfaf56e095ba337d945d9ad89baeae.png)
+
+In March, when I was reading a lot, I couldn’t find a reading-tracking service I liked, so I decided to build one.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/c1e789c26554c7000b2aeaf2dada8cee.png)
+
+In June, I wanted to manage the various kinds of data I generate, such as:
+
+- AI usage records
+- Browser research notes
+- Exercise data (cycling, swimming)
+- Photo records
+- Obsidian notes
+
+### Results
+
+Both projects ultimately failed.
+Let me explain the reasons one by one.
+
+#### Reading Tracker
+
+This project started with two motivations:
+
+1. I wanted to try building a side project!
+2. I was reading a lot, so I thought I’d build a service to help me keep reading and track my books!
+
+At first, I enthusiastically designed the requirements and started developing features.
+
+But... as I worked on features related to `saving reading records`, it turned out to be just CRUD.
+To keep myself interested, I got ambitious.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/5a00ada8bf601d91dccdc4875c4ce495.png)
+
+I wanted to try Elasticsearch, Batch, and K8s—things I hadn’t used at work.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/9bcec128653f516f54970818cf4d63bb.png)
+
+Before long, the tail was wagging the dog.
+I started learning things like “What is Elasticsearch...?”, “What commands are available?”, and “How do I apply an index?” just to use them in a side project. Naturally, my interest faded and eventually disappeared.
+
+#### Everyday Data Tracking Service
+
+About three months later, I thought, I really should try another side project!
+-> If I build a service I genuinely need, maybe I’ll keep developing it even if my interest wanes a little?
+
+At the time, I had also bought a mini PC, and I was motivated to create my own self-hosted services to manage my data.
+
+I actually made 168 commits, among other things, and cared enough about the project that it’s still deployed on my home server.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/bceb517bafd21e2c18ad189ea52f3cc9.png)
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/62ad2490f05e85ee24094472413476c3.png)
+
+I’m still collecting data with it.
+But I’ve stopped developing it for now, and there are two reasons.
+
+The first reason might sound a little ridiculous, but Strava stopped offering a free API. 😑
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/5233bcbf3e88e5b62fc5824ac3b86cb8.png)
+
+With the Provider gone, I had to find a new Provider. As I deliberated over that, I gradually lost motivation.
+
+The second reason was that the architecture was too difficult for me.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/13/8b5c5c09a82b716d58a0bb4fbc4af0cd.png)
+
+I was inspired by the Medallion Architecture and decided to adopt it.
+
+- I liked that data didn’t have to be transformed all at once; it could be processed in stages and restructured as needed.
+- I wanted to experience working with a large-scale data pipeline.
+
+But I ended up spending more time thinking about the boundaries between the medals, or writing code to separate those boundaries, than developing features.
+
+#### Lessons Learned
+
+1. Build a side project you genuinely want to work on.
+
+Don’t feel pressured to build a side project for the sake of your résumé or skills. Build something you actually want to make.
+
+2. Don’t take on too many things you need to learn from scratch.
+
+The project became more about learning than building a side project.
+Unless learning is the primary goal, don’t pack too much new learning into a long-term side project.
+
+3. Start with something easy, and choose a topic you can return to whenever you want.
+
+I started the `everyday data tracking service` with the Medallion Architecture from the outset, and with the `reading tracker`, I jumped straight into `Batch` -> `K8s` every time I moved on to a new phase.
+
+## A New Beginning
+
+I started a new project in September.
+
+To briefly introduce the service:
+It’s a service that brings AI request logic together like a Gateway, so each project doesn’t have to implement that logic on its own.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/14/422295214cba1d71c5b980e59fa81d3a.png)
+
+> For more details, see the [repository](https://github.com/youngsu5582/personal-ai-workbench#%EC%99%9C-%EB%A7%8C%EB%93%A4%EA%B2%8C-%EB%90%98%EC%97%88%EB%82%98%EC%9A%94).
+
+### Why I Chose This Topic
+
+It aligned with the ideas I had in mind when I wrote down the `lessons learned` above.
+
+1. Build a side project you genuinely want to work on.
+
+Whenever I worked on side projects or wrote code I needed, I had to implement calls to OpenAI, Gemini, and other services myself.
+
+- More than the code itself, I had to set up and manage the `API KEY` in env or `application.yml` every time.
+- I couldn’t save the results of requests or accurately track their costs.
+
+=> These experiences made me want to build a service that modularized the AI logic I use.
+
+2. Don’t take on too many things you need to learn from scratch.
+
+I currently work on an LLM content-generation service at my company.
+I’ve built up domain and coding knowledge, and there’s a backlog of ideas.
+
+This gives me two opportunities:
+
+- I can consider how I would have designed the system if I’d started from scratch instead of working with the existing code.
+-> This leads me to think about how I could improve the code at my current company.
+
+- I can consider what features and services could be expanded from the current code.
+-> I can test ideas and think through the considerations before introducing them directly into the company’s codebase.
+
+3. Start with something easy, and choose a topic you can return to whenever you want.
+
+Since I already know the domain, I can expand the code quickly without too much difficulty at first.
+
+After that, I can take on new challenges.
+
+- Implement OAuth 2.1
+- Deploy to k3s and k8s
+- MCP, Agent Core
+- Provide SDKs for use with other languages
+- Set up GPU Lambda + open-source processing
+
+Since a lot of the code is already in place, I don’t feel pressured to think, `I have to build this quickly, don’t I..?`
+
+### How I’m Approaching It
+
+Rather than simply implementing features quickly, I consciously try to document code and a direction that I can understand.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/14/c67c5e21473d168f5f14c8c372a16de0.png)
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/14/101ef262e5876197ba7a34955b54bea4.png)
+
+- I document my thoughts and decisions through ADRs so I can revisit and trace my reasoning at any time.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/14/a958c8d0d627d15c358c4521deae4490.png)
+
+- I broke down folders and modules by domain so I can focus only on the parts I need.
+	- Over time, I can also consider the possibility of moving to MSA or splitting up the server.
+
+### Ongoing
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/14/bb0e0f624642ae14136fbd3d085043db.png)
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/14/6b9bd3f885a8b471f7ae733231e27525.png)
+
+It’s now deployed on my home server, and I’m using it in practice.
+
+The biggest thing I’ve learned from working on this side project is to keep it in a state where I can always come back to it and stay interested in it.
+
+I can improve it when I want to use it or need to use it -> and through those improvements, I gain new insights and learn new things.
+
+> If you’re interested, check out the [GitHub repository](https://github.com/youngsu5582/personal-ai-workbench/tree/main).
+
+## Wrapping Up
+
+Going back to the question I started with: the cost of writing code really has come down, and I think it may fall even further.
+The thing that stopped my side projects wasn’t the code.
+
+- Reading tracker: I stopped because I got caught up trying to understand the technologies I’d added to keep myself interested.
+- Everyday data tracking service: I stopped because I got caught up deciding where to draw the boundaries between the medals.
+
+=> What AI has lowered is the cost of writing code, not the cost of understanding it and wanting to keep going.
+
+It’s great if you have a side project you can build for others or work on together with someone else.
+But if you don’t, and you still want to build a side project, try making a service just for yourself—something that at least one person, you, will definitely use.
