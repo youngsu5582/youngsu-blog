@@ -1,30 +1,48 @@
 import { notFound } from "next/navigation";
-import { getAllCategories, getContentByCategory, getUrlSlug, calcReadingTimeFromBody, getAlternatePost, type Note } from "@/lib/content";
+import { getAllArticles, getAllNotes, getAllPosts, getContentByCategory, getUrlSlug, calcReadingTimeFromBody, getAlternatePost, type Note } from "@/lib/content";
 import { PostCard } from "@/components/post/post-card";
 import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
 import { LangToggle } from "@/components/common/lang-toggle";
 import type { Metadata } from "next";
 import { siteConfig } from "@/config/site";
+import { locales, type Locale } from "@/lib/i18n";
 
-interface CategoryPageProps {
-  params: Promise<{ category: string }>;
-  searchParams: Promise<{ lang?: string; parent?: string }>;
+/*
+ * /categories/[category]/[lang] 과 /categories/[category]/[lang]/[parent] 가 함께 쓰는 본문.
+ * 공개 주소는 /categories/{category}?lang=en&parent={parent} 그대로다. next.config 의 rewrite 가
+ * 경로 파라미터로 옮겨 주므로, 페이지가 searchParams 를 읽지 않고 빌드 때 미리 만들어진다.
+ */
+export interface CategoryRouteParams {
+  category: string;
+  lang: string;
+  parent?: string;
 }
 
-export async function generateStaticParams() {
-  const categories = getAllCategories();
-  return categories.map(({ name }) => ({
-    category: encodeURIComponent(name),
-  }));
+/** 경로의 lang 이 ko/en 이 아니면 404 — rewrite 를 거치지 않은 직접 접근만 해당된다 */
+export function parseCategoryLang(lang: string): Locale {
+  if (!locales.includes(lang as Locale)) {
+    notFound();
+  }
+  return lang as Locale;
 }
 
-export async function generateMetadata({ params, searchParams }: CategoryPageProps): Promise<Metadata> {
-  const { category } = await params;
-  const query = await searchParams;
+/** 카테고리 목록(/categories)이 만드는 부모 → 자식 링크 쌍. categories[0] 이 부모다 */
+export function getCategoryParentPairs(): Array<{ category: string; parent: string }> {
+  const pairs = new Map<string, { category: string; parent: string }>();
+  for (const item of [...getAllPosts(), ...getAllArticles(), ...getAllNotes()]) {
+    const [parent, ...children] = item.categories;
+    for (const category of children) {
+      pairs.set(`${parent}\u0000${category}`, { category, parent });
+    }
+  }
+  return [...pairs.values()];
+}
+
+export function buildCategoryMetadata({ category, lang: langParam, parent: parentParam }: CategoryRouteParams): Metadata {
   const decoded = decodeURIComponent(category);
-  const lang = query.lang === "en" ? "en" : "ko";
-  const parent = query.parent ? decodeURIComponent(query.parent) : undefined;
+  const lang = langParam === "en" ? "en" : "ko";
+  const parent = parentParam ? decodeURIComponent(parentParam) : undefined;
   const categoryUrl = `${siteConfig.url}/categories/${encodeURIComponent(decoded)}${lang === "en" ? "?lang=en" : ""}`;
 
   return {
@@ -43,12 +61,10 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
   };
 }
 
-export default async function CategoryPage({ params, searchParams }: CategoryPageProps) {
-  const { category } = await params;
-  const sp = await searchParams;
+export function CategoryView({ category, lang: langParam, parent }: CategoryRouteParams) {
+  const lang = parseCategoryLang(langParam);
   const decoded = decodeURIComponent(category);
-  const lang = (sp.lang as "ko" | "en") || "ko";
-  const parentCategory = sp.parent ? decodeURIComponent(sp.parent) : undefined;
+  const parentCategory = parent ? decodeURIComponent(parent) : undefined;
 
   let { posts, articles, notes } = getContentByCategory(decoded, lang);
 
