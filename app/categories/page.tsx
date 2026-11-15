@@ -110,6 +110,7 @@ export default async function CategoriesPage({ searchParams }: CategoriesPagePro
             >
             <Link
               href={`/categories/${encodeURIComponent(parentName)}?lang=${lang}`}
+              prefetch={false}
               className="flex items-center justify-between px-5 py-3.5 bg-card hover:bg-primary/5 dark:hover:bg-primary/8 transition-colors group"
             >
               <div className="flex items-center gap-3">
@@ -131,6 +132,7 @@ export default async function CategoriesPage({ searchParams }: CategoriesPagePro
                     <Link
                       key={childName}
                       href={`/categories/${encodeURIComponent(childName)}?lang=${lang}&parent=${encodeURIComponent(parentName)}`}
+                      prefetch={false}
                       className="flex items-center justify-between px-5 py-2.5 pl-12 hover:bg-primary/4 dark:hover:bg-primary/6 transition-colors group border-b border-border/20 last:border-b-0"
                     >
                       <div className="flex items-center gap-2">

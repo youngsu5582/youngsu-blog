@@ -47,7 +47,7 @@ export function ArticleCard({
               {status === "evergreen" ? "🌲" : status === "seed" ? "🌱" : "📝"}
             </span>
             {categories.map((cat) => (
-              <Link key={cat} href={`/categories/${encodeURIComponent(cat)}`}>
+              <Link key={cat} href={`/categories/${encodeURIComponent(cat)}`} prefetch={false}>
                 <span className="theme-category text-xs hover:opacity-70 transition-opacity">{cat}</span>
               </Link>
             ))}
@@ -92,7 +92,7 @@ export function ArticleCard({
                   {tags.slice(0, 3).map((tag) => {
                     const colorClass = getTagColorClass(tag);
                     return (
-                      <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`}>
+                      <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`} prefetch={false}>
                         <span className={`${colorClass || "theme-tag"} text-[11px] px-2 py-0.5 rounded-full ${colorClass ? "border backdrop-filter backdrop-blur-sm" : ""}`}>{tag}</span>
                       </Link>
                     );
