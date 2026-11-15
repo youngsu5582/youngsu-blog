@@ -123,6 +123,7 @@ export default async function NotePage({ params }: NotePageProps) {
                   <Link
                     key={tag}
                     href={`/tags/${tag}`}
+                    prefetch={false}
                     className="text-xs px-2 py-0.5 rounded-full bg-muted hover:bg-muted/80 transition-colors"
                   >
                     #{tag}

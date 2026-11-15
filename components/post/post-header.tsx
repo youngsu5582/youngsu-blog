@@ -20,6 +20,7 @@ export function PostHeader({ title, date, author, categories, tags, readingTime 
             <Link
               key={cat}
               href={`/categories/${encodeURIComponent(cat)}`}
+              prefetch={false}
               className="theme-category text-sm hover:opacity-70 transition-opacity"
             >
               {cat}
@@ -63,6 +64,7 @@ export function PostHeader({ title, date, author, categories, tags, readingTime 
             <Link
               key={tag}
               href={`/tags/${encodeURIComponent(tag)}`}
+              prefetch={false}
               className="theme-tag text-xs px-2.5 py-1 rounded-full"
             >
               #{tag}

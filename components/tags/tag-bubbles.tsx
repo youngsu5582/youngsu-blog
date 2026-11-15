@@ -44,6 +44,7 @@ export function TagBubbles({ tags }: { tags: TagData[] }) {
           <Link
             key={tag.name}
             href={`/tags/${encodeURIComponent(tag.name)}`}
+            prefetch={false}
             className={`
               ${baseClass}
               rounded-full inline-flex items-center gap-1.5

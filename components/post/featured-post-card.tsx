@@ -46,7 +46,7 @@ export function FeaturedPostCard({
             {categories.length > 0 && (
               <div className="flex gap-2">
                 {categories.map((cat) => (
-                  <Link key={cat} href={`/categories/${encodeURIComponent(cat)}`}>
+                  <Link key={cat} href={`/categories/${encodeURIComponent(cat)}`} prefetch={false}>
                     <span className="theme-category text-xs hover:opacity-70 transition-opacity">
                       {cat}
                     </span>
@@ -110,7 +110,7 @@ export function FeaturedPostCard({
                       {tags.slice(0, 4).map((tag) => {
                         const colorClass = getTagColorClass(tag);
                         return (
-                          <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`}>
+                          <Link key={tag} href={`/tags/${encodeURIComponent(tag)}`} prefetch={false}>
                             <span className={`${colorClass || "theme-tag"} text-xs px-2.5 py-1 rounded-full ${colorClass ? "border backdrop-filter backdrop-blur-sm" : ""}`}>
                               {tag}
                             </span>
