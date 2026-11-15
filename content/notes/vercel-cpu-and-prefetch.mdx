@@ -1,0 +1,108 @@
+---
+title: Vercel Fluid Active CPU & Prefetch
+date: "2026-11-15T00:00:00.000Z"
+categories:
+  - Blog
+tags:
+  - vercel
+  - fluid-cpu
+  - prefetch
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+description: Vercel Fluid Active CPU 사용량이 급증한 원인을 추적해, 태그 링크의 자동 프리페치가 대량의 서버 요청과 CPU 작업을 유발하고 있음을 확인했습니다. 링크에 `prefetch={false}`를 적용해 클릭할 때만 요청하도록 변경하고, 프리페치가 유용한 상황도 정리합니다.
+---
+
+```
+Your site is growing!
+ 
+Your free team xxx-projects has used 75% of the included free tier usage for Fluid Active CPU (4 hours).
+```
+
+어김없이 Vercel 에서 새로운 경고가 날라왔다.
+이번에는 CPU 사용 시간이다.
+
+### Fluid Active CPU
+
+기존 서버리스 방식의 한계를 보완한 클라우드 컴퓨팅 모델
+
+- Active CPU 과금 : DB 응답, 외부 AI 모델 호출 기다리는 유휴 시간을 제외하고, 실제 CPU 연산 시간만 과금
+- Cold Start 방지 : 인스턴스를 완전히 사라지지 않고, 재사용 & 사전 워밍 통해 초기 지연 방지
+- 동적 확장 : 실시간 수요에 맞게 동시성과 리소스 자동 조절
+
+### 대시보드에서 확인
+
+![image](https://assets.youngsu5582.today/blog/2026/11/15/1794719760517-image.png)
+
+Usage 에서 `Fluid Active CPU` 를 통해 얼마나 사용되었는지 확인 가능하다.
+
+추가로, 어디서 사용되었는지를 확인하고 싶다면
+`Observability - Vercel Functions` 에 들어가자.
+
+![image](https://assets.youngsu5582.today/blog/2026/11/15/1794720052318-file-68986d3898a2722f5eaea600533b7fd2.png)
+
+![image](https://assets.youngsu5582.today/blog/2026/11/15/1794720055783-file-727eea14bfa4f64a1b6eabf3701eac51.png)
+
+`요청이 얼마나 되는지 / 사용된 CPU 시간` 을 확인할 수 있다.
+
+## 해결
+
+이 내용은 아마, 브라우저마다 다를거 같다.
+무조건 동적 연산이 가능해야 할 수도 있기 때문이다.
+
+하지만, 이번 문제는 동작 연산 때문에 문제가 되지 않았다.
+
+### 누가 호출하는가
+
+태그 페이지가 요청이 올 때마다 서버에서 그려지고 있었다.
+
+![image](https://assets.youngsu5582.today/blog/2026/11/15/1794726672698-file-50c84712a5dd41e52720ad5f21c8c39a.png)
+
+이유는 `<Link>` 가 화면에서 보이기만 해도, 페이지를 `_rsc=` 요청으로 미리 불러온다.
+-> `/tags` 가 태그 430개를 전부 링크로 그린다.
+=> 한 번 열면 요청이 태그 수만큼 나간다!!!
+
+그리고, 요청이 나가면 요청당 CPU 작업이 처리되는 형태였다.
+
+### 미리 불러오기 끄기
+
+```diff
+           <Link
+             key={tag.name}
+             href={`/tags/${encodeURIComponent(tag.name)}`}
++            prefetch={false}
+```
+
+누를 때만 실제 요청 & 이동하게 변경한다.
+
+> 원래, 태그 페이지를 빌드 때 미리 만들려고 했는데
+> 하지만, `태그 & 카테고리` 를 미리 다 만들면 160MB 정도 늘어나게 된다.
+
+적용후 네트워크를 다시 확인해보면
+
+![image](https://assets.youngsu5582.today/blog/2026/11/15/1794741810755-file-5b797a8a98d0259ad2cf46dc14c7cb3d.png)
+
+태그 추가 요청이 안나가는걸 볼 수 있다.
+
+#### Prefetch 왜 하는가?
+
+가볍게 찾아본 이유로는, 누르는 순간 페이지를 바로 뜨게 하는 사용자 경험을 위해서라고 한다.
+
+- 이득인 경우
+
+1. 화면의 링크 수가 적은 경우
+2. 누를 확률이 높은 경우
+3. 미리 받는 비용이 싼 경우 (파일, CDN)
+
+---
+
+우리 블로그는
+
+1. 태그가 400개 및 더 늘어날 예정
+2. 페이지에서 한두개만 누를 예정
+3. 서버가 직접 렌더링
+
+하므로, 필요가 없다고 판단했다.
+어떤 링크가 CPU 연산을 유발 시키고, 매번 CPU 연산을 시킬 필요가 있는가? 로 접근해보자.
