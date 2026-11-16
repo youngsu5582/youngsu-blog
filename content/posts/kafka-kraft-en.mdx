@@ -1,0 +1,307 @@
+---
+title: What Does KRaft Look Like? Kafka’s Metadata Structure Without ZooKeeper
+date: "Mon Nov 16 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: 
+categories:
+  - Backend
+tags:
+  - kafka
+  - kraft
+  - raft
+  - zookeeper
+  - metadata
+image: /assets/img/thumbnail/kafka-kraft.png
+author: 이영수
+lang: en
+---
+
+### 3-Line Summary
+
+1. Instead of ZooKeeper, KRaft has Kafka’s controllers store metadata in a single log (`__cluster_metadata`) and replicate it with Raft.
+2. Each node has three layers: Raft, Controller, and Broker. One active controller writes records, and a majority of voters confirms them.
+3. In combined mode, brokers are also voters, so a broker failure can become a quorum failure.
+
+## What Is KRaft?
+
+KRaft (Kafka + Raft) is how Kafka manages cluster metadata on its own, without ZooKeeper.
+Nodes acting as controllers use the Raft consensus algorithm to maintain a shared record of metadata, and only records received by a majority are confirmed.
+
+## Why KRaft Was Introduced
+
+### Drawbacks of ZooKeeper Mode
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/16/6b4827a17340770fede1fe764d33f797.png)
+
+In the past, Kafka kept metadata in a separate system called ZooKeeper,
+and one of the brokers acted as the controller, pushing changes to the other brokers.
+
+The proposal to remove ZooKeeper, [KIP-500](https://cwiki.apache.org/confluence/display/KAFKA/KIP-500%3A+Replace+ZooKeeper+with+a+Self-Managed+Metadata+Quorum), clearly outlines the drawbacks of this design.
+
+1. Metadata changes are treated as unrelated, individual changes
+   → If a broker receives only some of the changes, brokers can end up with inconsistent states.
+2. The controller pushes changes to brokers
+   → It retries a few times and eventually gives up—or could keep retrying forever.
+3. ZooKeeper’s state and the controller’s memory are separate
+   → They often get out of sync, and sometimes restarting the controller is the only way to resolve it—a state inconsistency.
+4. ZooKeeper is a separate system from Kafka
+   → Configuration, management tools, deployment, and security all need to be handled separately—more infrastructure to manage.
+
+> "We treat changes to metadata as isolated changes with no relationship to each other."
+> — KIP-500
+
+### What KRaft Changed
+
+KRaft addresses these drawbacks in three ways.
+
+1. Metadata is also handled as a log
+   → All changes are appended in order to `__cluster_metadata`, and offsets tell us “how far along” each node is.
+2. Brokers pull the changes from the log instead of receiving them
+   → The controller no longer has to push changes and eventually give up.
+3. The controller quorum replicates the log using Raft
+   → The leader writes, and a majority receiving the record confirms it. Since the controller owns the log, there is no separate store that can get out of sync.
+
+=> The work ZooKeeper used to do is brought into Kafka, leaving Kafka as the only system to operate.
+
+> "Rather than pushing out notifications to brokers, brokers should simply consume metadata events from the event log." — KIP-500
+> KRaft was declared production-ready in Kafka 3.3, and ZooKeeper mode was removed in 4.0.
+
+## Components
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/16/b291554b682b272a2d35326abed2fdd9.png)
+
+A KRaft node has three layers: Raft, Controller, and Broker.
+
+> ⭐ Only one active controller writes records.
+
+| Layer | What it does | Class in 3.3 |
+| ---- | -------------------------------------------------------- | ------------------ |
+| Raft | Replicates the metadata log among voters and confirms records up to the point held by a majority. Leader elections also happen here. | `KafkaRaftClient` |
+| Controller | Decides what to record — topic and partition creation, broker registration and fencing, and partition leader and ISR decisions | `QuorumController` |
+| Broker | Receives, stores, and serves messages. It receives confirmed metadata and applies it to its own state. | `BrokerServer` |
+
+> Raft is a consensus algorithm that ensures multiple nodes have the same records in the same order. One leader writes, and the record is confirmed when a majority receives it.
+> The last position confirmed by a majority is called the HWM (High Watermark).
+
+The Raft layer does not interpret the contents of records. It only “replicates records to a majority and confirms them.”
+→ The controller decides what to write.
+
+### Active and Standby Controllers
+
+A controller runs on every node assigned the controller role. However, only one of them is active at a time.
+
+- Active controller: the controller on the node where the Raft leader is running
+	- Receives requests from brokers and writes records
+- Standby: the remaining controllers
+	- Replicates records and participates in majority confirmation
+	- Votes in elections
+	- Continuously applies committed records to memory while waiting
+
+> A standby is not merely a backup!
+
+If both standby controllers in a three-node cluster fail, the active controller cannot reach a majority and cannot confirm anything, even if it is still running.
+
+### Startup Order
+
+Because the controllers and brokers initialize and need to register listeners with Raft, the startup order is Raft → Controller → Broker.
+
+```scala
+raftManager.startup()
+controller.foreach(_.startup())
+broker.foreach(_.startup())
+```
+
+> Code: [KafkaRaftServer.scala#L135-L139](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/core/src/main/scala/kafka/server/KafkaRaftServer.scala#L135-L139)
+
+## Combined Mode and Isolated Mode
+
+KRaft offers two modes.
+
+- Combined mode: Raft, Controller, and Broker run on the same node
+- Isolated mode: each node acts as either a Controller or a Broker
+
+|                 | Combined mode | Isolated mode |
+| --------------- | ----------------------- | ------------------------- |
+| Meaning | A node acts as both a controller and a broker | A node acts as either a controller or a broker |
+| `process.roles` | `controller,broker` | `controller` or `broker` |
+| Minimum number | 3 nodes | 3 controllers + N brokers |
+| Voters | All nodes | Controller nodes only |
+| If a broker fails | The voter in the same process also fails | Unrelated to the quorum |
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/17/bbfb0d9c214d9be8a2a44734fdbb46de.png)
+
+> "Combined mode is not recommended in critical deployment environments." — [KRaft documentation (3.9)](https://kafka.apache.org/39/operations/kraft/)
+> Combined mode is not recommended for critical production environments. Another drawback is that controllers cannot be restarted or scaled independently.
+
+## Voters and Observers
+
+⭐ Nodes listed in `controller.quorum.voters` are voters; the rest are observers.
+Observers only follow the log.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/16/958847e0e9a40391c526032b3ece644e.png)
+
+```java
+public boolean isObserver() {
+    return !isVoter();
+}
+```
+
+> Code: [QuorumState.java#L260-L269](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/raft/src/main/java/org/apache/kafka/raft/QuorumState.java#L260-L269)
+
+- Observers do not run in elections or cast votes. They are not counted when determining confirmation (HWM), either.
+- Therefore, broker nodes in isolated mode (observers) can fail without affecting the quorum.
+
+## Metadata Log
+
+⭐ Every change to cluster state is appended as a record to `__cluster_metadata-0`, one line at a time.
+
+- Broker registration (`RegisterBrokerRecord`)
+- Topic creation and deletion (`TopicRecord` · `RemoveTopicRecord`)
+- Partition creation and leader/ISR changes (`PartitionRecord` · `PartitionChangeRecord`)
+- Configuration (`ConfigRecord`)
+- Broker fencing and shutdown state (`BrokerRegistrationChangeRecord`)
+- Records that change nothing (`NoOpRecord`) — even when there are no changes, the active controller writes one every 0.5 seconds
+
+### Take a Look
+
+After creating and deleting a test topic, open the metadata log to see the records.
+
+```bash
+# 토픽 생성 · 삭제
+docker exec kafka1 kafka-topics --bootstrap-server kafka1:19092 --create --topic kraft-demo --partitions 1 --replication-factor 3
+docker exec kafka1 kafka-topics --bootstrap-server kafka1:19092 --delete --topic kraft-demo
+
+# 컨테이너 안의 메타데이터 로그 폴더로 이동
+docker exec -it kafka1 bash
+cd /var/lib/kafka/data/__cluster_metadata-0
+
+# 가장 최근 세그먼트를 레코드로 풀어, 토픽 · 파티션 기록만 보기
+kafka-dump-log --cluster-metadata-decoder --files $(ls *.log | tail -1) | grep -E 'TOPIC_RECORD|PARTITION_RECORD'
+```
+
+- `--cluster-metadata-decoder`: decodes records into JSON
+
+```text
+| offset: 52002 … payload: {"type":"TOPIC_RECORD", … "data":{"name":"kraft-demo","topicId":"Cxax0qLv…"}}
+| offset: 52003 … payload: {"type":"PARTITION_RECORD", … "data":{"partitionId":0,"topicId":"Cxax0qLv…","replicas":[1,2,3],"isr":[1,2,3],"leader":1, …}}
+| offset: 52006 … payload: {"type":"REMOVE_TOPIC_RECORD", … "data":{"topicId":"Cxax0qLv…"}}
+```
+
+The topic creation, partition creation, and topic deletion appear in order, all with the same topic ID. Offsets 52004 and 52005 in between are empty records (`NO_OP_RECORD`).
+
+### On Disk
+
+On disk, the metadata log is just a directory, like a regular topic partition.
+
+- Its location is `metadata.log.dir`. If this is not specified, the first directory in `log.dirs` is used.
+
+There are several files inside, but only three types are needed to understand KRaft.
+
+```text
+__cluster_metadata-0/
+├── 00000000000000050739.log                    ← 변경 기록
+├── 00000000000000050448-0000000168.checkpoint  ← 스냅샷
+└── quorum-state                                ← 선거 상태
+```
+
+- Change log: `.log`, a file where records are appended one line at a time
+- Snapshot: `.checkpoint`, a summary of the state up to a certain point, so the log does not have to be read from the beginning
+- Election state: `quorum-state`, a note recording who the leader is and whom each node voted for
+
+```json
+{
+  "clusterId": "",
+  "leaderId": 2,
+  "leaderEpoch": 168,
+  "votedId": -1,
+  "appliedOffset": 0,
+  "currentVoters": [
+    {
+      "voterId": 1
+    },
+    {
+      "voterId": 2
+    },
+    {
+      "voterId": 3
+    }
+  ],
+  "data_version": 0
+}
+```
+
+It contains:
+
+- Leader information and epoch
+- Whom the node voted for
+- The list of voters
+
+## Quorum
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/16/fe37b594c2e251c67a367489d29882f4.png)
+
+A majority of voters must be able to communicate with each other to elect a leader and confirm records.
+What matters is not “how many are up,” but “how many can communicate with one another.”
+
+> “Can communicate” means voters can exchange vote requests and records over the controller port (the address specified in `controller.quorum.voters`).
+> A process may be running, but if its name cannot be resolved or its port is blocked, it does not count.
+
+| Voters that can communicate with each other (out of 3) | Leader election and record confirmation | Result |
+|---|---|---|
+| 3 | Yes | Normal. Can tolerate losing up to 1 node |
+| 2 | Yes | Continues running, with no margin for failure |
+| 1 | No | Metadata operations stop. Topic creation, broker registration, and leader movement are all unavailable |
+
+- Even if all three nodes are up, if they cannot communicate with each other, each one counts as just one node.
+- With two nodes, a majority is two, so the cluster stops if even one node fails → use an odd number of voters.
+
+You can check the current quorum with `kafka-metadata-quorum`.
+
+```bash
+docker exec kafka1 kafka-metadata-quorum --bootstrap-server kafka1:19092 describe --status
+docker exec kafka1 kafka-metadata-quorum --bootstrap-server kafka1:19092 describe --replication
+```
+
+```text
+LeaderId:               2
+LeaderEpoch:            168
+HighWatermark:          47649
+CurrentVoters:          [1,2,3]
+CurrentObservers:       []
+
+NodeId  LogEndOffset  Lag  Status
+2       47651         0    Leader
+1       47651         0    Follower
+3       47651         0    Follower
+```
+
+- Node 2 is the leader for epoch 168, and nodes 1 and 3 are keeping up with no lag (`Lag 0`).
+- There are no observers because this is combined mode (`CurrentObservers: []`).
+
+## Conclusion
+
+To summarize the features and components of KRaft:
+
+| Feature | In a nutshell |
+| ---------- | -------------------------------------------------- |
+| Metadata = log | Changes are appended in order to `__cluster_metadata` |
+| Three layers | Raft replicates and confirms; the controller decides what to write; the broker applies what has been confirmed |
+| Active controller | The active controller writes. Standbys replicate and vote while preparing to take over |
+| Voters and observers | Only voters participate in elections and confirmation. Observers only follow the log |
+| Combined mode | Broker failure = voter failure. Use isolated mode in production |
+| Quorum | Count nodes that can communicate with one another, not nodes that are merely up |
+
+Perhaps KRaft was inevitable.
+To operate Kafka, you used to have to run and manage another system alongside it: ZooKeeper.
+
+And while consumers pull messages,
+metadata was still pushed from the controller to brokers.
+
+KRaft made metadata more Kafka-like by appending it to a log and having brokers pull it.
+## References
+
+- [KIP-500 — Replace ZooKeeper with a Self-Managed Metadata Quorum](https://cwiki.apache.org/confluence/display/KAFKA/KIP-500%3A+Replace+ZooKeeper+with+a+Self-Managed+Metadata+Quorum)
+- [KIP-833 — Mark KRaft as Production Ready](https://cwiki.apache.org/confluence/display/KAFKA/KIP-833%3A+Mark+KRaft+as+Production+Ready)
+- [Apache Kafka 4.0.0 Release Announcement](https://kafka.apache.org/blog/2025/03/18/apache-kafka-4.0.0-release-announcement/)
+- [Apache Kafka 3.9 Documentation — KRaft](https://kafka.apache.org/39/operations/kraft/)
+- [Raft paper — In Search of an Understandable Consensus Algorithm](https://raft.github.io/raft.pdf)
+- Source (commit `05694da`): [KafkaRaftServer.scala](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/core/src/main/scala/kafka/server/KafkaRaftServer.scala) · [QuorumState.java](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/raft/src/main/java/org/apache/kafka/raft/QuorumState.java) · [QuorumController.java](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/metadata/src/main/java/org/apache/kafka/controller/QuorumController.java)
