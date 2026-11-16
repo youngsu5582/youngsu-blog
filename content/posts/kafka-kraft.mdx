@@ -1,0 +1,310 @@
+---
+title: KRaft 는 어떻게 생겼나 - ZooKeeper 를 걷어낸 Kafka 의 메타데이터 구조
+date: "Mon Nov 16 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+categories:
+  - Kafka
+  - 인프라
+tags:
+  - kafka
+  - raft
+  - zookeeper
+  - metadata-log
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+image: /assets/img/thumbnail/kafka-kraft.png
+description: Kafka가 ZooKeeper 없이 메타데이터를 관리하는 KRaft의 구조를 살펴봅니다. Raft·컨트롤러·브로커의 역할과 메타데이터 기록 및 복제 흐름, 결합·분리 모드의 장애 특성을 정리합니다.
+---
+
+### 3줄 요약
+
+1. KRaft 는 ZooKeeper 대신 Kafka 의 컨트롤러들이 메타데이터를 로그(`__cluster_metadata`) 하나에 쌓고, Raft 로 복제하는 방식이다
+2. 노드 안에는 Raft · 컨트롤러 · 브로커 세 층이 있다. 기록을 쓰는 것은 활성 컨트롤러 한 대이고, 확정은 투표자 과반이 한다
+3. 결합 모드에서는 브로커가 곧 투표자라, 브로커 장애가 정족수 장애로 이어진다
+
+## KRaft 란
+
+KRaft(Kafka + Raft) 는 Kafka 가 ZooKeeper 없이 클러스터 메타데이터를 스스로 관리하는 방식이다.
+컨트롤러 역할을 맡은 노드들이 Raft 합의 방법으로 메타데이터 기록을 함께 들고, 과반이 받은 것만 확정한다.
+
+## KRaft 가 나온 이유
+
+### ZooKeeper 모드의 불편함
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/16/6b4827a17340770fede1fe764d33f797.png)
+
+예전 Kafka 는 메타데이터를 ZooKeeper 라는 별도 시스템에 두고,
+브로커 중 한 대가 컨트롤러가 되어 변경을 다른 브로커에게 밀어 넣었다.
+
+ZooKeeper 를 걷어내자는 제안서 [KIP-500](https://cwiki.apache.org/confluence/display/KAFKA/KIP-500%3A+Replace+ZooKeeper+with+a+Self-Managed+Metadata+Quorum) 에 이 구조의 불편함이 잘 정리되어 있다.
+
+1. 메타데이터 변경을 서로 관계없는 각각으로 다룬다
+   → 브로커가 변경을 일부만 받으면, 브로커마다 상태가 어긋날 수 있다
+2. 컨트롤러가 브로커에게 변경을 밀어 넣는다
+   → 몇 번 다시 시도하다가 결국 포기한다 - 아니면, 무한 반복 가능
+3. ZooKeeper 의 상태와 컨트롤러 메모리가 따로 논다
+   → 자주 어긋나고, 컨트롤러를 재시작해야만 풀리기도 한다 - 상태 불일치
+4. ZooKeeper 는 Kafka 와 별도인 시스템이다
+   → 설정 · 관리 도구 · 배포 · 보안을 따로 챙겨야 한다 - 인프라 추가 관리
+
+> "We treat changes to metadata as isolated changes with no relationship to each other."
+> — KIP-500
+
+### KRaft 가 바꾼 것
+
+KRaft 는 이 불편함을 세 가지로 푼다.
+
+1. 메타데이터도 로그로 다룬다
+   → 모든 변경이 `__cluster_metadata` 에 순서대로 쌓이고, 오프셋으로 "어디까지 받았는지" 를 안다
+2. 브로커는 변경을 받는 게 아니라 로그를 자기가 당겨 간다
+   → 컨트롤러가 밀어 넣다가 포기하는 일이 없다
+3. 그 로그는 컨트롤러 정족수가 Raft 로 복제한다
+   → 리더가 쓰고, 과반이 가지면 확정된다. 컨트롤러가 로그의 주인이라 따로 어긋날 저장소가 없다
+
+=> ZooKeeper 가 하던 일을 Kafka 안으로 가져와, 운영할 시스템이 Kafka 하나가 된다.
+
+> "Rather than pushing out notifications to brokers, brokers should simply consume metadata events from the event log." — KIP-500
+> Kafka 3.3 에서 KRaft 가 운영에 써도 되는 단계로 선언됐고, 4.0 에서 ZooKeeper 모드가 사라졌다.
+
+## 구성 요소
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/16/b291554b682b272a2d35326abed2fdd9.png)
+
+KRaft 노드 안에는 Raft · 컨트롤러 · 브로커 세 층이 있다.
+
+> ⭐ 기록을 쓰는 것은 활성 컨트롤러 한 대다.
+
+| 층    | 하는 일                                                     | 3.3 의 클래스          |
+| ---- | -------------------------------------------------------- | ------------------ |
+| Raft | 메타데이터 로그를 투표자끼리 복제하고, 과반이 가진 지점까지 확정한다. 리더 선거도 여기서 한다    | `KafkaRaftClient`  |
+| 컨트롤러 | 무엇을 기록할지 정한다 — 토픽 · 파티션 생성, 브로커 등록 · 격리, 파티션 리더 · ISR 결정 | `QuorumController` |
+| 브로커  | 메시지를 받아 저장하고 준다. 확정된 메타데이터를 받아 자기 상태에 반영한다               | `BrokerServer`     |
+
+> Raft 는 여러 노드가 같은 기록을 같은 순서로 갖게 하는 합의 방법이다. 리더 하나가 쓰고, 과반이 받으면 확정된다.
+> 과반이 받아 확정된 마지막 위치를 HWM(High Watermark) 이라 부른다.
+
+Raft 계층은 기록의 내용을 해석하지 않는다. `기록을 과반에 복제 후 확정한다` 만 한다.
+→ 무엇을 쓸지는 컨트롤러가 정한다.
+
+### 활성 컨트롤러와 스탠바이 컨트롤러
+
+컨트롤러는 컨트롤러 역할을 맡은 모든 노드에 있다. 하지만 일하는 것은 한 대뿐이다.
+
+- 활성 컨트롤러 : Raft 리더가 있는 노드의 컨트롤러
+	- 브로커의 요청을 받아 기록을 씀
+- 스탠바이 : 나머지 컨트롤러
+	- 기록을 복제해 과반 확정에 참여
+	- 선거에 투표
+	- 커밋된 기록을 메모리에 계속 적용하며 대기
+
+> 스탠바이는 단순한 백업용이 아니다!
+
+3대 중 스탠바이 2대가 모두 죽으면, 활성 컨트롤러가 살아 있어도 과반을 못 채워 아무것도 확정하지 못한다.
+
+### 기동 순서
+
+컨트롤러와 브로커가 초기화하며 Raft 에 리스너를 걸어야 하므로, 기동 순서는 Raft → 컨트롤러 → 브로커다.
+
+```scala
+raftManager.startup()
+controller.foreach(_.startup())
+broker.foreach(_.startup())
+```
+
+> 코드 : [KafkaRaftServer.scala#L135-L139](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/core/src/main/scala/kafka/server/KafkaRaftServer.scala#L135-L139)
+
+## 결합 모드와 분리 모드
+
+KRaft 는 두 가지 모드를 선택할 수 있다.
+
+- 결합 모드 : Raft, Controller, Broker 를 한 노드에 싣는 모드
+- 분리 모드 : 노드가 Controller 또는 브로커 중 하나만 하는 모드
+
+|                 | 결합 모드                   | 분리 모드                     |
+| --------------- | ----------------------- | ------------------------- |
+| 의미              | 한 노드가 컨트롤러 · 브로커를 같이 한다 | 한 노드가 컨트롤러 · 브로커 중 하나만 한다 |
+| `process.roles` | `controller,broker`     | `controller` 또는 `broker`  |
+| 최소 개수           | 3대                      | 컨트롤러 3대 + 브로커 N대          |
+| 투표자             | 모든 노드                   | 컨트롤러 노드만                  |
+| 브로커가 죽으면        | 같은 프로세스의 투표자도 죽는다       | 정족수와 무관하다                 |
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/17/bbfb0d9c214d9be8a2a44734fdbb46de.png)
+
+> "Combined mode is not recommended in critical deployment environments." — [KRaft 문서 (3.9)](https://kafka.apache.org/39/operations/kraft/)
+> 중요한 운영 환경에서는 결합 모드를 권하지 않는다. 컨트롤러만 따로 재시작하거나 늘릴 수 없는 것도 단점으로 꼽는다.
+
+## 투표자와 옵저버
+
+⭐ `controller.quorum.voters` 에 있는 노드가 투표자, 나머지는 옵저버다.
+옵저버는 로그를 따라 읽기만 한다.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/16/958847e0e9a40391c526032b3ece644e.png)
+
+```java
+public boolean isObserver() {
+    return !isVoter();
+}
+```
+
+> 코드 : [QuorumState.java#L260-L269](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/raft/src/main/java/org/apache/kafka/raft/QuorumState.java#L260-L269)
+
+- 옵저버는 선거에 나서지도 않고, 표도 주지 않는다. 확정(HWM)을 정할 때도 세지 않는다
+- 그래서 분리 모드의 브로커(옵저버)는 몇 대가 죽어도 정족수에 영향이 없다
+
+## 메타데이터 로그
+
+⭐ 클러스터 상태의 모든 변경은 `__cluster_metadata-0` 에 레코드로 한 줄씩 쌓인다.
+
+- 브로커 등록 (`RegisterBrokerRecord`)
+- 토픽 생성 · 삭제 (`TopicRecord` · `RemoveTopicRecord`)
+- 파티션 생성과 리더 · ISR 변경 (`PartitionRecord` · `PartitionChangeRecord`)
+- 설정 (`ConfigRecord`)
+- 브로커 격리 · 종료 상태 (`BrokerRegistrationChangeRecord`)
+- 아무것도 바꾸지 않는 기록 (`NoOpRecord`) — 변경이 없어도 활성 컨트롤러가 0.5초마다 쓴다
+
+### 직접 보기
+
+실습용 토픽을 하나 만들었다 지운 뒤 메타데이터 로그를 열어 보면 기록이 남아 있다.
+
+```bash
+# 토픽 생성 · 삭제
+docker exec kafka1 kafka-topics --bootstrap-server kafka1:19092 --create --topic kraft-demo --partitions 1 --replication-factor 3
+docker exec kafka1 kafka-topics --bootstrap-server kafka1:19092 --delete --topic kraft-demo
+
+# 컨테이너 안의 메타데이터 로그 폴더로 이동
+docker exec -it kafka1 bash
+cd /var/lib/kafka/data/__cluster_metadata-0
+
+# 가장 최근 세그먼트를 레코드로 풀어, 토픽 · 파티션 기록만 보기
+kafka-dump-log --cluster-metadata-decoder --files $(ls *.log | tail -1) | grep -E 'TOPIC_RECORD|PARTITION_RECORD'
+```
+
+- `--cluster-metadata-decoder` : 레코드를 JSON 으로 풀어 준다
+
+```text
+| offset: 52002 … payload: {"type":"TOPIC_RECORD", … "data":{"name":"kraft-demo","topicId":"Cxax0qLv…"}}
+| offset: 52003 … payload: {"type":"PARTITION_RECORD", … "data":{"partitionId":0,"topicId":"Cxax0qLv…","replicas":[1,2,3],"isr":[1,2,3],"leader":1, …}}
+| offset: 52006 … payload: {"type":"REMOVE_TOPIC_RECORD", … "data":{"topicId":"Cxax0qLv…"}}
+```
+
+같은 토픽 ID 로 토픽 생성 → 파티션 생성 → 토픽 삭제가 차례대로 남았다. 사이의 52004 · 52005 는 빈 기록(`NO_OP_RECORD`)이다.
+
+### 디스크에서는
+
+메타데이터 로그도 디스크에서는 일반 토픽 파티션처럼 폴더 하나다.
+
+- 위치는 `metadata.log.dir` 이고, 지정하지 않으면 `log.dirs` 의 첫 폴더를 쓴다.
+
+안에는 여러 파일이 있지만, KRaft 를 이해하는 데 필요한 것은 세 종류다.
+
+```text
+__cluster_metadata-0/
+├── 00000000000000050739.log                    ← 변경 기록
+├── 00000000000000050448-0000000168.checkpoint  ← 스냅샷
+└── quorum-state                                ← 선거 상태
+```
+
+- 변경 기록 : `.log`, 레코드가 한 줄씩 쌓이는 파일
+- 스냅샷 : `.checkpoint`, 기록을 처음부터 다시 읽지 않도록, 어느 지점까지 상태를 담아 둔 요약본
+- 선거 상태 : `quorum-state`, 누가 리더인지 누구에게 투표했는지 적어 둔 메모
+
+```json
+{
+  "clusterId": "",
+  "leaderId": 2,
+  "leaderEpoch": 168,
+  "votedId": -1,
+  "appliedOffset": 0,
+  "currentVoters": [
+    {
+      "voterId": 1
+    },
+    {
+      "voterId": 2
+    },
+    {
+      "voterId": 3
+    }
+  ],
+  "data_version": 0
+}
+```
+
+- 리더의 정보, 임기
+- 누구에게 투표했는지
+- 투표자 목록
+
+등을 가지고 있다.
+
+## 정족수
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/16/fe37b594c2e251c67a367489d29882f4.png)
+
+투표자 과반이 서로 통신되어야 리더를 뽑고 기록을 확정한다.
+세는 것은 "켜져 있는 수" 가 아니라 "서로 통신되는 수" 다.
+
+> 통신된다 = 투표자끼리 컨트롤러 포트(`controller.quorum.voters` 에 적힌 주소)로 투표 요청과 기록을 주고받을 수 있다.
+> 프로세스가 떠 있어도 이름을 못 찾거나 포트가 막혀 있으면 세지 않는다.
+
+| 서로 통신되는 투표자 (3대 중) | 리더 선출 · 기록 확정 | 결과 |
+|---|---|---|
+| 3 | 된다 | 정상. 1대까지 잃어도 된다 |
+| 2 | 된다 | 계속 돈다. 여유는 0 |
+| 1 | 안 된다 | 메타데이터가 멈춘다. 토픽 생성 · 브로커 등록 · 리더 이동 모두 불가 |
+
+- 3대가 다 켜져 있어도 서로 통신되지 않으면 각자 1대다
+- 2대 구성은 과반이 2라 1대만 죽어도 멈춘다 → 투표자는 홀수로 둔다
+
+지금 정족수는 `kafka-metadata-quorum` 으로 볼 수 있다.
+
+```bash
+docker exec kafka1 kafka-metadata-quorum --bootstrap-server kafka1:19092 describe --status
+docker exec kafka1 kafka-metadata-quorum --bootstrap-server kafka1:19092 describe --replication
+```
+
+```text
+LeaderId:               2
+LeaderEpoch:            168
+HighWatermark:          47649
+CurrentVoters:          [1,2,3]
+CurrentObservers:       []
+
+NodeId  LogEndOffset  Lag  Status
+2       47651         0    Leader
+1       47651         0    Follower
+3       47651         0    Follower
+```
+
+- 노드 2 가 임기 168 의 리더이고, 1 · 3 은 뒤처짐 없이(`Lag 0`) 따라오고 있다
+- 결합 모드라 옵저버가 없다(`CurrentObservers: []`)
+
+## 마무리
+
+KRaft 의 특징과 구성요소들에 대해 정리를 해보면, 아래와 같다.
+
+| 특징         | 한 줄로                                               |
+| ---------- | -------------------------------------------------- |
+| 메타데이터 = 로그 | `__cluster_metadata` 에 변경을 순서대로 쌓는다                |
+| 세 층        | Raft 가 복제 · 확정하고, 컨트롤러가 무엇을 쓸지 정하고, 브로커가 확정된 것을 적용 |
+| 활성 컨트롤러    | 쓰는 것은 활성 컨트롤러. 스탠바이는 복제 · 투표하며 이어받을 준비를 한다         |
+| 투표자와 옵저버   | 투표자만 선거 · 확정에 참여한다. 옵저버는 따라 읽기만 한다                 |
+| 결합 모드      | 브로커 장애 = 투표자 장애. 운영에는 분리 모드                        |
+| 정족수        | 켜진 수가 아니라 서로 통신되는 수로 센다                            |
+
+어쩌면, KRaft 가 나온 건 필연적이지 않았을까.
+Kafka 를 운영하려면 옆에 ZooKeeper 라는 시스템을 하나 더 띄우고, 관리를 해야 했으니.
+
+그리고, 메시지는 컨슈머가 당겨 가는(pull) 방식이면서,
+정작 메타데이터는 컨트롤러가 브로커에 밀어 넣는(push) 방식이었으니 말이다.
+
+KRaft 는 메타데이터도 Kafka 스럽게 로그에 쌓고, 브로커가 당겨 가게 바꿨다.
+## 참고
+
+- [KIP-500 — Replace ZooKeeper with a Self-Managed Metadata Quorum](https://cwiki.apache.org/confluence/display/KAFKA/KIP-500%3A+Replace+ZooKeeper+with+a+Self-Managed+Metadata+Quorum)
+- [KIP-833 — Mark KRaft as Production Ready](https://cwiki.apache.org/confluence/display/KAFKA/KIP-833%3A+Mark+KRaft+as+Production+Ready)
+- [Apache Kafka 4.0.0 릴리스 공지](https://kafka.apache.org/blog/2025/03/18/apache-kafka-4.0.0-release-announcement/)
+- [Apache Kafka 3.9 문서 — KRaft](https://kafka.apache.org/39/operations/kraft/)
+- [Raft 논문 — In Search of an Understandable Consensus Algorithm](https://raft.github.io/raft.pdf)
+- 소스 (커밋 `05694da`): [KafkaRaftServer.scala](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/core/src/main/scala/kafka/server/KafkaRaftServer.scala) · [QuorumState.java](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/raft/src/main/java/org/apache/kafka/raft/QuorumState.java) · [QuorumController.java](https://github.com/apache/kafka/blob/05694da5d4e64b1af49f8eccd25ce72d9b436dc4/metadata/src/main/java/org/apache/kafka/controller/QuorumController.java)
