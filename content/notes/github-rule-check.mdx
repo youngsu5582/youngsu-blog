@@ -1,0 +1,56 @@
+---
+title: Github 규칙 검사가 도중 추가될 때 동작하는 방식
+date: "Mon Nov 16 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+categories:
+  - 프로그래밍
+tags:
+  - github
+  - repository-rules
+  - troubleshooting
+description: 이메일 정규식 기반 GitHub 규칙 검사를 추가했을 때, 기존 브랜치와 새 브랜치의 push 동작이 달라지는 이유를 설명합니다. 규칙 위반으로 push가 거절될 때의 해결 방법과 규칙 적용 전 평가 방법을 정리합니다.
+---
+
+> 사소한 케이스이나? 혹여나,
+> 나중에 막히더라도 당황하거나 불필요하게 AI 에게 물어보지 않게 정리한다.
+
+Github 에서 규칙 검사는 아래와 같이 동작한다.
+
+## 상황
+
+- `user01@naer.com` 로 누군가 커밋한 상태
+  - base branch 에 커밋이 머지된 상태
+
+- 이메일 정규식 기반 검사를 새롭게 추가
+
+- 이 커밋에 영향을 받는 브랜치
+  - branch A 는 커밋이 머지되기 전 생성된 branch
+  - branch B 는 커밋이 머지된 후 생성된 branch
+
+## 동작 방식
+
+- branch A 는 base branch 에 rebase 를 하면
+규칙 검사가 동작해 push 가 거절이 되게 된다.
+
+```
+GH013: Repository rule violations
+```
+
+그 이유는, rebase 할 때 기존에 있던 옛 끝부터 범위 전체를 검사한다.
+(develop 에 규칙 위반한 커밋이 머지되었든 상관 X)
+
+- branch B 는 규칙 검사가 동작 안해 push 가 동작한다.
+
+develop 에 있는 위반 커밋은 빠지고 그 이후를 검사한다.
+
+> 그림으로 설명하면 아래와 같다.
+
+![image](https://assets.youngsu5582.today/blog/2026/11/16/1794810989548-image.png)
+
+## 해결
+
+1. 규칙을 임시로 비활성화 한다.
+2. 새 이름으로 브랜치를 만든 후, cherry-pick push 한다.
+3. base branch 의 위반 내역을 고쳐, 이력을 다시 쓴다.
+4. 규칙 생성 전, Evaluate 로 문제 판단 및 평가를 먼저 한다.
+
+![image](https://assets.youngsu5582.today/blog/2026/11/16/1794811579774-image.png)
