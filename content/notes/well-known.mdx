@@ -1,0 +1,41 @@
+---
+title: well-known 과 oauth authorization server
+date: "2026-11-18T00:00:00.000Z"
+categories:
+  - 백엔드
+  - 인증
+tags:
+  - http
+  - auth
+  - oauth
+  - well-known
+author: 이영수
+lang: ko
+draft: false
+toc: true
+comments: true
+description: 웹 표준인 `/.well-known` 경로의 의미와 도입 목적을 설명하고, OAuth 인가 서버 및 OpenID Connect 설정 정보를 찾는 대표적인 엔드포인트를 소개합니다.
+---
+
+### ./well-known
+
+사이트에 대한 정보는 이 폴더 아래에 있다는 웹 표준이 미리 정해 둔 주소
+-> 사이트마다 제각각 정하지 않고, 모두 같은 자리를 쓰기로 약속한 것
+
+- IETF 가 [RFC 8615](https://www.rfc-editor.org/info/rfc8615/) 에서 2019년 정의
+
+#### 왜 필요한가?
+
+프로그램이 어떤 사이트를 만나더라도, 사이트의 설정 정보를 찾아갈 수 있게하는 것이다.
+
+- 사이트 주소 뒤, 정해진 경로를 붙여서 탐색
+
+- `/.well-known/oauth-authorization-server` : OAuth 인가 서버 안내문
+- `/.well-known/openid-configuration` : 로그인 제공자 안내문
+- `/.well-known/security.txt` : 보안 문제시 어디 신고하면 되는지
+
+구글은
+`https://accounts.google.com/.well-known/openid-configuration` 
+해당 경로를 제공해준다.
+
+![image](https://assets.youngsu5582.today/blog/2026/11/18/1795013802302-image.png)
