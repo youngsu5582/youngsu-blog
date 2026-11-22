@@ -1,0 +1,553 @@
+---
+title: "Building a Claude Code Harness (1): Enforcing Rules with Folder Structure and Hooks"
+date: "Sun Nov 22 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: 
+categories: []
+tags: []
+image: /assets/img/thumbnail/harness-first-folder-and-hooks.png
+author: 이영수
+lang: en
+---
+
+> I split this into two parts. Part 1 is about turning rules stated in words into code-enforced checks, and verifying that they actually work.
+> Part 2 covers keeping work on track with specifications.
+
+While using Claude Code in our company repository, I gradually built up a harness.
+There was one reason for doing so: to get more work done with less effort from me.
+
+- Let it build things well on its own, without my intervention
+- Make it customizable — organize work and record what I learn
+
+A substantial part of it was built together with AI.
+
+As a result, each file said “why it exists,” but I couldn’t explain all at once how the whole thing worked—or whether it worked well.
+
+So I’m going to lay out how my harness evolved and why it changed along the way.
+
+> To sum it up in one line:
+> Rules stated in words are forgotten. So anything that must not be forgotten is enforced in code.
+
+---
+
+## Timeline
+
+Here’s the timeline of how it evolved.
+
+1. Kept `CLAUDE.md` concise and had it record the day’s work at night.
+2. Expanded the rules documents to 710 lines and created 28 skills.
+3. Enforced and visualized rules with hooks and a Mod instead of documents, and started recording work by task.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/22/cac2b2715d0555acb604b6c09388ce75.png)
+
+## A concise CLAUDE.md
+
+As most people do at first, I wrote concise, clear rules in `CLAUDE.md`. All the rules documents together totaled just 182 lines.
+
+- “Don’t switch branches; use a worktree.”
+- “Start commit messages with the ticket number.”
+- “Don’t touch generated files.”
+
+I also wrote down how to work.
+
+- “Before implementing, show me what you understand and align on the direction.”
+- “Don’t make broad changes; change only what was requested, and keep them minimal.”
+- “Point out unclear instructions or incorrect assumptions right away.”
+
+Would it follow them? -> For the most part, yes.
+
+But as tasks got longer, the rules about how to work gradually fell away.
+It would proceed based on guesses without asking, or change things beyond the scope we had agreed to.
+
+## 710 lines and 28 skills
+
+To prevent rules from being ignored, I wrote them down in more detail.
+
+- Add a rule whenever it forgets something
+- Write skills so it doesn’t have to figure out each task from scratch (things like deployments and nightly cleanup)
+- Add hooks
+
+| What I built | Count |
+| ----- | --------- |
+| Rules documents | 6 · 710 lines |
+| Skills | 28 |
+| Agents | 8 |
+| Hooks | 8 |
+
+The rules documents that were actually read in every session had accumulated like this:
+
+```
+$ wc -l .claude/rules/*.md
+     332 backend-code-style.md
+      50 backend-test-naming.md
+      20 commit-and-branch.md
+     164 consumer-conventions.md
+      83 critical.md
+      61 frontend-code-style.md
+     710 total
+```
+
+One of the rules looked like this:
+
+```markdown
+- **No inline FQCNs** — Do not use inline FQCNs such as `java.time.LocalDateTime.now()`. Always import the class and use its simple name. Exception: allowed only when a file must use two classes with the same simple name, causing a collision.
+```
+
+With all of this in place, I expected and trusted that our team’s rules would be followed.
+
+## Is this really okay?
+
+But the rules were still slipping through.
+The work itself wasn’t being managed either. What we had decided remained only in the conversation, and there was no way to check how much had actually been changed.
+
+-> Why was this happening after I’d written down 710 lines of rules? Was the harness actually working properly? 🤔
+
+After about three months, I measured how the harness was actually being used.
+When I checked, none of the three parts were working as intended.
+
+### Rules
+
+- The dashboard meant to measure rule compliance ran for one day—the day I set it up—and then stopped
+- The skill I created to fix this (`harness-tune`) was never used
+- Rules for the API server, frontend code, consumers, and everything else were all mixed together, so they all got loaded
+
+-> There was nowhere to see whether those 710 lines were being followed.
+
+> All six files above were read in full every session. Even a session working only on the API also loaded 61 lines of frontend rules and 164 lines of consumer rules.
+
+### Skills
+
+- After moving the Obsidian vault, 27 skills that pointed to the old vault path had silently stopped working
+- The cleanup skill (`nightly`) that was supposed to run every night had run only about five times before stopping
+
+### Hooks
+
+- The eight existing hooks assumed they received input through environment variables.
+	- But Claude Code passes it as JSON on stdin
+	- They all quietly ran `exit 0` at the first guard
+
+```bash
+#!/bin/bash
+# checkout-guard.sh — recommend worktrees when using git checkout/switch
+# critical.md rule: worktrees are required when working on another branch.
+#
+# Behavior: print a warning to stderr only (no blocking). The user may use it intentionally.
+# Blocking with a hook would be impractical because it would prevent valid use cases (checking out individual files).
+
+CMD="${CLAUDE_BASH_COMMAND:-${OPENCODE_BASH_COMMAND:-}}"
+[[ -z "$CMD" ]] && exit 0
+
+# Exclude file-level checkout (e.g. git checkout -- path/to/file)
+if echo "$CMD" | grep -qE "git (checkout|switch)\s+(-\s|--\s|-\-\s|\.\.|\-|--)" ; then
+    exit 0
+fi
+
+# Branch-switching patterns: git checkout <branch> or git switch <branch>
+if echo "$CMD" | grep -qE "^\s*git (checkout|switch)\s+([a-zA-Z0-9._/-]+)\s*$"; then
+    BRANCH=$(echo "$CMD" | sed -E 's/.*git (checkout|switch) ([a-zA-Z0-9._\/-]+).*/\2/')
+    echo "" >&2
+    echo "⚠️  critical.md: Use a worktree for another branch" >&2
+    echo "   git worktree add /tmp/wt-$(echo "$BRANCH" | tr '/' '-') $BRANCH" >&2
+    echo "" >&2
+    # Do not block (warning only)
+fi
+
+exit 0
+```
+
+(Old hook code)
+
+### Configuration mismatch
+
+The documentation and the permissions we had allowed were also out of sync.
+
+| What the docs said | Actual permissions |
+| ------------------------ | ------------------------------------------- |
+| Ask before writing to GitHub | `gh pr edit` allowed automatically |
+| Use worktrees; don’t switch branches | All of `git` allowed automatically. The hook watching for this only warned and ran `exit 0` |
+| Don’t use `curl` · `wget` | Both allowed without restriction |
+
+```sh
+// .claude/settings.local.json — commands that run without asking
+"Bash(gh pr edit:*)",    // Docs: ask before writing to GitHub
+"Bash(git:*)",           // Docs: don’t switch branches
+"Bash(gh workflow:*)",   // The deployment skill asks four times, but running this command directly asks nothing
+```
+
+-> The safeguards I thought were in place weren’t working at all.
+
+## What I learned
+
+There were three problems.
+
+1. There was no enforcement → No matter how well or extensively you write the context, Claude decides whether to read and follow it
+2. There was no way to tell if things were being used → There was nowhere to see whether skills were being called or hooks were blocking anything
+3. There was no way to control how work progressed → What we had decided remained only in the conversation, with no way to check how much had actually been changed
+
+> I’ll cover number 3 in Part 2. This post is about numbers 1 and 2.
+
+But I couldn’t block everything. What if I asked it to write a specification over a single typo?
+-> The harness would become heavier than the work, and eventually people would work around it.
+=> The goal was to leave what AI is good at to AI, and enforce in code only what must not be forgotten.
+
+## Building a new harness
+
+For this harness, I started by thinking about the folder structure and the roles.
+I thought a systematic structure would make it easier for me to manage and easier for AI to understand.
+
+> I borrowed heavily from NHN Cloud’s [I Became an Old Man Who Forges Harnesses, Series 1: There Is No Silver Bullet](https://meetup.nhncloud.com/posts/423).
+
+### Improving the folder structure
+
+The problem with 710 lines wasn’t just that they were long. Everything was read in full every session.
+=> So I first organized things by “when they’re read.”
+
+| When it’s read | What | Location |
+|---|---|---|
+| Every session | Only absolute rules. 200-line limit | `.claude/rules/` |
+| When doing that kind of work | Backend · consumer · frontend code rules | `.claude/skills/` |
+| The first time touching that feature | Feature summary · flow · operations docs. A hook points to the path once | `.harness/domain/<feature>/` |
+| When stuck · when a procedure is needed | Source of truth for the work loop · risk levels · conventions · symptom-based troubleshooting | `.harness/handbook/how/` |
+
+The folders look like this.
+
+```
+{repo}/
+├── CLAUDE.md                  Project overview
+├── .claude/
+│   ├── rules/                 Rules read every session (200-line limit)
+│   ├── skills/ · agents/      Procedures read when doing that kind of work · subagents for reviews
+│   ├── hooks/                 Things that block · things that inform
+│   └── plans/<date-topic>/    task.yaml + INDEX.md for each task
+├── .harness/
+│   ├── handbook/how/          Work loop · risk levels · conventions · symptom-based troubleshooting
+│   ├── domain/<feature>/      Docs read the first time touching that feature
+│   └── private/               Verification logs · approval ledger · self-check suggestions
+└── scripts/harness/           verify · status · self-tests
+```
+
+> There’s nothing particularly unusual about claude’s rules, skills, and agents, so I’ll skip explaining them.
+### handbook — the rules’ source of truth
+
+At first, the same rules were scattered across multiple places.
+Approval language was written separately in 28 skills, and the guide still recommended a procedure involving a skill that had already been retired.
+-> I put everything in one place and had the skills · hooks · CLAUDE.md point to that file.
+
+```
+.harness/handbook/how/
+├── work-loop.md            Work loop — specify → implement → verify → wrap up
+├── risk-and-approval.md    Risk levels and approvals
+├── guarded-paths.txt       Paths that can’t be changed without a specification
+├── conventions/            Measured results for code conventions
+└── troubleshooting.md      Symptom → cause → action (source of truth for troubleshooting tips)
+```
+
+`permission-audit.sh` checks whether commands listed as “ask before doing” or “don’t do” in the risk-level document (`risk-and-approval.md`) are also configured that way in the actual permissions. The earlier “Configuration mismatch” table showed what it looked like when these were out of sync.
+
+Claude Code’s permission settings have three lists: run without asking (allow) · ask before running (ask) · block (deny).
+If you click “Always allow” in a prompt, that command moves to allow, but nobody sees what was moved.
+
+The script checks three things.
+
+- A command that should require confirmation or be blocked, such as merging · creating a PR · deploying, has been added to allow → fail
+- A blocked command (merging · closing a PR · deleting a volume) is missing from deny → fail
+- The allow list has grown beyond the list checked last time (the baseline) → warn and show newly added commands
+
+It runs once inside the verification script and once at the end of a turn. If it fails, it tells you which lines to move back to ask · deny.
+
+### domain — one set of documents for each feature
+
+- Keep adding policies and specifications as they evolve
+- The first time you touch code for that feature, a hook points you to this folder
+
+```
+.harness/domain/preset/
+├── README.md        Summary · relationships · decisions · unknowns
+├── spec.md          Policies
+├── flow.md          Flow (mermaid)
+├── operations.md    Record of related exceptions and troubleshooting
+└── code-map.md      Code locations (generated by a script)
+```
+
+Still, anything that must not be forgotten wasn’t left in a document. I put it directly in a hook.
+
+## Preventing issues with hooks
+
+As I outlined in the [Mod post](https://www.youngsu5582.today/posts/claude-code-mod-tool-control), there are two places users can customize.
+
+- `CLAUDE.md` · Skill: text included in the prompt. Claude decides whether to read and follow it
+-> It may forget or interpret it differently
+
+- Hook: code that Claude Code runs at a specified point. It’s independent of Claude’s judgment
+-> It can enforce rules
+
+For example, what if you want to enforce “Don’t switch branches”?
+
+- `CLAUDE.md`: It follows this only while Claude remembers it as context
+- Hook: Even if Claude forgets, it blocks `git checkout feature/...` before it runs
+
+Here’s where hooks run within a session.
+
+![Where hooks run within a session — session start · before and after tool calls · end of turn](https://assets.youngsu5582.today/obsidian/2026/11/22/3d597390de21c0c759f1a7ac40482d1e.png)
+
+The way to block something is simple.
+
+Before a tool runs, a hook receives JSON on stdin. If it exits with status 2, the tool won’t run.
+Anything the hook writes to stderr is passed directly to Claude.
+
+-> Claude reads it and looks for another way.
+
+```bash
+# Shared function used by all hooks (.claude/hooks/_lib.sh)
+hook_block() {
+  echo "$1" >&2   # Reason for blocking, passed to Claude
+  exit 2          # Prevents the tool from running
+}
+```
+
+> The JSON received by a hook on stdin looks like this.
+
+```json
+{
+  "session_id": "21f9eab7-…",
+  "cwd": "/…/proj-680-ci-oom-investigation",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": { "command": "git checkout develop" }
+}
+```
+
+Here’s what is currently blocked.
+
+| Hook | What it blocks |
+| ------------------ | ----------------------------- |
+| `guard-worktree`   | Branch switching (`git checkout <branch>`) |
+| `check-commit-msg` | Commit messages that don’t follow the convention |
+| `guard-scope`      | Changes to generated files · already-applied migrations |
+| `guard-secret`     | Writing keys · tokens to files |
+| `guard-spec`       | Changes to paths that are costly to revert without a specification · approval |
+| `guard-approval`   | AI writing approval lines |
+
+The three lines I first wrote in `CLAUDE.md` (branches · commit messages · generated files) were moved to hooks.
+
+### How are the new hooks different from the old ones?
+
+I put common logic that was needed across hooks in `_lib.sh`.
+If each file had its own preprocessing and postprocessing logic, they would be hard to manage.
+
+The common logic is managed in one `sh` file, like a library.
+
+```sh
+#!/usr/bin/env bash
+# _lib.sh
+
+# hook_block <message>
+# — Blocks the tool from running.
+# Claude Code interprets exit 2 from a PreToolUse hook as a block and passes stderr to the model
+hook_block() {
+  echo "$1" >&2
+  exit 2
+}
+
+# hook_trace <hook name> <decision> <details>  — the last agent= field distinguishes Claude from Codex
+# session= · wt= are added only when present in the input — identifies which conversation · worktree the decision belongs to
+hook_trace() {
+  local extra=""
+  
+  [ -n "${HOOK_SESSION_ID:-}" ] && extra="${extra}"$'\t'"session=${HOOK_SESSION_ID}"
+  [ -n "${HOOK_CWD:-}" ] && extra="${extra}"$'\t'"wt=${HOOK_CWD##*/}"
+  
+  printf '%s\t%s\t%s\t%s\tstdin=%s\tagent=%s%s\n' \
+    "$(date +%FT%T)" "$1" "$2" "${3:-}" \
+    "$([ -n "$_HOOK_INPUT" ] && echo yes || echo no)" "${HOOK_AGENT:-claude}" "$extra" >> "$HOOK_TRACE" 2>/dev/null || true
+}
+
+# Bash command. If it comes as an array, ` ["bash","-lc","<script>"] ` returns just the script; otherwise it joins the elements with spaces  
+#   (Joining the whole array puts git out of command position, so _scan-branch-switch.pl misses it — verified with selftest)  
+hook_command() {  
+  hook_field '.tool_input.command | if type=="array" then  
+      (if length >= 3 and (.[0] | test("(^|/)(ba|z)?sh$")) and (.[-2] | test("^-[a-z]*c$")) then .[-1] else join(" ") end)    else . end' CLAUDE_BASH_COMMAND  
+}
+
+# hook_field <jq path> <environment variable name> — prefer stdin JSON, fall back to environment variable
+hook_field() {  
+  local jqpath="$1" envname="$2" v=""  
+  if [ -n "$_HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then  
+    v="$(printf '%s' "$_HOOK_INPUT" | jq -r "$jqpath // empty" 2>/dev/null || true)"  
+  fi  
+  [ -z "$v" ] && v="$(eval "printf '%s' \"\${$envname:-}\"")"  
+  printf '%s' "$v"  
+}
+
+```
+
+- `hook_block`: blocks the tool and passes along a message
+- `hook_trace`: records one line for each decision
+	- When · which hook · decision · whether input arrived · Claude/Codex · which conversation · which worktree, and so on
+- `hook_command`: extracts the command
+
+```bash
+#!/usr/bin/env bash
+source "$(dirname "$0")/_lib.sh"
+
+CMD="$(hook_command)"
+[ -z "$CMD" ] && { hook_trace guard-worktree skip "command 없음"; exit 0; }
+
+HIT="$(printf '%s' "$CMD" | perl "$(dirname "$0")/_scan-branch-switch.pl" 2>/dev/null)"
+
+if [ -n "$HIT" ]; then
+  hook_trace guard-worktree BLOCK "$HIT"
+  hook_block "차단: 브랜치 전환 대신 worktree 를 쓴다 (critical.md §3) — \`$HIT\` …"
+fi
+
+hook_trace guard-worktree pass ""
+exit 0
+```
+
+1. Receive the command through `hook_command`
+2. Check whether a branch switch is happening — `_scan-branch-switch.pl` makes the decision
+3. If a switch is detected, call `hook_block`
+
+![How guard-worktree makes its decision — strip away data and check the first word of each command fragment](https://assets.youngsu5582.today/obsidian/2026/11/22/97b0af89e422e0652f2dc1bc6f2c5ad2.png)
+
+This is what it looks like in the Claude Code interface.
+
+When Claude runs `git checkout develop`, the hook blocks it,
+returns the reason for the rejection to Claude, and displays a warning above the prompt.
+
+![Blocked command — guard-worktree blocking git checkout develop (demo repository)](https://assets.youngsu5582.today/obsidian/2026/11/22/777a779b13a9c9f80945b011f546890b.png)
+
+> The result is made explicit through a Mod.
+
+### Keeping records so I can verify
+
+“There is a hook” and “the hook blocks things” are different.
+To verify this, I log whether input arrived every time a decision is made.
+
+```
+2026-11-22T16:44:31	guard-worktree	pass		stdin=yes	agent=claude	session=21f9eab7…	wt=proj-680-ci-oom-investigation
+2026-11-22T16:44:31	check-commit-msg	skip	commit 아님	stdin=yes	agent=claude	session=21f9eab7…	wt=proj-680-ci-oom-investigation
+2026-11-22T16:45:12	guard-worktree	BLOCK	git checkout develop	stdin=yes	agent=claude	session=21f9eab7…	wt=proj-680-ci-oom-investigation
+```
+
+Every hook decision gets its own line in the log.
+
+- `stdin=yes` → If input stops arriving again, it’s immediately visible
+- `session=` · `wt=` → If a decision blocks something incorrectly, I can open that conversation right away. The conversation record’s filename is the session ID
+
+### Test so I can trust and change it
+
+Hooks check and act according to a defined format, like a program,
+so I need to verify that they still work as before and that changes don’t introduce problems.
+
+I created `hook-selftest.sh` to test them, so I could make changes without worrying.
+
+The test cases look like this. I list both things that should be blocked and things that should pass.
+
+```bash
+# hook-selftest.sh — guard-worktree decision logic
+scan BLOCK 'git checkout <branch>'          'git checkout develop'
+scan BLOCK '앞에 다른 명령이 있어도'          'cd /x && git checkout develop'
+scan BLOCK '뒤에 --가 있어도 (구버전 홀)'     'git checkout develop && git log --oneline'
+scan BLOCK '환경변수 대입 뒤'                'GIT_TRACE=1 git checkout develop'
+
+scan PASS  '파일 복원 (-- path)'             'git checkout -- module-api/src/main/java/Foo.java'
+scan PASS  '새 브랜치 생성 (-b)'              'git checkout -b feature/PROJ-999'
+scan PASS  '충돌 해결 --ours <파일> (실제 오차단)' 'git checkout --ours module-api/src/main/java/Foo.java'
+```
+
+```
+$ scripts/harness/hook-selftest.sh
+…
+PASS  235건 통과
+```
+
+### Self-check
+
+When a session starts, if it’s been a week since the last check, a self-check runs in the background.
+It counts skill · agent calls, hook decisions, and verification results across 60 days of conversation records, and leaves suggestions for things worth fixing. A person does the deleting or changing.
+
+```markdown
+# Harness self-check — last 60 days (2026-11-19)
+
+- Sessions: 256 main · 580 including subagents
+- Sessions that changed Java: 66 · convention skill loaded in 21 of them
+- Hook decision logging began: 2026-10-21T10:13:15 · verify ran 100 times
+…
+## Skills not called (10)
+approve-check, candidate-review, chain, explorer-base-planner, gh, model-verify, review-resolve, skill-creator, token-decode, web-archive
+```
+
+![How do I know if it blocks? Decision logs → self-check → suggestions → a person makes changes → self-tests](https://assets.youngsu5582.today/obsidian/2026/11/22/67c890ffad5a2f82597f242e8c47755d.png)
+
+I published the `guard-worktree` hook and its test cases from this section as a plugin. It also includes `ask-via-tool`, which sends a request back to be asked again with a question tool if it would otherwise just ask in text and stop.
+This is a snapshot with only company paths and names removed, so the decisions · logging · self-tests shown above run as-is.
+
+```text
+/plugin marketplace add youngsu5582/awesome-tools
+/plugin install guardrails@awesome-tools
+```
+
+## Providing context
+
+For tasks AI is good at, I provide information instead of blocking it.
+
+| When | What it provides |
+|---|---|
+| Right after writing a Java line | Whether it violates a one-line rule such as `FQCN` |
+| The first time touching feature code | Where the feature’s documentation is |
+| When a command fails with a known error | A one-line tip |
+| After changing a Java file | The module’s compile result (only when it fails) |
+
+All four are delivered by hooks that run after a tool executes.
+They don’t block anything. They put what needs to be said in `additionalContext` and pass it along; Claude Code appends that text immediately after the tool result and passes it to Claude. Claude reads it before choosing what to do next.
+
+```bash
+# line-gate-notice.sh — final line
+jq -nc --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"PostToolUse", additionalContext:$m}}'
+```
+
+Compile checks are the only exception.
+Only when a compile fails, the hook exits with status 2 and outputs the error lines. It leaves the already-edited files as they are and returns only the errors to Claude.
+
+```
+[Tip] rg-dash-r — `-r` in rg means `--replace`, not recursive.
+With `-rn`, matches are replaced with `n` in the output. rg is recursive by default, so just use `rg -n`.
+
+[Tip] flyway-unverified — Tests use `flyway.enabled: false` + `ddl-auto: create`, and the workflow doesn’t include flyway either.
+Since the dev deployment is the first run, apply everything to an empty DB with flyway docker to verify.
+```
+
+For one-line rules, I just provide a notice while editing, then catch violations as FAIL in `verify.sh`.
+
+```python
+# scripts/harness/lint/line_gates.py
+FQCN = re.compile(r"(?<![\w.@])(?:java|javax|jakarta|lombok|org\.springframework|org\.hibernate|com\.example)\.(?:[a-z]\w*\.)*[A-Z]\w*")
+RULES = [
+    ("FQCN", "fail", lambda p: p.endswith(".java"),
+     lambda c, l: FQCN.search(c),
+     "FQCN 인라인 금지 — import 후 단순 이름 (같은 이름 충돌만 예외) · critical.md §1"),
+    # …
+```
+
+=> Team conventions that can be enforced with a one-line check, like `FQCN`, should be caught by a test, not a document.
+
+## Wrapping up
+
+The structure was simpler than I expected.
+
+Rules live in documents -> hooks block what can be checked in code -> verification results and decisions are saved in files.
+What seemed complicated was all the `why`s attached to each file. And most of those `why`s were dates and examples of instructions not being followed.
+
+The most useful questions I asked while building a harness with AI were:
+
+> “If this instruction fails once, what will prevent it next time?” “How do I figure out how to modify the file or write the logic?”
+
+If the answer is a hook or a script, I move it there. If there’s no answer, the instruction stays in the document for now.
+The story of keeping work on track with specifications continues in [[2편 명세로 작업 붙잡기|Part 2]].
+
+## References
+
+- [I Became an Old Man Who Forges Harnesses, Series 1: There Is No Silver Bullet](https://meetup.nhncloud.com/posts/423) — NHN Cloud Meetup. I borrowed the folder structure (team knowledge · service-specific knowledge) from here
+- [I Became an Old Man Who Forges Harnesses, Series 2: Hello, Silver Bullet](https://meetup.nhncloud.com/posts/426) — Part 2 of the same series
+- [Exploring Claude Code Mod and Writing Example Code](https://www.youngsu5582.today/posts/claude-code-mod-tool-control)
+- [guardrails](https://github.com/youngsu5582/awesome-tools/tree/main/skills/guardrails) — Published this post’s `guard-worktree` and `ask-via-tool` as a Claude Code plugin
