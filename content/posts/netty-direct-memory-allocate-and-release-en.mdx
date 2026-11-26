@@ -1,0 +1,434 @@
+---
+title: Exploring a Reactor Netty Direct Memory Failure (1) — How Direct Memory Is Allocated and Released
+date: "Thu Nov 26 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+description: 
+categories: []
+tags: []
+image: /assets/img/thumbnail/netty-direct-memory-allocate-and-release.png
+author: 이영수
+lang: en
+---
+
+> I encountered a Direct memory-related failure in server logic using Reactor-Netty.
+> To understand the failure properly, I started by reviewing the underlying concepts. The incident itself will be covered in Part 2.
+
+This post walks through how memory outside the heap (native memory) is allocated and released, and then how Netty builds a pool on top of it.
+
+The environment is as follows.
+
+```text
+Netty         4.1.135.Final
+Reactor Netty 1.2.18
+Reactor Core  3.7.19
+JDK           21 (experiments on 21.0.6)
+```
+
+### TL;DR in 3 lines
+
+1. Direct buffer data lives outside the heap, and the JDK accounts for its capacity against a separate limit (`MaxDirectMemorySize`). It is released only after the GC finds the `DirectByteBuffer` object.
+2. To avoid this cost, Netty allocates a large chunk at once and divides it into smaller pieces. Buffers return to the pool via `release()`, but a chunk is released only when certain conditions are met.
+3. The limit is accounted for in chunks, not individual buffers. If the remaining limit is smaller than one chunk, an allocation that needs a new chunk will fail, even for a very small buffer.
+
+This part covers the concepts and a small experiment. The experiment code is available in [netty-core-playground](https://github.com/youngsu5582/playground/tree/ad54a706aa11ac9851520c7d2f7ed5d855947cd9/netty-core-playground).
+
+## Native Memory and Direct Buffers
+
+Native memory is the memory allocated by the JVM process from the operating system, excluding the heap memory area.
+It includes the following:
+
+- Direct Buffer data
+- Metaspace
+- The area where JIT-compiled code is stored
+- Memory used by the JVM internals and native libraries
+
+This post focuses on Direct Buffers.
+
+`ByteBuffer` is a class that abstracts a buffer for storing, reading, and writing byte data.
+There are two ways to create one.
+
+| Call                          | Memory           | Name          |
+| ----------------------------- | ---------------- | ------------- |
+| `ByteBuffer.allocate`         | JVM heap         | HeapBuffer    |
+| `ByteBuffer.allocateDirect`   | Native memory    | DirectBuffer  |
+
+The `DirectByteBuffer(int cap)` constructor used by `allocateDirect` consists of four main steps.
+
+```java
+Bits.reserveMemory(size, cap);
+…
+    base = UNSAFE.allocateMemory(size);
+…
+UNSAFE.setMemory(base, size, (byte) 0);
+…
+    cleaner = Cleaner.create(this, new Deallocator(base, size, cap));
+```
+
+1. Reserve the memory against the limit before allocating it.
+2. Allocate native memory.
+	- If this fails, undo the reservation with `Bits.unreserveMemory`.
+3. Initialize the allocated memory to 0.
+4. Register a `Cleaner` to handle deallocation.
+	- The GC does not directly collect memory outside the heap → arrange for it to be released when the object is collected.
+
+> JDK 21.0.6 `DirectByteBuffer.java` constructor
+
+The `DirectByteBuffer` object lives on the heap, while its data lives outside the heap.
+-> The heap-side object is only a few dozen bytes. Even if many Direct buffers are created and discarded, they barely use heap space, giving the GC little reason to run.
+=> Direct buffers involve a lot of work to allocate, and their deallocation depends on when the heap-side object is cleaned up.
+
+## Why Use Direct Memory?
+
+The reason to use Direct memory is to reduce copying during I/O.
+
+> DMA: Direct Memory Access
+
+- Read into a heap buffer (`allocate`)
+
+1. The JVM calls the `read` system call and switches to kernel mode.
+2. The kernel requests a read from the disk, and the requesting thread blocks.
+3. DMA copies the data into a kernel buffer.
+4. The kernel copies the data from the kernel buffer into a temporary Direct buffer.
+5. `read` returns, and execution switches to user mode.
+6. The JDK copies the data from the temporary Direct buffer into the heap buffer once more.
+
+- Read into a Direct buffer (`allocateDirect`)
+
+1. The JVM calls the `read` system call and switches to kernel mode.
+2. The kernel requests a read from the disk, and the requesting thread blocks.
+3. DMA copies the data into a kernel buffer.
+4. The kernel copies the data from the kernel buffer into the Direct buffer.
+5. `read` returns, and execution switches to user mode — done.
+
+The CPU is not involved in step 3 because of DMA, but it is involved in the copies in steps 4 and 6.
+
+“Doesn’t a Direct Buffer directly reference the kernel buffer, so there’s no copying?”
+-> ❌ A Direct buffer is memory in the user-space area outside the heap, not a kernel buffer, so the copy in step 4 still happens in both cases.
+=> What Direct buffers eliminate is one copy: `"6. temporary Direct buffer → heap buffer"`.
+
+> Eliminating copies on the kernel side requires other mechanisms such as `mmap` or `sendfile` (`FileChannel.transferTo`).
+
+> That does not mean Direct is always faster.
+> It reduces copying, but allocation and deallocation are more expensive than for heap memory because of the four constructor steps described above.
+
+## JDK Allocation and Deallocation
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/26/93b196cb5f51f369fc1387180325ac7b.png)
+
+### Limit
+
+The JDK tracks the total capacity of Direct buffers separately from the heap and rejects allocations that would exceed the limit (`-XX:MaxDirectMemorySize`).
+If no option is specified, the limit is equal to the maximum heap size.
+
+#### When the limit is reached
+
+An allocation does not fail immediately when the limit is reached.
+
+```java
+// 1
+refprocActive = jlra.waitForReferenceProcessing();
+…
+// 2
+System.gc();                                         
+…
+// 3
+Thread.sleep(sleepTime);                             
+sleepTime <<= 1;
+…
+// 4
+throw new OutOfMemoryError                           
+    ("Cannot reserve "
+     + size + " bytes of direct buffer memory (allocated: "
+     + RESERVED_MEMORY.get() + ", limit: " + MAX_MEMORY +")");
+```
+
+> JDK 21.0.6 `java.nio.Bits.reserveMemory` method
+
+1. If there are buffers awaiting cleanup, wait for their cleanup and retry.
+2. Call `System.gc()` once.
+3. Wait for 1, 2, 4 … up to 256 ms, retrying up to 9 times (about 0.5 seconds in total).
+4. If that still does not work, throw an `OutOfMemoryError: Cannot reserve N bytes of direct buffer memory` OOM.
+
+=> An allocation that reaches the limit waits for about 0.5 seconds on the requesting thread before giving up.
+
+### Deallocation
+
+Deallocation is handled by the `Cleaner` registered at creation time.
+
+```java
+private record Deallocator(long address, long size, int capacity) implements Runnable {
+    …
+    public void run() {
+	    // 힙 밖 메모리 해제
+        UNSAFE.freeMemory(address);              
+        // 한도에서 뺀다
+        Bits.unreserveMemory(size, capacity);    
+    }
+}
+```
+
+Both of the following must happen:
+
+- The `DirectByteBuffer` object is no longer referenced.
+- The GC collects that object.
+
+Then the `Cleaner` runs and the memory outside the heap is released.
+
+=> Direct memory is reclaimed only when the GC runs. If the heap is mostly idle, the GC may run later, leaving the memory outside the heap allocated in the meantime.
+
+## Netty
+
+Netty handles network I/O with a small number of threads and manages the buffers used for it.
+Reactor Netty (HTTP client and connection pool) sits above it, while the JDK and OS sit below.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/26/dd51bf632d46b67b0b5cab1b522cdf0c.png)
+
+### Selector and EventLoop
+
+NIO uses non-blocking `Channel`s together with a `Selector`, allowing a single thread to manage the I/O readiness of multiple connections. Rather than calling `read()` and waiting on every connection, it selects and processes only connections that are ready to read or write.
+
+- Fewer platform threads are needed per connection.
+- The per-thread stack memory and context-switching overhead are reduced.
+
+An `EventLoop` wraps this structure. A single thread owns a selector and a task queue, and repeatedly does the following:
+
+1. Check whether any connections have data ready (`select`).
+2. Read from those connections and pass events through the pipeline.
+3. Process tasks submitted by other threads.
+
+=> A single EventLoop handles multiple connections, so if processing one connection takes a long time, the others are delayed too.
+(Watch out for blocking!)
+
+### Channel · Pipeline
+
+- A `Channel` represents one connection. It is registered with one EventLoop and always runs on that thread afterward.
+- Each `Channel` has its own handler chain called a `Pipeline`.
+	- Inbound events flow from front to back, while outbound operations flow from back to front.
+
+```text
+…
+   91 ms | nioEventLoopGroup-2-1    | H1 channelRegistered
+   91 ms | nioEventLoopGroup-2-1    | H1 channelActive
+   96 ms | nioEventLoopGroup-2-1    | H1 channelRead  (데이터가 들어왔다)
+…
+```
+
+### ByteBuf and Pool
+
+`ByteBuf` is Netty's buffer.
+
+Whenever Netty reads from a socket, it allocates a buffer before knowing whether there is any data.
+=> Since every read involves an allocation, allocation must not become a source of overhead.
+
+However, creating a new Direct buffer for every read causes two problems.
+
+1. Creation involves a lot of work (reserving against the limit · native allocation · zero-filling · registering a Cleaner).
+   → This cost is paid on every read.
+2. Discarding a buffer requires waiting for the GC.
+   → Even an unused buffer continues to count against the limit until the GC runs.
+
+That is why Netty uses a pool. It allocates a large block (a chunk) once and gives each `ByteBuf` a region within it.
+
+1. The expensive Direct allocation is paid only when a chunk is allocated.
+2. A used `ByteBuf` returns to the pool immediately via `release()`, without waiting for the GC.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/27/154bdfcced09d64f9b7ac311fbc504ae.png)
+
+```text
+PooledByteBufAllocator
+ └─ Arena        (구역, 여러 개)
+     └─ Chunk    (allocateDirect 로 한 번에 받은 덩어리, 기본 4 MiB)
+         └─ ByteBuf 하나가 쓰는 구간
+```
+
+The trade-off is that an allocated chunk is not returned easily.
+
+A `ByteBuf`'s lifetime is managed by a reference count (`refCnt`).
+A buffer obtained from the pool returns to it when its count reaches 0 via `release()`. If you forget to call it, the buffer will not return. (Possible leak.)
+
+- Requests larger than a chunk bypass the pool, allocate the requested size separately, and are deallocated immediately on `release()`.
+- Small buffers released on a Netty thread are first stored in the thread cache rather than going straight back to the chunk.
+
+## Chunks That Do Not Return
+
+Even if `release()` is called every time, the Direct memory accounted for by the JDK may not decrease!
+
+=> This may look like a leak in monitoring, but it is not a leak. The buffers have returned to the pool; the chunks simply have not been released.
+
+That is why the return process should be considered in two stages.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/26/d23f540b3ec38b6f651ff2d97d95eff5.png)
+
+- Stage 1 (buffer → pool): Happens as soon as the count reaches 0 via `release()`. This is the application's responsibility, and forgetting it causes a real leak.
+- Stage 2 (chunk deallocation): Happens only when conditions set by Netty are met. This cannot be controlled by application code. When the conditions are met, Netty discards the chunk, immediately releases its memory, and subtracts it from the JDK limit.
+
+> Whether a deallocated chunk is returned to the OS depends on the C memory allocator.
+> musl (Alpine) separately mmaps allocations of about 128 KiB or larger and returns them to the OS immediately when freed, while glibc may retain them for reuse.
+
+### Conditions for a Chunk to Return
+
+A chunk is deallocated only after it has been used sufficiently and then becomes completely empty.
+
+- Used sufficiently = it has reached 25% utilization at some point.
+	- Netty manages chunks in lists organized by utilization.
+	- A new chunk is placed in the initial list (`qInit`) and leaves that list only after reaching 25% utilization.
+	- A chunk that remains in the initial list is not returned even when empty.
+- Completely empty = no buffers remain in it.
+
+![image](https://assets.youngsu5582.today/obsidian/2026/11/27/71aa0ac4f4df7cdee09a38c52ec790e2.png)
+
+The code looks like this.
+
+```java
+// PoolArena 생성자 — 목록마다 (다음 목록, 최소 사용률, 최대 사용률)
+q000 = new PoolChunkList<T>(this, q025, 1, 50, sizeClass.chunkSize);
+qInit = new PoolChunkList<T>(this, q000, Integer.MIN_VALUE, 25, sizeClass.chunkSize);
+…
+q000.prevList(null);
+qInit.prevList(qInit);
+
+// PoolArena.allocateNormal — 새 청크는 시작 목록으로
+qInit.add(c);
+
+// PoolChunkList.move0 — 아래 목록으로 내려가다 더 내려갈 곳이 없으면
+if (prevList == null) {
+    // There is no previous PoolChunkList so return false which result in having the PoolChunk destroyed and
+    // all memory associated with the PoolChunk will be released.
+    assert chunk.usage() == 0;
+    return false;
+}
+
+```
+
+> Netty 4.1.135.Final
+> List creation and linking [PoolArena.java#L87-L99](https://github.com/netty/netty/blob/netty-4.1.135.Final/buffer/src/main/java/io/netty/buffer/PoolArena.java#L87-L99) · New chunk [PoolArena.java#L212-L216](https://github.com/netty/netty/blob/netty-4.1.135.Final/buffer/src/main/java/io/netty/buffer/PoolArena.java#L212-L216) · Chunk deallocation [PoolChunkList.java#L146-L154](https://github.com/netty/netty/blob/netty-4.1.135.Final/buffer/src/main/java/io/netty/buffer/PoolChunkList.java#L146-L154)
+
+> If a newly allocated chunk is used briefly and then returned immediately, the next read would have to pay the cost of another expensive allocation.
+> It appears that Netty keeps new chunks in the initial list for this reason.
+
+=> Chunks are not returned easily, but the limit is increased in chunk-sized units.
+So if the remaining limit is smaller than one chunk, even a very small buffer cannot be allocated when it needs a new chunk.
+
+## Verify It Directly
+
+Let's verify the points above with actual code.
+
+The experiment used JDK 21.0.6 and a Direct memory limit of 64 MiB.
+For easier observation, the chunk size was reduced to 512 KiB (`maxOrder=6`), the number of arenas was set to 1, and the thread cache was disabled.
+
+> The experiment code and original output are available in [netty-core-playground](https://github.com/youngsu5582/playground/tree/ad54a706aa11ac9851520c7d2f7ed5d855947cd9/netty-core-playground).
+> In the output, “box” means a chunk, “slot” means a buffer, and “accounted” means added to the limit. Blank lines have been added for readability, and omitted sections are marked with `…`.
+
+### Part 1 — JDK Accounting
+
+```bash
+JAVA_OPTS="-XX:MaxDirectMemorySize=64m" ./run.sh Lesson02DirectMemory 1
+```
+
+```text
+…
+=== 파트 1: JDK 의 계산 — 직접 버퍼 하나마다 한도에 계상된다 ===
+시작   | JDK 예약량 = 0.00 MiB
+8 MiB 버퍼 1개 할당 | JDK 예약량 = 8.00 MiB
+8 MiB 버퍼 2개 할당 | JDK 예약량 = 16.00 MiB
+8 MiB 버퍼 3개 할당 | JDK 예약량 = 24.00 MiB
+
+-- 한도를 넘을 때까지 8 MiB 씩 계속 할당 (참조를 쥐고 있다)
+할당 성공 개수 = 8  (64.00 MiB)
+OOM 메시지     = Cannot reserve 8388608 bytes of direct buffer memory (allocated: 67108864, limit: 67108864)
+실패한 할당 1회에 걸린 시간 = 539 ms  (JDK 가 GC 를 한 번 돌리고 잠깐씩 기다린 뒤 포기한다)
+
+-- 참조를 모두 놓고 GC 를 돌리면?
+참조 해제 + GC 후 | JDK 예약량 = 0.00 MiB  (JDK 직접 버퍼는 GC 가 회수한다)
+```
+
+Each buffer is counted against the limit, and the allocation that reached the limit took 539 ms.
+After releasing all references and running the GC, the reserved amount returns to 0.
+
+### Part 2 — Chunk-Based Limit Accounting and Return Conditions
+
+```bash
+JAVA_OPTS="-XX:MaxDirectMemorySize=64m" ./run.sh Lesson02DirectMemory 2
+```
+
+```text
+…
+=== 파트 2: Netty 풀 — 한도에는 '상자(청크)' 단위로 계상된다 ===
+청크(상자) 크기 = 0.50 MiB , 직접 구역(arena) 수 = 1
+시작   | JDK 예약량 = 0.00 MiB | Netty 가 가진 상자 총량 = 0.00 MiB
+
+-- 시나리오 2-A: 상자의 25% 도 안 쓴 채 모두 반납하면?
+1 KiB 버퍼 1개 할당 | JDK 예약량 = 0.50 MiB | 상자 총량 = 0.50 MiB  <- 1 KiB 가 아니라 상자 한 개(0.50 MiB)가 예약됐다
+1 KiB 버퍼 3개째    | JDK 예약량 = 0.50 MiB | 상자 총량 = 0.50 MiB  <- 같은 상자의 다른 칸을 썼으므로 늘지 않는다
+3개 모두 release    | JDK 예약량 = 0.50 MiB | 상자 총량 = 0.50 MiB  <- 상자가 완전히 비었는데도 반납되지 않았다 (!)
+…
+
+-- 시나리오 2-D: 큰 버퍼 1개(64 KiB = 상자의 12.5%)만 쓰고 반납하면? (소스의 qInit 규칙 확인)
+64 KiB 버퍼 1개 할당 | 이 풀이 예약한 양 = 0.50 MiB
+release              | 이 풀이 예약한 양 = 0.50 MiB  <- 상자를 25% 도 쓴 적 없으면 비어도 남는다 (새 상자가 놓이는 qInit 은 비워도 반납하지 않는다)
+…
+```
+
+- Even when requesting 1 KiB, one chunk (0.50 MiB) is reserved, and it remains reserved even after all three buffers are `release()`d.
+- A chunk that has never reached 25% utilization remains allocated even when empty (it was not used sufficiently).
+
+```text
+-- 시나리오 2-C: 큰 버퍼(64 KiB)로 상자를 쓰고 모두 반납하면?
+64 KiB 버퍼 4개 할당(상자의 50%) | 이 풀이 예약한 양 = 0.50 MiB | 상자 총량 = 0.50 MiB
+3개 release (1개는 쥐고 있음)     | 이 풀이 예약한 양 = 0.50 MiB | 상자 총량 = 0.50 MiB  <- 칸 하나가 상자를 묶고 있다
+마지막 1개도 release              | 이 풀이 예약한 양 = 0.00 MiB | 상자 총량 = 0.00 MiB  <- 큰 버퍼만 쓴 상자는 비면 반납된다
+```
+
+- If one buffer remains, the entire chunk is held. Once the last one is released, the chunk is returned.
+
+### Part 3 — When the Pool Reaches Its Limit
+
+```bash
+JAVA_OPTS="-XX:MaxDirectMemorySize=64m" ./run.sh Lesson02DirectMemory 3
+```
+
+
+```text
+…
+=== 파트 3: … 풀을 한도까지 채우면 ===
+16 KiB 버퍼 4096개를 쥔 상태에서 실패
+Netty 상자 총량 = 64.00 MiB , JDK 예약량 = 64.00 MiB
+
+OOM 메시지 = Cannot reserve 524288 bytes of direct buffer memory (allocated: 67108865, limit: 67108864)
+-> 새 상자(0.50 MiB)를 예약하려는데 '한도 - 이미 예약량' 이 그보다 작아서 실패한다.
+…
+```
+
+This experiment kept allocating 16 KiB buffers until an `OutOfMemoryError` occurred.
+The failed request was not 16 KiB, but one chunk (524288 bytes = 512 KiB).
+
+=> From the moment the remaining capacity becomes smaller than one chunk, every allocation that needs a new chunk will fail.
+
+## Common Misconceptions
+
+| Misconception | Reality |
+| --- | --- |
+| Direct memory is unrelated to the GC | JDK Direct buffers are released only when the GC runs (`Cleaner`). Netty pool buffers are returned using reference counting, but chunks are released only when the conditions are met. |
+| Direct is always faster than the heap | It reduces copying, but allocation and deallocation are more expensive. That is why a pool is needed. |
+| `release()` returns memory to the OS | It only returns the buffer to the pool. The limit accounting (JDK reserved amount) may not decrease. |
+| OOM happens immediately when the limit is reached | It is thrown after one GC run and up to 9 waits (about 0.5 seconds). |
+
+Let's return to the question from the beginning.
+
+> “Why can there be a memory shortage when there is still heap available?”
+
+1. The Direct memory limit is tracked separately from the heap.
+2. Even if Direct buffers are created and discarded, the heap only contains objects of a few dozen bytes, which provides little reason for the GC to run; the memory outside the heap remains allocated.
+3. In the Netty pool, memory is accounted for in chunks, and chunks are released only when certain conditions are met.
+
+=> The limit can be reached even when heap space remains. Because the limit is filled in chunk-sized units, a new chunk cannot be obtained when the remaining capacity is smaller than one chunk.
+
+## Next Part
+
+In the actual incident, a retry opened a new connection while the limit was in this state, and `Cannot reserve 524288 bytes` occurred when the TLS handshake requested a buffer for decryption.
+But the request did not end in failure; it got stuck. Part 2 will trace the reason.
+
+## References
+
+- JDK 21.0.6 source: [Bits.java#L109-L203](https://github.com/openjdk/jdk21u/blob/jdk-21.0.6-ga/src/java.base/share/classes/java/nio/Bits.java#L109-L203) · [Direct-X-Buffer.java.template](https://github.com/openjdk/jdk21u/blob/jdk-21.0.6-ga/src/java.base/share/classes/java/nio/Direct-X-Buffer.java.template) (template for creating `DirectByteBuffer`) · [IOUtil.java#L286-L314](https://github.com/openjdk/jdk21u/blob/jdk-21.0.6-ga/src/java.base/share/classes/sun/nio/ch/IOUtil.java#L286-L314)
+- Netty 4.1.135.Final source: [PooledByteBufAllocator.java](https://github.com/netty/netty/blob/netty-4.1.135.Final/buffer/src/main/java/io/netty/buffer/PooledByteBufAllocator.java) · [PoolArena.java](https://github.com/netty/netty/blob/netty-4.1.135.Final/buffer/src/main/java/io/netty/buffer/PoolArena.java) · [PoolChunkList.java](https://github.com/netty/netty/blob/netty-4.1.135.Final/buffer/src/main/java/io/netty/buffer/PoolChunkList.java)
+- Experiment code: [Lesson02DirectMemory.java](https://github.com/youngsu5582/playground/blob/ad54a706aa11ac9851520c7d2f7ed5d855947cd9/netty-core-playground/src/Lesson02DirectMemory.java) · [Execution results (out/)](https://github.com/youngsu5582/playground/tree/ad54a706aa11ac9851520c7d2f7ed5d855947cd9/netty-core-playground/out)
